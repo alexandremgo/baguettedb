@@ -1,0 +1,2 @@
+# Keeps the vendored SQLCipher amalgamation out of GitHub's language statistics.
+pkg/databases/adapters/sqlitelocal/csrc/** linguist-vendored
