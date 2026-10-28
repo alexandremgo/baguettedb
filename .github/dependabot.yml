@@ -1,0 +1,24 @@
+# Weekly dependency update PRs. Library updates are grouped per ecosystem so a week's bumps arrive as one PR;
+# actions stay one PR each, since each of those deserves its own look.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      npm-dependencies:
+        patterns: ["*"]

@@ -1,0 +1,54 @@
+.root {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+/* The real checkbox: invisible but full-size on top of the track, so it keeps native focus,
+   keyboard toggling, and label-click behavior. */
+.input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+}
+
+.track {
+  width: 40px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-active);
+  transition: background-color var(--duration-fast);
+}
+
+.thumb {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 2px;
+  border-radius: var(--radius-full);
+  background-color: hsl(var(--color-white));
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--duration-fast);
+}
+
+.input:checked + .track {
+  background-color: var(--color-primary);
+}
+
+.input:checked + .track .thumb {
+  transform: translateX(16px);
+}
+
+.input:focus-visible + .track {
+  box-shadow: var(--ring);
+}
+
+.input:disabled + .track {
+  opacity: 0.5;
+}

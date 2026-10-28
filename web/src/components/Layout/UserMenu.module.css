@@ -1,0 +1,106 @@
+.container {
+  position: relative;
+  display: inline-block;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-fast);
+}
+
+.trigger:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full, 9999px);
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.identity {
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.identityName {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.identityEmail {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg, 0 4px 12px rgba(0, 0, 0, 0.1));
+  padding: var(--space-2) 0;
+  z-index: 100;
+}
+
+.header {
+  padding: var(--space-2) var(--space-3);
+}
+
+.separator {
+  height: 1px;
+  background-color: var(--color-border);
+  margin: var(--space-2) 0;
+}
+
+.item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--duration-fast);
+}
+
+.item:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.danger {
+  color: var(--color-danger, #d44);
+}
+
+.danger:hover {
+  background-color: var(--color-danger-soft, rgba(221, 68, 68, 0.1));
+}
+
+@media (max-width: 768px) {
+  .trigger {
+    padding: var(--space-1);
+  }
+}

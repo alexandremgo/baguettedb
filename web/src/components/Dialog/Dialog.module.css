@@ -1,0 +1,76 @@
+.dialog {
+  max-width: 640px;
+  width: 92vw;
+  margin: auto;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  /* An overflowing dialog scrolls with a theme-colored bar — the UA default renders a white track. */
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.dialog[open] {
+  animation: dialogIn var(--duration-normal) ease-out;
+}
+
+.dialog::backdrop {
+  background-color: hsl(var(--color-black) / 0.4);
+}
+
+.dialog[open]::backdrop {
+  animation: backdropIn var(--duration-normal) ease-out;
+}
+
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xl);
+  color: var(--color-text-tertiary);
+  transition: background-color var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.close:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.body {
+  padding: var(--space-6);
+}

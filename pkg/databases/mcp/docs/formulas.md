@@ -1,0 +1,431 @@
+# Formula authoring manual
+
+A formula is a named, parameterized SQL artifact: members run it from the app, and you run it via
+`{{.ToolRunFormula}}`. Its kind is derived from the SQL — a single SELECT is a **view** (read); one or more
+INSERT/UPDATE/DELETE statements separated by `;` are an **action** (write). No DDL, and reads and writes
+cannot mix. Running re-authorizes by statement class, so a formula grants no capability beyond what
+`{{.ToolExecuteQuery}}` / `{{.ToolExecuteData}}` already allow.
+
+A formula's **verb** is derived across ALL its statements by precedence delete > insert > update (a lone
+SELECT is a view). Some display slots are pinned to a single verb (see Slots), so e.g. an add action that
+also contains a DELETE classifies as delete and is rejected for the add slot.
+
+## Naming and metadata
+
+- `name`: slug-shaped, unique per bdb — lowercase letters, digits and hyphens, must start with a letter
+  (e.g. `low-stock`).
+- `label`: optional human name shown in the app instead of the slug (e.g. "Shopping list" for
+  `pending-groceries`). Presentation only — never a reference, so keep addressing the formula by its
+  name. Omit to show the name itself. On update, pass an empty string to drop it.
+- `description`: one line; appears alongside the name in `{{.ToolDescribeBdb}}` and `{{.ToolListFormulas}}` for routing.
+- `display_order`: position among siblings (lower sorts first). Omit to append after existing formulas.
+- `hidden: true` marks the formula assistant-only: omitted from the members' formula list (writers can
+  reveal it), while MCP tools always see it and running stays permission-gated as usual. Use it for
+  assistant-plumbing formulas (rollups, maintenance actions).
+
+## Parameters
+
+Use NAMED bind parameters only (e.g. `:status`, `:min_qty`), never an anonymous `?`. Every named
+parameter the SQL uses must appear in `params`, and every declared param must be used by the SQL. In a
+multi-statement action a param may bind in any statement and may repeat across statements.
+
+Each `params` entry declares:
+
+- `name`: the bind parameter name without the colon (e.g. `status` for `:status`).
+- `type`: `text`, `integer`, `float`, `boolean`, `date`, `datetime`, `time`, or `group`.
+- `source`: `prompt`, `selection-single`, `selection-bulk`, `pagination`, `lookup`, or `reorder`
+  (each described below).
+- `optional`, `default`, `defaults`, `options`, `hint`, `multiline`, `inline`, `multiple`, `when`, `lookup`,
+  `fields`: described below.
+
+### Required, optional, default
+
+Params are required by default: a missing or null value rejects the run. Mark a param the caller may
+omit as `optional: true` — omitting it binds the param's `default` when one is declared, else SQL NULL.
+`optional` is only valid for source `prompt` or `lookup`.
+
+`default` is the value an omitted (or null) optional parameter binds instead of SQL NULL, as a string
+(`'film'`, `'2026'`, `'true'`) coerced to the param's type. The app prefills its form control with it,
+so members see exactly what omitting binds. Declare it whenever a sensible fallback exists and write the
+SQL against the plain parameter (`:kind`) — no NULL-handling expression needed. Today's date is the
+exception: dates have no static default, handle them in SQL. Skip `default` for params whose NULL is
+meaningful (a filter's "no constraint"): declare no default and author `WHERE (:x IS NULL OR col = :x)`.
+When both `default` and `options` are set, the default must be one of the option values (exact spelling,
+never a label). `default` is only valid on an optional scalar prompt parameter — except a `multiple`
+parameter, whose `default` may only be the literal `'all'`, and which declares a static subset in
+`defaults` instead (`["staple"]`, `[1, 3]`), whether required or optional (see Multi-selects).
+
+### Types
+
+- `boolean` binds as a 0/1 integer — author SQL like `WHERE done = :done` and pass JSON true/false when
+  running.
+- `date`, `datetime` and `time` bind TEXT in the canonical forms SQLite's date functions write
+  (`YYYY-MM-DD`, `YYYY-MM-DD HH:MM:SS`, `HH:MM:SS`) and the app renders as native pickers. A value that
+  is not a real date or time is rejected before the SQL runs, and datetime/time input is canonicalized
+  (`T` separator accepted, seconds filled in) so stored values order correctly as plain text. Prefer
+  them over a `text` param with a format hint for any column the schema treats as a date or time.
+- `group` declares a repeated group of sub-fields — see Group parameters.
+
+### Options (closed vocabulary)
+
+`options` gives a prompt text, integer, float or date parameter a closed vocabulary: the app renders a
+dropdown, and — unlike `hint` — the values are ENFORCED. An entry is either a bare value (`'film'`, `9`)
+or `{value, label}` when the shown name should differ from the bound value (`{value: 9, label:
+"September"}`); reads always return the `{value, label}` form. A run passes VALUES, never labels; one
+outside the list is rejected before the SQL runs, and a text value matching case-insensitively binds the
+spelling declared here, so stored data stays canonical. Values must fit the param's type (its string
+form, like `default`). Use options for a fixed set the schema already constrains (a CHECK), not for a
+catalog that grows with user input — that is what source `lookup` reads from a table. Values and labels
+must be non-blank and must not differ only by case. An options param may be `multiple: true` — a checkbox
+panel over the vocabulary, binding an array (see Multi-selects).
+
+### Display-only field controls
+
+- `hint`: placeholder for the app's input (e.g. "matches title or tags"). It never affects binding — a
+  fallback value belongs in `default`, not here.
+- `multiline: true` renders the app's input as a multi-line textarea — use for note bodies and long
+  descriptions. Only valid on a prompt text parameter.
+- `inline: true` places the parameter in the quick-add form: when an action fills a view's add slot, its
+  inline params render as an always-visible form above the rows instead of behind the + Add dialog. Mark
+  every required param (an unmarked required param sends the add back to the dialog); unmarked optional
+  params are omitted by the form and bind their default when declared, else NULL. Only valid on a scalar
+  prompt or lookup parameter — never on a group or its fields.
+
+### Conditional visibility (`when`)
+
+`when: {param, op, value}` hides a parameter's form field until a sibling param's value compares true:
+the app's forms render this parameter's field only while the sibling named `param` compares true against
+`value` (string form; `'true'`/`'false'` for a boolean) under `op` — `eq` (the default when omitted),
+`ne`, or `lt`/`lte`/`gt`/`gte` for numeric, date, and time controllers.
+
+The run mirrors the form: while the condition is false (evaluated against the incoming values — the
+supplied controller value, else its default, else empty) the parameter is NOT required, and omitting it
+binds its default, else NULL (`'[]'` for a group); a supplied value still binds as usual. So a required
+parameter may gate: it must be passed exactly while its condition holds. The controller must be a
+prompt-sourced sibling without a `when` of its own; when it declares options, an eq/ne `value` must be
+one of the option VALUES. Use it for two-faced actions (e.g. an equal-split payer required only while a
+custom-split toggle is off) or fields tied to one choice of a kind-style option param. For plain MCP
+runs the mechanics are display-oriented: pass or omit values as usual — a hidden field submits nothing.
+
+### Group parameters (repeated rows)
+
+`type: "group"` declares a repeated group; `fields` (required for, and only valid with, groups) is the
+per-row schema. Each field is a scalar prompt- or lookup-sourced entry (same shape as a top-level param,
+no nested groups). A group param must use source `prompt`; its run-time value is an array of objects
+binding as ONE JSON TEXT value under the param's name — consume it in SQL with `json_each`, e.g.:
+
+```sql
+INSERT INTO expense_shares (expense_id, member_id, share_amount)
+SELECT (SELECT MAX(id) FROM expenses), json_extract(je.value, '$.member'),
+       json_extract(je.value, '$.amount')
+FROM json_each(:shares) je
+```
+
+An omitted optional group binds `'[]'` (zero rows); a required group needs at least one row.
+
+## Parameter sources
+
+- `prompt`: the member types or picks the value in a form (the default choice for plain inputs).
+- `selection-single`: the acting row — the param must be named `:rowid` (or `:parent_rowid` inside a
+  row-detail view; see Nested lists). See Selection-bound actions.
+- `selection-bulk`: the selected rows — the param must be named `:rowids`, expanded to `IN (?, …)` at
+  run time.
+- `pagination`: `:cursor` and `:limit` (both integer) — see Paged views.
+- `lookup`: a picker over a table's rows — see Lookups.
+- `reorder`: `:ordered_rowids` (integer) bound to a JSON array of rowids — see the reorder slot.
+- `window`: `:window_start` and `:window_end` (both date, or both datetime) bound by the app to the range
+  a calendar shows — see Calendar mode.
+
+### Lookups
+
+`source: "lookup"` renders a picker in the app; the `lookup` object is required for (and only valid
+with) it: `{table, label_column, value_column}` — the label is shown, the value is bound. The table and
+columns must exist.
+
+- `exclude_selection: true` drops the acting row from the options when the lookup reads the same table
+  the acting row lives in and offering that row would be self-referencing (e.g. picking which duplicate a
+  merge absorbs). Requires a selection-single param.
+- `allow_new: true` accepts text typed past the options too (pick to reuse, type to create): the param
+  must be text, `value_column` should carry the typed text itself (usually the label column), and the
+  SQL must resolve or create the named row.
+- `scope` narrows the picker's options by sibling params' current values: each key names a scalar
+  prompt-sourced sibling param, each value the column of `table` compared against it — e.g.
+  `{"kind": "kind"}` lists only rows whose kind column equals the kind param's current value, and a
+  sibling left empty adds no constraint. Display-only: a run still binds exactly what is sent, so the
+  SQL must not rely on the narrowing. Never valid on a group field.
+- `fill` copies columns of the picked row into sibling params: each key names a scalar prompt- or
+  lookup-sourced sibling, each value the column of `table` whose value the pick writes there — e.g.
+  `{"category": "category_name", "habit": "habit"}` on an item picker files the two fields the way the
+  catalog has them. A pick overwrites the sibling; text typed past the options fills nothing; clearing
+  the picker leaves siblings alone. Display-only: an MCP run never fills anything, so the SQL must cope
+  with the siblings arriving empty. When `value_column` is not unique, which row's columns fill is
+  arbitrary — point fills at catalog tables. Never valid with `multiple`, never on a group field.
+- `multiple: true` marks a lookup multi-select — see Multi-selects. Never valid with `allow_new`, never
+  on a group field.
+
+Over MCP there is no picker; pass the value(s) directly in `params`.
+
+### Multi-selects
+
+`multiple: true` on a lookup parameter, or on a prompt parameter with `options`, renders a checkbox panel
+over its entries, and a run passes an ARRAY of picked values (each typed like a single pick — options
+membership and canonical spelling included — duplicates rejected) binding as ONE JSON TEXT value. Consume
+it in SQL with `json_each`, e.g. `WHERE m.id IN (SELECT je.value FROM json_each(:share_among) je)`.
+
+Omitted, an optional multi-select binds `'[]'` (zero rows) and a required one errors — unless it declares
+a default, in one of two fields:
+
+- `default: 'all'` — the one dynamic default: it resolves on each run to every row the lookup table
+  holds at that moment (or to every option value), so a member added later is included without editing
+  the formula.
+- `defaults: ["staple"]` / `defaults: [1, 3]` — a static subset, exactly those values; the app's panel
+  opens with them checked, so a filter can open narrowed. No duplicates, each element one of the options
+  when options exist, never beside `default`.
+
+Either way an explicit empty array still binds `'[]'`: on an optional filter that reads as "no constraint"
+(author `json_array_length(:x) = 0 OR col IN (SELECT value FROM json_each(:x))`), on a required parameter
+it stays rejected, so the bound set can never be empty there.
+
+## Multi-statement actions
+
+A multi-statement action runs atomically: one transaction, one undo entry. Chain a parent row's id into
+children with `last_insert_rowid()`, e.g.:
+
+```sql
+INSERT INTO orders (total) VALUES (:total);
+INSERT INTO order_items (order_id, sku) VALUES (last_insert_rowid(), :sku)
+```
+
+## Paged views
+
+A view that pages through a list should `SELECT rowid AS rowid, ...` and `ORDER BY rowid` with
+`WHERE rowid > :cursor LIMIT :limit`. Alias it explicitly as `rowid AS rowid`: a bare `SELECT rowid` is
+named after the table's INTEGER PRIMARY KEY (e.g. `id`), and the next-page cursor is read from a column
+named exactly `rowid`. Declare `:cursor` and `:limit` (both integer) with source `pagination`; the
+engine defaults and clamps them, so omit them when running to get the first page. When the response
+includes a `pagination` block with `has_more: true`, run again with `:cursor` set to its `next_cursor`.
+
+## Attachment and selection-bound actions
+
+An action that targets one selected row takes `:rowid` (source `selection-single`); one targeting
+several takes `:rowids` (source `selection-bulk`, expanded to `IN (?, …)` at run time). Attach such an
+action to a view via `attached_to_formula_id` AND name it in the view's display (a fixed slot, or the
+bulk / row_actions lists) — an attached action renders nowhere until named; when running over MCP you
+pass their values in `params` explicitly.
+
+Row detail: attach a SELECT that takes `:rowid` (source `selection-single`) to a view (e.g.
+`SELECT * FROM recipes WHERE id = :rowid`), then name it in the view's display slot `detail` — the app
+runs it when a member opens a row. Its other params, if any, must be optional or pagination-sourced.
+Attachment alone does not render it; the detail slot does.
+
+Deleting a view removes the formulas attached to it (its row/bulk actions and row detail) with it.
+
+## Display config (views only)
+
+`display` controls how the app renders the rows. Omitted, the view renders as a plain table.
+
+### Modes
+
+- `table`: the plain grid (also the default when display is omitted).
+- `checklist`: dense one-line rows — a title-role column's text, an optional 0/1 check-role column
+  rendered as a checkbox.
+- `cards`: a grid of title-role + optional body-role previews.
+- `board`: cards in side-by-side columns, one column per value of a group-role column — kanban-style.
+- `calendar`: cards placed on the day a day-role column names, shown a week (or a configured span of
+  days) at a time with an "Unscheduled" tray for rows whose day is NULL — see Calendar mode.
+
+Prefer checklist for todo/grocery-style lists, cards for note-style content, board for status-driven
+flows (tasks moving through stages), calendar for anything planned onto days (meals, sessions,
+appointments).
+
+### Columns
+
+`display.columns` assigns roles, formats, and hidden flags, one entry per result column:
+`{column, role: 'title'|'body'|'check'|'group'|'day', format: 'markdown', hidden: true}` — each entry
+needs a role and/or a format, and `column` must be a result column of the view's SELECT.
+
+- Roles are checklist/cards/board/calendar-only (a table renders all columns): title everywhere, body
+  on cards/board/calendar, check on a checklist, group on a board, day on a calendar.
+- `format: 'markdown'` renders the column's text as simple markdown in any mode, including a detail
+  view's record card.
+- `hidden: true` drops a column from the table grid but keeps it in the row data — use it for a
+  machine-shaped column (e.g. a JSON array of `{member, amount}` objects) that seeds an edit slot's
+  group param without showing raw JSON in the grid. `hidden` is exclusive with role/format.
+
+### Slots
+
+`display.slots` wires the rendering's interactions to formulas ATTACHED to this view, by name or UUID
+(stored and returned as UUIDs). Slots never accept unattached formulas: rowids are table-local, so a
+formula shared across views could hit the wrong table's row. Row-bound slots need the view to
+`SELECT rowid AS rowid`.
+
+Fixed slots (verb pinning follows the derived verb; delete > insert > update across ALL statements):
+
+- `add`: insert action; prompt/lookup params only. Pinned to verb insert.
+- `toggle`: any verb; `:rowid` + only optional extras — flips the check-role column on tap; may record
+  the flip in another table (inserting on the way in, deleting that same row on the way back out).
+- `edit`: any verb; `:rowid` + at least one prompt/lookup param — a seeded form; may rewrite a row and
+  its owned children in one action.
+- `delete`: delete action; `:rowid` + only optional extras. Pinned to verb delete.
+- `detail`: a `:rowid` SELECT view rendered when a member opens a row.
+
+The pinning means an add action that also contains a DELETE classifies as delete and is rejected. Edit
+and toggle are exempt — they take any verb.
+
+Two slots are ordered LISTS (array order = render order; each attached formula holds at most one role
+across all slots, with one exception noted below):
+
+- `slots.bulk`: `:rowids` actions filling the selection toolbar, table mode only.
+- `slots.row_actions`: the per-row `…` menu in order (every mode incl. table; row-detail views too):
+  extra single-row `:rowid` actions of any verb, and optionally the formula filling the `edit`,
+  `delete`, or `detail` slot — naming it here places that built-in entry at that position (the one
+  allowed repeat). Built-in entries left unlisted trail the list as Details, Edit, Delete behind a
+  separator.
+
+An attached action not named anywhere renders nothing — there is no inferred toolbar or menu.
+
+A table display takes every slot except toggle (bound to the check role, a checklist concept): add
+renders as an Add button, edit/delete/row_actions in a per-row `…` menu, detail on row click, bulk as
+the selection toolbar.
+
+### Reorder slot (drag-to-reorder)
+
+`slots.reorder` (checklist, cards, board, or calendar mode, non-paginated views only) enables
+drag-to-reorder: when a member drags a row to a new place, the app runs the named update action once
+with `:ordered_rowids` (source `reorder`, type integer) bound to a JSON array of the listed rowids in
+their new display order — every row on a checklist or cards grid, the affected column's rows on a board
+or day's rows on a calendar (correct there because ordering is per-lane) — one run, one undo. The
+action's SQL owns persistence; the canonical shape renumbers an integer position column from the array
+index (`json_each`'s key is 0-based):
+
+```sql
+UPDATE items SET position = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                             WHERE je.value = items.id)
+WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+```
+
+Beyond `:ordered_rowids` (and `:parent_rowid` on a detail view) only optional params are allowed — the
+action runs immediately, no dialog opens. The view's SELECT must ORDER BY the column the action
+renumbers, or the list re-renders in its old order and the reorder looks like it did nothing. Over MCP
+pass the array directly, e.g. `ordered_rowids: [5, 3, 8]`.
+
+### Move slot (drag across board columns or calendar days)
+
+`slots.move` (board and calendar modes) enables drag-across-lanes. On a board, when a member drops a
+card into another column, the app runs the named update action once with the dragged row as `:rowid` and the destination
+column's value bound to the action's TARGET parameter — its single required parameter, which must
+declare `options`; those options also define the board's columns and their order (rows whose group value
+matches no option render in extra columns appended after the declared ones). Beyond `:rowid` and the
+target (and `:parent_rowid` on a detail view) only optional params are allowed — the drop runs
+immediately, no dialog opens. The canonical shape: `UPDATE tasks SET status = :status WHERE id = :rowid`
+with status options `['todo', 'doing', 'done']`, the view selecting `status` with role `group`. Without
+a move slot the board renders read-only columns from the group values.
+
+A move action may ALSO declare `:ordered_rowids` (source `reorder`, `optional: true` — required shape):
+the app then binds the destination column's rowids in their post-drop order, so one atomic run both
+re-homes and places the card; it omits the param when a filter narrows the rows, so append the reorder
+paragraph's renumbering statement as a second statement — `json_each` of the NULL yields no rows, a safe
+no-op. Pair it with a per-column position column the view ORDER BYs (e.g. `ORDER BY position, id`) and
+fill the reorder slot with the same renumbering shape for drags within one column.
+
+On a calendar the target is a `date` prompt parameter WITHOUT options — the drop binds the destination
+day ("YYYY-MM-DD") to it: `UPDATE meals SET day = :day WHERE id = :rowid`. The same optional
+`:ordered_rowids` extension places the card within the day. A drop never lands in the Unscheduled tray
+(a drop knows a day); clearing the day is a row action's job (`UPDATE meals SET day = NULL WHERE
+id = :rowid`, listed in `row_actions`).
+
+### Calendar mode
+
+A calendar view places each row on the day its day-role column names — a `"YYYY-MM-DD"` TEXT value, or
+a `"YYYY-MM-DD HH:MM:SS"` datetime whose date part places it — and shows a span of days at a time (the
+Monday-to-Sunday week unless `window` says otherwise, see below); rows whose day is NULL gather in an
+"Unscheduled" tray after the days. The mode requires:
+
+- a `day`-role column (and a `title`; `body` optional);
+- the reserved window pair `:window_start` / `:window_end`, source `window`, both `date` or both
+  `datetime`, never optional and never one without the other. The app binds the visible span's first
+  and last day (inclusive) on every run; a run that omits them (over MCP, an export) binds NULL on
+  both, so guard each bound with `IS NULL` to make an omitted window mean "everything";
+- no pagination (the window bounds the rows) and no toggle slot.
+
+The SQL must keep NULL-day rows through the window test or the tray is silently empty — a bare
+`day >= :window_start` drops them. The canonical WHERE:
+
+```sql
+SELECT rowid AS rowid, dish, day, notes FROM meals
+WHERE day IS NULL
+   OR ((:window_start IS NULL OR day >= :window_start) AND (:window_end IS NULL OR day <= :window_end))
+ORDER BY day, position, id
+```
+
+Within a day the app keeps the view's ORDER BY: order by a time column when the day is a datetime, or
+by a position column renumbered through the reorder slot when members drag cards within a day — the
+two are exclusive by nature, so pick one per view. The `add` slot's action may declare one `date`
+prompt parameter (optional or not): each day's own "+" seeds it with that day, and the toolbar's add
+leaves it blank so the row starts unscheduled. Declare the day column `NULL`-able for that tray to
+exist at all.
+
+**Which days show — `display.window`.** Optional, calendar only. It is one of two kinds, never both:
+
+- A **weekly window** names its first and last weekday in lowercase English (`monday` … `sunday`) and
+  repeats every 7 days: the arrows move a week, "Today" lands on the current week. Absent, it is Monday
+  to Sunday; `week_start` alone is a full week from that day, `week_end` alone starts on Monday. The
+  pair may wrap.
+
+  ```json
+  "window": {"week_start": "sunday"}                          // a US-style week, Sun → Sat
+  "window": {"week_end": "friday"}                             // Mon–Fri work week
+  "window": {"week_start": "saturday", "week_end": "sunday"}   // weekends only
+  ```
+
+- A **fixed range** names its first day and a length: `start` as `YYYY-MM-DD`, `days` from 1 to 31
+  (absent = 7). It opens on exactly those days whatever today is — no snapping to a week — and the
+  arrows move by `days` ("Today" jumps to the block of `days` holding today, counted from `start`).
+  Use it for anything with its own dates, a trip or an event, or for a long span (up to a month).
+
+  ```json
+  "window": {"start": "2026-09-18", "days": 4}   // Fri 18 → Mon 21, on one screen
+  ```
+
+The window only decides what the app binds to `:window_start` / `:window_end`; the SQL above needs no
+change. A window on any other mode is rejected.
+
+## Nested lists (interactive row details)
+
+A row-detail view may carry its OWN display config (checklist, cards, board, or calendar), making the detail modal
+interactive — e.g. tap a session card and edit its checklist of sets. For that, the detail's SELECT must
+expose the CHILD rows' `rowid AS rowid` (its `:rowid` param stays the parent's id) plus any columns its
+seeded edit should pre-fill. Its edit/delete/toggle slots bind the tapped child row's `:rowid` as usual;
+its add slot MUST declare `:parent_rowid` (source `selection-single`) and never `:rowid` — the app binds
+the PARENT row the modal is open for, so the insert lands in that row's children (e.g.
+`INSERT INTO sets (session_id, reps) VALUES (:parent_rowid, :reps)`). The edit/delete/toggle slots and
+row_actions entries of a detail MAY also declare `:parent_rowid` when their SQL needs the parent's id;
+outside a detail view no slotted action can — there is no parent row to bind.
+
+An interactive detail may even fill its own `detail` slot with a view attached to IT — details nest
+recursively, to any depth (e.g. programs → a program's planned sessions → a session's exercises); each
+level binds its immediate parent only, so a deeper view needing an ancestor's id must read it from a
+column its parent detail selects or join for it in SQL.
+
+## Authoring order
+
+Create the view first (display without slots, or none), create its actions attached to it
+(`attached_to_formula_id`), then set `display.slots` via `{{.ToolUpdateFormula}}` — at create time only
+slot-free display configs pass. To render the add slot as an always-visible quick-add form above the
+rows (any mode) instead of a + Add dialog, mark the add action's params `inline: true` — every required
+one, plus whichever optional ones belong in the form; the rest stay dialog-only and bind their default
+(else NULL) when adding from the form.
+
+## Updating formulas
+
+`{{.ToolUpdateFormula}}` resolves by name or UUID; pass only the fields to change — omitted fields are left
+untouched. Changing `sql` re-derives the kind and the verb and re-checks it against `params`; if the
+formula fills a verb-pinned display slot (add/delete/reorder/move), the re-derived verb must still match
+that slot (edit and toggle accept any verb). To replace the parameter schema, pass the full new `params`
+list. An attached formula must keep its kind — detach first to flip a view to an action or back.
+
+`display` is tri-state on update: omit = unchanged; null = clear (back to the plain table); an object =
+replace (re-validated against the SQL's result columns and the attached formulas). This is where slots
+are set. To change one part (e.g. reorder `row_actions`), read the current display with get_formula and
+resend all of it with that part changed. A formula referenced by a slot of its parent's display resists
+changes that break the slot's shape — clear the slot first.

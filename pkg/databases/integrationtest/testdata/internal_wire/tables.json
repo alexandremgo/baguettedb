@@ -1,0 +1,14 @@
+[
+  {
+    "name": "titles",
+    "type": "view"
+  },
+  {
+    "name": "books",
+    "type": "table"
+  },
+  {
+    "name": "authors",
+    "type": "table"
+  }
+]

@@ -1,0 +1,58 @@
+.code {
+  position: relative;
+  font-family: "SF Mono", "Fira Code", Menlo, monospace;
+  font-size: var(--text-xs);
+  background: var(--color-surface-secondary);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  word-break: break-all;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.code::after {
+  content: "Click to copy";
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.code:hover::after {
+  opacity: 1;
+}
+
+.code:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.block {
+  display: block;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+}
+
+.copied {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  border-color: var(--color-primary);
+}
+
+.copied::after {
+  opacity: 0;
+}

@@ -1,0 +1,1 @@
+export { BaguetteLogo } from "./BaguetteLogo";

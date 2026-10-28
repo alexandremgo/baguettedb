@@ -1,0 +1,181 @@
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  transition: background-color var(--duration-fast);
+}
+
+.row:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.row:first-child {
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+
+.row:last-child {
+  border-bottom: none;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+.rowMain {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+div.rowMain {
+  cursor: default;
+}
+
+/* Custom-drawn round checkbox: the task-app affordance, filling caramel when done. */
+.checkbox {
+  appearance: none;
+  position: relative;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.checkbox:hover {
+  border-color: var(--color-primary);
+}
+
+/* In flight: the box already shows its new state, so only the cursor says the run is still out. */
+.checkbox:disabled {
+  cursor: progress;
+}
+
+.checkbox:checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--color-text-on-primary);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.title {
+  flex: 1;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.titleChecked {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reorderToggle {
+  /* Pinned to the bar's right edge whether or not an add button leads it. */
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.reorderToggle:hover {
+  color: var(--color-text);
+  background-color: var(--color-surface-hover);
+}
+
+.reorderToggleActive {
+  color: var(--color-primary);
+}
+
+.rowDragging {
+  background-color: var(--color-surface-hover);
+  box-shadow: var(--shadow-md);
+  /* Lifts the row above its siblings while it travels. */
+  position: relative;
+  z-index: 1;
+}
+
+.dragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* 44px keeps the touch target at the platform minimum while the grip glyph stays 16px. Negative
+     margin absorbs the extra height so reorder rows keep the plain rows' height. */
+  width: 44px;
+  height: 44px;
+  margin: calc(-1 * var(--space-1)) 0;
+  color: var(--color-text-secondary);
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:hover {
+  color: var(--color-text);
+}
+
+
+.empty {
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-destructive-subtle);
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}

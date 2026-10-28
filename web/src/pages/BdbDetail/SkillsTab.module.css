@@ -1,0 +1,110 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.filter {
+  max-width: 320px;
+}
+
+.name {
+  font-weight: var(--weight-medium);
+}
+
+.description {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.targets {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.targetCount {
+  color: var(--color-text-tertiary);
+}
+
+.bdbLevel {
+  font-style: italic;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.empty {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.error {
+  color: var(--color-destructive);
+}
+
+/* Skill detail modal */
+
+.dialog {
+  max-width: 720px;
+  width: 90vw;
+}
+
+.modalContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.modalDescription {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.metaRow {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.metaLabel {
+  color: var(--color-text-tertiary);
+  min-width: 70px;
+}
+
+.metaValue {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+.bodyLabel {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.body {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.confirmText {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}

@@ -1,0 +1,126 @@
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* A free-text input is the form's main entry; let it take the leftover row width. */
+.fieldGrow {
+  flex: 1 1 12rem;
+}
+
+/* A form holding a textarea stacks: full-width entry, buttons on their own line beneath. */
+.formStacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* In the stacked column the grow basis would become height — fields size to their content instead. */
+.formStacked .field {
+  flex: 0 0 auto;
+}
+
+/* Add and its dialog hand-off travel as one group, so a wrap never strands one of them alone on
+   the next line. */
+.actions {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.optional {
+  font-style: italic;
+}
+
+/* Single-text quick-add: one pill with the submit inside it. */
+.pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 44px;
+  padding: 0 var(--space-1-5) 0 var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.pill:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}
+
+.pillInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.pillInput:focus {
+  outline: none;
+  /* The pill's focus-within ring is the focus indicator; the input's own would double up. */
+  box-shadow: none;
+}
+
+.pillInput::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.pillSubmit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  cursor: pointer;
+  transition: background-color var(--duration-fast);
+}
+
+.pillSubmit:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.pillSubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pillGhost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.pillGhost:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}

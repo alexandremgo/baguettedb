@@ -1,0 +1,32 @@
+# Closes pull requests opened by anyone but the owner, collaborators and the dependency bots, with a comment pointing at
+# CONTRIBUTING.md: code contributions are not accepted for now, and a public repository cannot turn pull requests off.
+# It never checks out the pull request's code, which is what keeps pull_request_target, run with the base repository's
+# token, safe here.
+name: Close outside pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  close:
+    name: Close outside pull request
+    if: >-
+      !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      !contains(fromJSON('["dependabot[bot]", "github-actions[bot]"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment and close
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          body="Thanks for the pull request! BaguetteDB doesn't accept code contributions for now, so it is closed"
+          body+=" automatically. Bug reports, feature requests and questions are welcome as issues: see"
+          body+=" [CONTRIBUTING.md](https://github.com/$REPO/blob/main/CONTRIBUTING.md)."
+          gh pr close "$PR" --repo "$REPO" --comment "$body"

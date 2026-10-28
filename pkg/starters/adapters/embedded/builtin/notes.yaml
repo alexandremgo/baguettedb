@@ -1,0 +1,396 @@
+# Notes — quick-capture markdown notes with tags, pinning, full-text search, and explicit
+# links between notes. Flat and lean: one feed with search and tag filters; no folders, no
+# required title, tags do the categorizing. Research findings are plain notes under a pinned
+# shape (question as title, answer + sources as body, tag "research") so search, pins, and
+# links keep working on them for free.
+key: notes
+version: 1
+name: Notes
+description: Not sure where to start? A simple Notes bdb for whatever you want to keep — loose thoughts or linked ones, a passing idea or a whole plan.
+icon: "📝"
+tags:
+  - notes
+  - personal
+
+schema:
+  - |-
+    -- The note itself. Title is nullable to support quick captures where the user just dumps a
+    -- thought — the feed synthesizes a display title from the body's first line when title IS NULL.
+    CREATE TABLE notes (
+        id INTEGER PRIMARY KEY,
+        title TEXT,
+        body TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags) AND json_type(tags) = 'array'),
+        pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - CREATE INDEX idx_notes_pinned ON notes(pinned) WHERE pinned = 1
+  - CREATE INDEX idx_notes_updated_at ON notes(updated_at DESC)
+  - |-
+    -- Explicit cross-references between notes. Powers backlinks ("what notes point to this
+    -- one?") and forward links; inserted explicitly, no wikilink auto-detection.
+    CREATE TABLE notes_links (
+        id INTEGER PRIMARY KEY,
+        from_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+        to_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+        kind TEXT,                                        -- optional, e.g. "reference", "related", "see-also"
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (from_note_id, to_note_id, kind)
+    )
+  - CREATE INDEX idx_notes_links_from ON notes_links(from_note_id)
+  - CREATE INDEX idx_notes_links_to ON notes_links(to_note_id)
+  - |-
+    -- Full-text search over title + body. External-content mode references notes instead of
+    -- duplicating it; the 3 triggers below keep the index in lockstep.
+    CREATE VIRTUAL TABLE notes_fts USING fts5(
+        title, body,
+        content='notes',
+        content_rowid='id'
+    )
+  - |-
+    CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN
+        INSERT INTO notes_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+    END
+  - |-
+    CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
+        INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+    END
+  - |-
+    CREATE TRIGGER notes_au AFTER UPDATE ON notes BEGIN
+        INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+        INSERT INTO notes_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+    END
+  - |-
+    -- One-column lookup source so tag pickers offer the tags that actually exist.
+    CREATE VIEW tag_options AS SELECT DISTINCT value AS tag FROM notes, json_each(notes.tags)
+
+formulas:
+  # Views first: attached formulas further down resolve their parents by name.
+  - name: notes-feed
+    label: Notes
+    description: The home feed as note cards — pinned notes first, then most recently updated, with a first-line title fallback for quick captures; filterable by full-text search and by tag.
+    sql: |-
+      SELECT n.id AS rowid, n.pinned,
+             -- Raw title and body ride along under the edit params' names, so the edit dialog seeds
+             -- what is actually stored; the display_* columns below are what the cards render.
+             n.title, n.body,
+             CASE WHEN n.pinned = 1 THEN '📌 ' ELSE '' END
+               || COALESCE(n.title,
+                           CASE WHEN INSTR(n.body, CHAR(10)) > 0
+                                THEN SUBSTR(n.body, 1, INSTR(n.body, CHAR(10)) - 1)
+                                ELSE n.body END) AS display_title,
+             -- An untitled note's first line became its display title, so the card body carries only
+             -- the rest; a one-liner renders as title alone instead of repeating itself.
+             CASE WHEN n.title IS NOT NULL THEN n.body
+                  WHEN INSTR(n.body, CHAR(10)) > 0
+                  THEN LTRIM(SUBSTR(n.body, INSTR(n.body, CHAR(10)) + 1), CHAR(10) || CHAR(13))
+                  ELSE '' END AS display_body,
+             -- The tags reshaped for the edit dialog's group seed, which wants {tag: …} objects;
+             -- storage stays the plain string array every query reads.
+             (SELECT json_group_array(json_object('tag', je.value)) FROM json_each(n.tags) je) AS tags,
+             n.updated_at
+      FROM notes n
+      WHERE ( (SELECT id FROM notes WHERE id = :cursor) IS NULL
+        OR n.pinned < (SELECT pinned FROM notes WHERE id = :cursor)
+        OR (n.pinned = (SELECT pinned FROM notes WHERE id = :cursor)
+            AND n.updated_at < (SELECT updated_at FROM notes WHERE id = :cursor))
+        OR (n.pinned = (SELECT pinned FROM notes WHERE id = :cursor)
+            AND n.updated_at = (SELECT updated_at FROM notes WHERE id = :cursor)
+            AND n.id < :cursor) )
+        -- Filters, not a separate search: matching notes keep the feed's order and cards, and a
+        -- blank query means everything rather than nothing.
+        AND (:query IS NULL OR TRIM(:query) = ''
+             OR n.id IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH :query))
+        AND (:tag IS NULL OR EXISTS (SELECT 1 FROM json_each(n.tags) WHERE value = :tag))
+      ORDER BY n.pinned DESC, n.updated_at DESC, n.id DESC
+      LIMIT :limit
+    params:
+      - name: query
+        type: text
+        source: prompt
+        optional: true
+        hint: full-text search over titles and bodies
+      - name: tag
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: tag_options
+          label_column: tag
+          value_column: tag
+      - name: cursor
+        type: integer
+        source: pagination
+      - name: limit
+        type: integer
+        source: pagination
+    display:
+      mode: cards
+      columns:
+        - {column: display_title, role: title}
+        - {column: display_body, role: body, format: markdown}
+      slots:
+        add: capture
+        edit: edit-note
+        delete: delete-note
+        detail: note-detail
+        row_actions:
+          - toggle-pin
+
+  - name: capture
+    label: Add note
+    description: Quick-adds a note — body required, empty title becomes NULL so the feed falls back to the first
+      line, optional tags one per row.
+    sql: |-
+      INSERT INTO notes (title, body, tags)
+      VALUES (NULLIF(:title, ''), :body,
+              (SELECT json_group_array(TRIM(json_extract(je.value, '$.tag')))
+               FROM json_each(:tags) je
+               WHERE TRIM(COALESCE(json_extract(je.value, '$.tag'), '')) <> ''))
+    params:
+      - name: title
+        type: text
+        source: prompt
+        optional: true
+      - name: body
+        type: text
+        source: prompt
+        multiline: true
+        inline: true
+      - name: tags
+        type: group
+        source: prompt
+        optional: true
+        hint: one row per tag
+        # Creatable picker per row: existing tags surface as suggestions (the reuse the skill asks
+        # for), typing past them still creates freely.
+        fields:
+          - name: tag
+            type: text
+            source: lookup
+            optional: true
+            lookup:
+              table: tag_options
+              label_column: tag
+              value_column: tag
+              allow_new: true
+    attached_to: notes-feed
+
+  - name: edit-note
+    label: Edit note
+    description: Rewrites the selected note whole — title, markdown body, and tags — bumping its update time; tags not passed back are removed.
+    sql: |-
+      UPDATE notes
+      SET title = NULLIF(:title, ''), body = :body,
+          -- Recomposes the stored string array from the group's {tag: …} rows, dropping blank
+          -- rows and trimming the rest; no rows (or an omitted group) store '[]'.
+          tags = (SELECT json_group_array(TRIM(json_extract(je.value, '$.tag')))
+                  FROM json_each(:tags) je
+                  WHERE TRIM(COALESCE(json_extract(je.value, '$.tag'), '')) <> ''),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: title
+        type: text
+        source: prompt
+        optional: true
+      - name: body
+        type: text
+        source: prompt
+        multiline: true
+      - name: tags
+        type: group
+        source: prompt
+        optional: true
+        hint: one row per tag
+        # Creatable picker per row: existing tags surface as suggestions (the reuse the skill asks
+        # for), typing past them still creates freely.
+        fields:
+          - name: tag
+            type: text
+            source: lookup
+            optional: true
+            lookup:
+              table: tag_options
+              label_column: tag
+              value_column: tag
+              allow_new: true
+    attached_to: notes-feed
+
+  - name: delete-note
+    label: Delete note
+    description: Deletes the selected note; its links disappear with it.
+    sql: DELETE FROM notes WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: notes-feed
+
+  - name: toggle-pin
+    label: Pin or unpin
+    description: Flips the selected note's pinned flag; deliberately leaves the update time untouched.
+    sql: |-
+      UPDATE notes SET pinned = 1 - pinned WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: notes-feed
+
+  - name: delete-notes
+    label: Delete notes
+    description: Deletes the selected notes; their links disappear with them.
+    sql: |-
+      DELETE FROM notes WHERE id IN (:rowids)
+    params:
+      - name: rowids
+        type: integer
+        source: selection-bulk
+    attached_to: notes-feed
+
+  # Row-detail: clicking a note in the feed opens the full body.
+  - name: note-detail
+    label: Note
+    description: The selected note's full card — title, body, tags, pinned, timestamps.
+    sql: |-
+      SELECT n.title, n.body, n.tags, n.pinned, n.created_at, n.updated_at
+      FROM notes n
+      WHERE n.id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    display:
+      mode: table
+      columns:
+        - {column: body, format: markdown}
+    attached_to: notes-feed
+
+  # The research-capture convention as an action: the conclusion of a research session lands as a
+  # regular note under a fixed shape, so the feed's research-tag filter and the skill's promise
+  # ("findings always look like this") both hold by construction rather than by assistant habit.
+  # Deliberately in no display slot — an assistant verb, invisible in the app's rendering.
+  - name: capture-finding
+    label: Capture finding
+    description: Files a research finding — the question as title, the distilled answer as body with a Sources section appended when sources are given, tagged research.
+    sql: |-
+      INSERT INTO notes (title, body, tags)
+      VALUES (:question,
+              :result || CASE WHEN TRIM(COALESCE(:sources, '')) = '' THEN ''
+                              ELSE CHAR(10) || CHAR(10) || '## Sources' || CHAR(10) || CHAR(10) || :sources END,
+              '["research"]')
+    params:
+      - name: question
+        type: text
+        source: prompt
+        hint: the question the research set out to answer
+      - name: result
+        type: text
+        source: prompt
+        multiline: true
+        hint: the distilled answer — conclusions only, not the transcript
+      - name: sources
+        type: text
+        source: prompt
+        multiline: true
+        optional: true
+        hint: one source per line — appended under a "## Sources" heading
+    attached_to: notes-feed
+
+skills:
+  - name: notes-orientation
+    description: The three concepts (notes, tags, links), capture conventions, and the linking model.
+    body: |
+      Quick-capture notes built on three concepts: **notes** (markdown), **tags** (a JSON array on the
+      note), and **links** (explicit rows in `notes_links`).
+
+      ## Capturing
+
+      `body` is markdown; `title` is optional — the feed falls back to the body's first line, so quick
+      dumps are fine (the `capture` action does this). Keep `tags` a JSON array of a few lowercase
+      strings. `pinned` is 0/1.
+
+      ## Research findings
+
+      When asked to research something and save the outcome, run the `capture-finding` formula:
+      `question` is the question asked, `result` is the distilled answer, `sources` is one source per
+      line (the formula appends them under a `## Sources` heading). It files a regular note tagged
+      `research` — the feed's `tag` filter set to `research` lists exactly the findings. Store the
+      conclusion, not the conversation — the transcript is deliberately not kept. A finding is a note
+      like any other: search, pins, links, and edits all apply.
+
+      ## Updating
+
+      Set `updated_at = CURRENT_TIMESTAMP` on every content UPDATE. Pinning is the exception — it isn't
+      a content edit, so `toggle-pin` leaves `updated_at` alone.
+
+      ## Finding
+
+      One view: `notes-feed` (pinned first, then recent), with optional `query` (full-text — see the
+      searching skill) and `tag` filters that compose. For tag facets query directly: existing tags via
+      `SELECT DISTINCT value FROM notes, json_each(notes.tags)`, notes carrying one via
+      `WHERE EXISTS (SELECT 1 FROM json_each(tags) WHERE value = :tag)`.
+
+      ## Linking
+
+      One `notes_links` row per "this references that". `kind` is optional free-text (common values:
+      `reference`, `related`, `see-also`). Backlinks = query by `to_note_id`; forward links = by
+      `from_note_id`. Links are explicit — don't parse the body for wikilinks.
+
+      ## Deleting
+
+      Deletion is deletion (links cascade away); platform undo covers accidents.
+    targets:
+      - notes
+      - notes_links
+
+  - name: searching-notes
+    description: How to search note content with FTS5 — MATCH syntax, relevance ranking, and when not to use it.
+    body: |
+      Search note content via the `notes_fts` virtual table — **never** `LIKE` on `notes.body`. FTS5 is
+      faster, ranks results by relevance, and supports phrase / prefix / column queries.
+
+      ### Reading
+
+      Join `notes_fts` back to `notes` for full row data; use `snippet()` for a contextual excerpt:
+
+      ```sql
+      SELECT n.id, n.title, snippet(notes_fts, 1, '**', '**', '…', 32) AS excerpt
+      FROM notes_fts
+      JOIN notes n ON n.id = notes_fts.rowid
+      WHERE notes_fts MATCH 'docker compose'
+      ORDER BY rank;
+      ```
+
+      `ORDER BY rank` returns BM25-relevance order (best first).
+
+      #### MATCH syntax — the operators you'll actually use
+
+      | Want | Write |
+      |------|-------|
+      | All terms (AND) | `docker compose` |
+      | Either term | `react OR vue` |
+      | Exclude | `docker NOT swarm` |
+      | Exact phrase | `"force push"` |
+      | Prefix | `kuber*` |
+      | Specific column | `title:roadmap` |
+      | Within N tokens | `NEAR(deploy production, 5)` |
+
+      ### Writing
+
+      **Never `INSERT` / `UPDATE` / `DELETE` `notes_fts` directly.** All writes go to `notes`. Triggers
+      on `notes` keep the index in sync automatically.
+
+      ### When *not* to use FTS
+
+      For structured filters — `tag = ...`, `pinned = 1`, date ranges — query `notes` directly. FTS is
+      for content search; normal `WHERE` is for everything else. Combine them by joining if you need
+      both.
+    targets:
+      - notes
+      - notes_fts

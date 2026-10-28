@@ -1,0 +1,94 @@
+/* The calendar's navigation header: prev / next / today on the left, the span (and its ISO week when
+   it is one) in the middle, the jump-to-day picker on the right; wraps into rows on narrow screens. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.navButton,
+.todayButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.navButton {
+  width: 2rem;
+}
+
+.todayButton {
+  padding: 0 var(--space-3);
+}
+
+.navButton:hover,
+.todayButton:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border-strong);
+}
+
+.todayButton:disabled {
+  color: var(--color-text-secondary);
+  cursor: default;
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.week {
+  font-weight: var(--font-medium, 500);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.range {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.jump {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.jumpInput {
+  height: 2rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 768px) {
+  .jumpLabel {
+    display: none;
+  }
+}

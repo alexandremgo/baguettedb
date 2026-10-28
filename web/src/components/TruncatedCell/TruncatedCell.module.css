@@ -1,0 +1,75 @@
+.cell {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.interactive .trigger {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--color-text-secondary);
+  text-underline-offset: 2px;
+}
+
+.interactive .trigger:hover {
+  text-decoration-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* Positioned at viewport coordinates by showAnchoredPopover; inset/margin/padding reset the
+   [popover] UA defaults. z-index only matters for the no-Popover-API fallback. */
+.popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  z-index: 20;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  min-width: 220px;
+  max-width: 420px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.popoverHeader {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) 0;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.iconBtn:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.iconBtnActive {
+  color: var(--color-primary);
+}
+
+.popoverContent {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}

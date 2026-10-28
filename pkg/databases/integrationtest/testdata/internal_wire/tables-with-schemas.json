@@ -1,0 +1,80 @@
+[
+  {
+    "name": "titles",
+    "type": "view",
+    "schema": {
+      "columns": [
+        {
+          "name": "title",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": false
+        }
+      ],
+      "foreign_keys": [],
+      "kind": "view"
+    }
+  },
+  {
+    "name": "books",
+    "type": "table",
+    "schema": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": true
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "not_null": false,
+          "default": "'untitled'",
+          "primary_key": false
+        },
+        {
+          "name": "author_id",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": false
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "author_id",
+          "table": "authors",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE"
+        }
+      ],
+      "kind": "table"
+    }
+  },
+  {
+    "name": "authors",
+    "type": "table",
+    "schema": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": true
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": false
+        }
+      ],
+      "foreign_keys": [],
+      "kind": "table",
+      "checks": [
+        "length(name) > 0"
+      ]
+    }
+  }
+]

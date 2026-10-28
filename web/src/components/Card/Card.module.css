@@ -1,0 +1,18 @@
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--weight-semibold);
+}
+
+.footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-surface-secondary);
+}

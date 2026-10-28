@@ -1,0 +1,1569 @@
+# Workouts — gym sessions logged set by set + runs with pace, on a spine-and-branches schema:
+# one unified sessions table, per-kind detail tables (exercise_sets for gym, runs for cardio).
+key: workouts
+version: 1
+name: Workouts
+description: Track gym sessions set by set and runs with pace — one unified log for all your training, with
+  training programs of planned sessions to start your day from.
+icon: "🏋️"
+tags:
+  - sport
+  - health
+
+schema:
+  # Catalog and plan tables first, then the log tables that reference them.
+  - |-
+    -- Shared catalog of gym exercises. Reusing exercises across sessions is what enables
+    -- progress queries (e.g. "bench press over the last 3 months").
+    CREATE TABLE exercises (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        muscle_group TEXT,                                -- free-text, e.g. "chest", "legs", "back"
+        equipment TEXT,                                   -- free-text, e.g. "barbell", "dumbbell", "bodyweight"
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - |-
+    -- A training program (e.g. "PPL winter block"). active marks the ones in rotation — any number at
+    -- once, purely a badge that sorts them first in the Programs tab; past and upcoming blocks stay
+    -- fully browsable.
+    CREATE TABLE programs (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        notes TEXT,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - |-
+    -- A program's planned sessions (e.g. "Push day A", "10 km easy"). Starting a gym one copies its
+    -- prescriptions into a real session as weight- and rep-less skeleton sets to fill while training;
+    -- starting a run one seeds the empty run row to fill in afterwards.
+    CREATE TABLE program_sessions (
+        id INTEGER PRIMARY KEY,
+        program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'gym' CHECK (kind IN ('gym', 'run')),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (program_id, name)
+    )
+  - CREATE INDEX idx_program_sessions_program_id ON program_sessions(program_id)
+  - |-
+    -- One exercise prescription within a planned session.
+    CREATE TABLE program_exercises (
+        id INTEGER PRIMARY KEY,
+        program_session_id INTEGER NOT NULL REFERENCES program_sessions(id) ON DELETE CASCADE,
+        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
+        position INTEGER NOT NULL DEFAULT 1,              -- program order; the prescription lists sort on it
+        target_sets INTEGER NOT NULL DEFAULT 3 CHECK (target_sets >= 1),
+        target_reps INTEGER
+    )
+  - CREATE INDEX idx_program_exercises_session_id ON program_exercises(program_session_id)
+  - |-
+    -- The run prescription of a planned session, 1:1 where kind = 'run' — target pace stored as
+    -- seconds-per-km like runs. Targets are the plan: starting the session never copies them into
+    -- the logged run.
+    CREATE TABLE program_runs (
+        id INTEGER PRIMARY KEY,
+        program_session_id INTEGER NOT NULL UNIQUE REFERENCES program_sessions(id) ON DELETE CASCADE,
+        target_distance_km REAL,
+        target_pace_seconds_per_km INTEGER,
+        target_duration_minutes INTEGER
+    )
+  - |-
+    -- Unified workout/activity record. Every workout is a session, regardless of kind.
+    -- started_at, ended_at, duration_minutes are all nullable — fill what the user provides.
+    -- program_session_id records which planned session it was started from, when any.
+    CREATE TABLE sessions (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('gym', 'run')),
+        started_at TEXT,
+        ended_at TEXT,
+        duration_minutes INTEGER,
+        location TEXT,                                    -- free-text, e.g. "City Gym", "the riverside"
+        perceived_effort INTEGER CHECK (perceived_effort BETWEEN 1 AND 10),  -- RPE 1-10
+        notes TEXT,
+        program_session_id INTEGER REFERENCES program_sessions(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - CREATE INDEX idx_sessions_kind ON sessions(kind)
+  - CREATE INDEX idx_sessions_started_at ON sessions(started_at)
+  - CREATE INDEX idx_sessions_program_session_id ON sessions(program_session_id)
+  - |-
+    -- Per-set log for gym sessions. One row per set performed.
+    CREATE TABLE exercise_sets (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
+        set_number INTEGER NOT NULL DEFAULT 1,            -- position in the session; the set list sorts on it
+        reps INTEGER,
+        weight REAL,
+        weight_unit TEXT NOT NULL DEFAULT 'kg',           -- per-set unit; default 'kg', overridable
+        rest_seconds INTEGER,
+        notes TEXT                                        -- e.g. "felt easy", "PR", "failed last rep"
+    )
+  - CREATE INDEX idx_exercise_sets_session_id ON exercise_sets(session_id)
+  - CREATE INDEX idx_exercise_sets_exercise_id ON exercise_sets(exercise_id)
+  - |-
+    -- Per-run details, 1:1 with sessions where kind = 'run'. Pace stored as seconds-per-km
+    -- (integer) so it's queryable; display formatting (e.g. "5:30 /km") is a skill concern.
+    CREATE TABLE runs (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+        distance_km REAL,
+        route TEXT,                                       -- free-text route name, e.g. "riverside loop"
+        avg_pace_seconds_per_km INTEGER,
+        avg_heart_rate INTEGER,                           -- bpm
+        elevation_gain_m INTEGER
+    )
+  - CREATE INDEX idx_runs_session_id ON runs(session_id)
+
+formulas:
+  # Views first: attached row-detail views further down resolve their parents by name.
+  - name: workouts
+    label: Workouts
+    description: The training log as session cards, newest first — a gym card summarizes its sets, a run card its
+      distance, pace, heart rate, and elevation plus any sets logged alongside; tap a card to edit its sets set by
+      set.
+    # The session fields ride along (cards render only the title/body roles) so the edit-session and log-run
+    # dialogs seed from them, letting a re-log correct one stat without retyping the others. Pace seeds
+    # pre-formatted as M:SS under the pace alias — log-run parses that form back to seconds.
+    sql: |-
+      WITH numbered AS (
+          SELECT es.id, es.session_id, es.exercise_id, es.weight, es.reps, es.weight_unit,
+                 ROW_NUMBER() OVER (PARTITION BY es.session_id, es.exercise_id ORDER BY es.id)
+               - ROW_NUMBER() OVER (PARTITION BY es.session_id, es.exercise_id, es.weight, es.reps
+                                    ORDER BY es.id) AS grp
+          FROM exercise_sets es
+      ),
+      islands AS (
+          SELECT session_id, exercise_id, weight, reps, weight_unit,
+                 MIN(id) AS first_set_id, COUNT(*) AS n
+          FROM numbered
+          GROUP BY session_id, exercise_id, weight, reps, grp
+      ),
+      runs_text AS (
+          -- A weightless set is just its rep count ("12", bodyweight); a weighted one reads weight×reps
+          -- ("35kg×6"). The trailing ' ×n' is the consecutive-identical-sets repeat either way.
+          SELECT session_id, exercise_id, first_set_id,
+                 CASE WHEN weight IS NULL THEN COALESCE(reps, '?')
+                      ELSE RTRIM(RTRIM(printf('%f', weight), '0'), '.') || weight_unit || '×' || COALESCE(reps, '?')
+                 END || CASE WHEN n > 1 THEN ' ×' || n ELSE '' END AS run_text
+          FROM islands
+      ),
+      per_exercise AS (
+          SELECT rt.session_id, MIN(rt.first_set_id) AS first_set_id,
+                 e.name || ': ' || GROUP_CONCAT(rt.run_text, ', ' ORDER BY rt.first_set_id) AS exercise_text
+          FROM runs_text rt
+          JOIN exercises e ON e.id = rt.exercise_id
+          GROUP BY rt.session_id, rt.exercise_id
+      ),
+      per_session AS (
+          SELECT session_id,
+                 GROUP_CONCAT(exercise_text, '; ' ORDER BY first_set_id) AS exercises
+          FROM per_exercise
+          GROUP BY session_id
+      )
+      SELECT s.id AS rowid,
+             CASE s.kind WHEN 'gym' THEN 'Gym' ELSE 'Run' END
+               || COALESCE(' — ' || date(s.started_at), '') AS title,
+             -- A run card composes its stats line (distance · pace · bpm · +elevation, each part optional)
+             -- with any set breakdown, route · location, and notes on their own lines — a run session may carry
+             -- sets (strength done during or after the run) and they must show where they were entered; a gym
+             -- card keeps its set breakdown alone. printf never returns NULL ('%f' on NULL yields '0.0'), so
+             -- the distance and pace parts need explicit guards.
+             CASE WHEN s.kind = 'run' THEN
+                    NULLIF(SUBSTR(
+                      COALESCE(char(10) || NULLIF(SUBSTR(
+                          CASE WHEN r.distance_km IS NULL THEN ''
+                               ELSE ' · ' || RTRIM(RTRIM(printf('%f', r.distance_km), '0'), '.') || ' km' END
+                          || CASE WHEN r.avg_pace_seconds_per_km IS NULL THEN ''
+                                  ELSE ' · ' || printf('%d:%02d /km', r.avg_pace_seconds_per_km / 60,
+                                                       r.avg_pace_seconds_per_km % 60) END
+                          || COALESCE(' · ' || r.avg_heart_rate || ' bpm', '')
+                          || COALESCE(' · +' || r.elevation_gain_m || ' m', ''), 4), ''), '')
+                      || COALESCE(char(10) || ps.exercises, '')
+                      || COALESCE(char(10) || NULLIF(SUBSTR(
+                          COALESCE(' · ' || r.route, '')
+                          || COALESCE(' · ' || s.location, ''), 4), ''), '')
+                      || COALESCE(char(10) || s.notes, ''), 2), '')
+                  ELSE COALESCE(ps.exercises, s.notes)
+             END AS summary,
+             s.started_at, s.ended_at, s.kind, s.duration_minutes, s.location, s.perceived_effort, s.notes,
+             r.distance_km, r.route, r.avg_heart_rate, r.elevation_gain_m,
+             CASE WHEN r.avg_pace_seconds_per_km IS NULL THEN NULL
+                  ELSE printf('%d:%02d', r.avg_pace_seconds_per_km / 60, r.avg_pace_seconds_per_km % 60)
+             END AS pace
+      FROM sessions s
+      LEFT JOIN per_session ps ON ps.session_id = s.id
+      LEFT JOIN runs r ON r.session_id = s.id
+      ORDER BY s.started_at DESC, s.id DESC
+    display:
+      mode: cards
+      columns:
+        - {column: title, role: title}
+        - {column: summary, role: body}
+      slots:
+        add: add-session
+        edit: edit-session
+        delete: delete-session
+        detail: session-detail
+        row_actions:
+          - log-run
+
+  - name: run-list
+    label: Runs
+    description: Completed runs as cards, newest first — the date and distance up top; pace, duration, heart rate,
+      elevation, route, location, and notes in the body.
+    # Every kind = 'run' session lists here, paired or not: one whose runs row is missing (created by raw SQL
+    # rather than the actions) renders as a date-only stub, and edit-run's upsert pairs it with what gets
+    # typed. The raw columns ride along so the edit dialog seeds what is stored; pace seeds pre-formatted as
+    # M:SS, which edit-run parses back to seconds.
+    sql: |-
+      SELECT s.id AS rowid,
+             CASE WHEN r.distance_km IS NULL THEN COALESCE(date(s.started_at), 'Run')
+                  ELSE COALESCE(date(s.started_at) || ' — ', '')
+                       || RTRIM(RTRIM(printf('%f', r.distance_km), '0'), '.') || ' km'
+             END AS title,
+             -- One line per aspect, each optional: pace · duration, heart rate · elevation, route · location,
+             -- notes. Each carries its own leading newline and SUBSTR drops the first one; printf never
+             -- returns NULL, so the pace part needs an explicit guard.
+             NULLIF(SUBSTR(
+               COALESCE(char(10) || NULLIF(SUBSTR(
+                   CASE WHEN r.avg_pace_seconds_per_km IS NULL THEN ''
+                        ELSE ' · ' || printf('%d:%02d /km', r.avg_pace_seconds_per_km / 60,
+                                             r.avg_pace_seconds_per_km % 60) END
+                   || COALESCE(' · ' || s.duration_minutes || ' min', ''), 4), ''), '')
+               || COALESCE(char(10) || NULLIF(SUBSTR(
+                   COALESCE(' · ' || r.avg_heart_rate || ' bpm', '')
+                   || COALESCE(' · +' || r.elevation_gain_m || ' m', ''), 4), ''), '')
+               || COALESCE(char(10) || NULLIF(SUBSTR(
+                   COALESCE(' · ' || r.route, '')
+                   || COALESCE(' · ' || s.location, ''), 4), ''), '')
+               || COALESCE(char(10) || s.notes, ''), 2), '') AS display_body,
+             s.started_at, s.duration_minutes, s.perceived_effort, s.location, s.notes,
+             r.distance_km, r.route, r.avg_heart_rate, r.elevation_gain_m,
+             CASE WHEN r.avg_pace_seconds_per_km IS NULL THEN NULL
+                  ELSE printf('%d:%02d', r.avg_pace_seconds_per_km / 60, r.avg_pace_seconds_per_km % 60)
+             END AS pace
+      FROM sessions s
+      LEFT JOIN runs r ON r.session_id = s.id
+      WHERE s.kind = 'run'
+      ORDER BY s.started_at DESC, s.id DESC
+    display:
+      mode: cards
+      columns:
+        - {column: title, role: title}
+        - {column: display_body, role: body}
+      slots:
+        add: add-run
+        edit: edit-run
+        delete: delete-run
+
+  - name: exercise-list
+    label: Exercises
+    description: The exercise catalog — each card lists the muscle group and equipment, the last session's sets,
+      the personal record with the date it was reached, and the session count; optional search by name or muscle
+      group.
+    # The raw name, muscle_group, and equipment ride along so the edit dialog seeds what is stored; the
+    # composed stats block renders under a display_ name to keep it out of the seed.
+    sql: |-
+      WITH stats AS (
+          SELECT es.exercise_id, COUNT(DISTINCT es.session_id) AS sessions
+          FROM exercise_sets es
+          GROUP BY es.exercise_id
+      ),
+      prs AS (
+          SELECT es.exercise_id, MAX(es.weight) AS pr_weight
+          FROM exercise_sets es
+          WHERE es.weight IS NOT NULL
+          GROUP BY es.exercise_id
+      ),
+      pr_info AS (
+          SELECT p.exercise_id, p.pr_weight,
+                 (SELECT es.weight_unit FROM exercise_sets es
+                   WHERE es.exercise_id = p.exercise_id AND es.weight = p.pr_weight LIMIT 1) AS pr_unit,
+                 (SELECT MIN(date(s.started_at)) FROM exercise_sets es2
+                   JOIN sessions s ON s.id = es2.session_id
+                  WHERE es2.exercise_id = p.exercise_id AND es2.weight = p.pr_weight) AS pr_reached
+          FROM prs p
+      ),
+      numbered AS (
+          SELECT es.id, es.session_id, es.exercise_id, es.weight, es.reps, es.weight_unit,
+                 ROW_NUMBER() OVER (PARTITION BY es.session_id, es.exercise_id ORDER BY es.id)
+               - ROW_NUMBER() OVER (PARTITION BY es.session_id, es.exercise_id, es.weight, es.reps
+                                    ORDER BY es.id) AS grp
+          FROM exercise_sets es
+      ),
+      islands AS (
+          SELECT session_id, exercise_id, weight, reps, weight_unit, MIN(id) AS first_set_id, COUNT(*) AS n
+          FROM numbered
+          GROUP BY session_id, exercise_id, weight, reps, grp
+      ),
+      runs_text AS (
+          -- Same set-breakdown shape as the feed cards: bare reps for weightless sets, weight×reps otherwise.
+          SELECT session_id, exercise_id, first_set_id,
+                 CASE WHEN weight IS NULL THEN COALESCE(reps, '?')
+                      ELSE RTRIM(RTRIM(printf('%f', weight), '0'), '.') || weight_unit || '×' || COALESCE(reps, '?')
+                 END || CASE WHEN n > 1 THEN ' ×' || n ELSE '' END AS run_text
+          FROM islands
+      ),
+      -- Each exercise's most recent session, its date carrying the "last done" information.
+      last_sessions AS (
+          SELECT els.exercise_id, els.session_id, date(s.started_at) AS day,
+                 ROW_NUMBER() OVER (PARTITION BY els.exercise_id ORDER BY s.started_at DESC, s.id DESC) AS rn
+          FROM (SELECT DISTINCT exercise_id, session_id FROM exercise_sets) els
+          JOIN sessions s ON s.id = els.session_id
+      ),
+      last_lines AS (
+          SELECT ls.exercise_id,
+                 ls.day || ' — ' || (SELECT GROUP_CONCAT(rt.run_text, ', ' ORDER BY rt.first_set_id)
+                                       FROM runs_text rt
+                                      WHERE rt.session_id = ls.session_id AND rt.exercise_id = ls.exercise_id)
+                   AS last_line
+          FROM last_sessions ls
+          WHERE ls.rn = 1
+      )
+      SELECT e.id AS rowid, e.name, e.muscle_group, e.equipment,
+             -- One line per stat, each optional: muscle · equipment, the last session's sets, the PR, the
+             -- session count. Each carries its own leading newline and SUBSTR drops the first one.
+             SUBSTR(
+               COALESCE(char(10) || NULLIF(SUBSTR(COALESCE(' · ' || e.muscle_group, '')
+                                                  || COALESCE(' · ' || e.equipment, ''), 4), ''), '')
+               || COALESCE(char(10) || ll.last_line, '')
+               || COALESCE(char(10) || 'PR ' || RTRIM(RTRIM(printf('%f', pi.pr_weight), '0'), '.') || ' ' || pi.pr_unit
+                           || COALESCE(' (' || pi.pr_reached || ')', ''), '')
+               || CASE WHEN st.sessions IS NULL THEN ''
+                       ELSE char(10) || st.sessions || ' session' || CASE WHEN st.sessions = 1 THEN '' ELSE 's' END
+                  END,
+               2) AS display_stats
+      FROM exercises e
+      LEFT JOIN stats st ON st.exercise_id = e.id
+      LEFT JOIN pr_info pi ON pi.exercise_id = e.id
+      LEFT JOIN last_lines ll ON ll.exercise_id = e.id
+      WHERE (:query IS NULL OR TRIM(:query) = ''
+             OR e.name LIKE '%' || :query || '%'
+             OR e.muscle_group LIKE '%' || :query || '%')
+      ORDER BY e.name COLLATE NOCASE
+    params:
+      - name: query
+        type: text
+        source: prompt
+        optional: true
+        hint: search by name or muscle group
+    display:
+      mode: cards
+      columns:
+        - {column: name, role: title}
+        - {column: display_stats, role: body}
+      slots:
+        add: add-exercise
+        edit: edit-exercise
+        detail: exercise-detail
+        row_actions:
+          - merge-exercise
+
+  - name: programs-list
+    label: Programs
+    description: All training programs, the active ones first — open one for its planned sessions, their
+      prescriptions, and starting one as today's workout; optional search by name or notes.
+    # The raw name and notes ride along so the edit dialog seeds what is stored; the composed status line renders
+    # under a display_ name to keep it out of the seed.
+    sql: |-
+      SELECT p.id AS rowid, p.name, p.notes,
+             CASE WHEN p.active = 1 THEN 'Active · ' ELSE '' END
+               || COALESCE(c.n, 0)
+               || CASE WHEN c.n = 1 THEN ' planned session' ELSE ' planned sessions' END
+               || COALESCE(char(10) || p.notes, '') AS display_body
+      FROM programs p
+      LEFT JOIN (SELECT program_id, COUNT(*) AS n FROM program_sessions GROUP BY program_id) c
+             ON c.program_id = p.id
+      WHERE (:query IS NULL OR TRIM(:query) = ''
+             OR p.name LIKE '%' || :query || '%'
+             OR p.notes LIKE '%' || :query || '%')
+      ORDER BY p.active DESC, p.name COLLATE NOCASE
+    params:
+      - name: query
+        type: text
+        source: prompt
+        optional: true
+        hint: search by name or notes
+    display:
+      mode: cards
+      columns:
+        - {column: name, role: title}
+        - {column: display_body, role: body}
+      slots:
+        add: add-program
+        edit: edit-program
+        delete: delete-program
+        detail: program-detail
+        row_actions:
+          - toggle-program
+
+  - name: training-summary
+    hidden: true
+    description: One-row rollup for a period — session counts by kind, total minutes, total km, total gym volume; optionally limited to the last N days.
+    sql: |-
+      SELECT SUM(CASE WHEN s.kind = 'gym' THEN 1 ELSE 0 END) AS gym_sessions,
+             SUM(CASE WHEN s.kind = 'run' THEN 1 ELSE 0 END) AS run_sessions,
+             SUM(s.duration_minutes) AS total_minutes,
+             ROUND((SELECT SUM(r.distance_km) FROM runs r JOIN sessions s2 ON s2.id = r.session_id
+                     WHERE :days IS NULL OR s2.started_at >= date('now', '-' || :days || ' days')), 1) AS total_km,
+             ROUND((SELECT SUM(es.weight * es.reps) FROM exercise_sets es
+                     JOIN sessions s3 ON s3.id = es.session_id
+                     WHERE :days IS NULL OR s3.started_at >= date('now', '-' || :days || ' days')), 1) AS gym_volume
+      FROM sessions s
+      WHERE (:days IS NULL OR s.started_at >= date('now', '-' || :days || ' days'))
+    params:
+      - name: days
+        type: integer
+        source: prompt
+        optional: true
+
+  - name: run-summary
+    hidden: true
+    description: One-row rollup of runs — count, total and longest distance, best pace, and unweighted average pace
+      (both M:SS /km); optionally limited to the last N days.
+    sql: |-
+      SELECT COUNT(*) AS runs,
+             ROUND(SUM(r.distance_km), 1) AS total_km,
+             MAX(r.distance_km) AS longest_run_km,
+             CASE WHEN MIN(r.avg_pace_seconds_per_km) IS NULL THEN NULL
+                  ELSE printf('%d:%02d /km', MIN(r.avg_pace_seconds_per_km) / 60,
+                              MIN(r.avg_pace_seconds_per_km) % 60)
+             END AS best_pace,
+             CASE WHEN AVG(r.avg_pace_seconds_per_km) IS NULL THEN NULL
+                  ELSE printf('%d:%02d /km', CAST(ROUND(AVG(r.avg_pace_seconds_per_km)) AS INTEGER) / 60,
+                              CAST(ROUND(AVG(r.avg_pace_seconds_per_km)) AS INTEGER) % 60)
+             END AS avg_pace
+      FROM runs r
+      JOIN sessions s ON s.id = r.session_id
+      WHERE :days IS NULL OR s.started_at >= date('now', '-' || :days || ' days')
+    params:
+      - name: days
+        type: integer
+        source: prompt
+        optional: true
+
+  # Catalog actions. The set-logging picker only offers what exists, so adding an exercise is the natural first
+  # tap in a fresh bdb. Deliberately a dialog add, not an inline quick add: the Exercises tab already has a search
+  # input, and a second inline text box reads as search — a mistyped "search" would silently create a catalog row.
+  - name: add-exercise
+    label: Add exercise
+    description: Adds an exercise to the shared catalog if it isn't there yet.
+    sql: |-
+      INSERT INTO exercises (name, muscle_group, equipment)
+      VALUES (:name, :muscle_group, :equipment)
+      ON CONFLICT(name) DO NOTHING
+    params:
+      - name: name
+        type: text
+        source: prompt
+      - name: muscle_group
+        type: text
+        source: prompt
+        optional: true
+      - name: equipment
+        type: text
+        source: prompt
+        optional: true
+    attached_to: exercise-list
+
+  - name: edit-exercise
+    label: Edit exercise
+    description: Corrects the selected exercise's name, muscle group, and equipment.
+    sql: |-
+      UPDATE exercises SET name = :name, muscle_group = :muscle_group, equipment = :equipment WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: muscle_group
+        type: text
+        source: prompt
+        optional: true
+      - name: equipment
+        type: text
+        source: prompt
+        optional: true
+    attached_to: exercise-list
+
+  - name: merge-exercise
+    label: Merge duplicate
+    description: Folds a duplicate exercise into the selected one — its logged sets and program prescriptions move
+      over, then the duplicate is deleted. The selected row is the one that survives.
+    # The `<> :rowid` guards make merging an exercise into itself a no-op instead of deleting it. A duplicate with
+    # no sets or prescriptions is simply deleted, so this also removes an exercise added by mistake.
+    sql: |-
+      UPDATE exercise_sets SET exercise_id = :rowid WHERE exercise_id = :duplicate_id AND :duplicate_id <> :rowid;
+      UPDATE program_exercises SET exercise_id = :rowid WHERE exercise_id = :duplicate_id AND :duplicate_id <> :rowid;
+      DELETE FROM exercises WHERE id = :duplicate_id AND id <> :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: duplicate_id
+        type: integer
+        source: lookup
+        hint: the duplicate to absorb — its sets and prescriptions move to this exercise, then it is deleted
+        lookup:
+          table: exercises
+          label_column: name
+          value_column: id
+          exclude_selection: true
+    attached_to: exercise-list
+
+  - name: exercise-detail
+    label: Exercise history
+    description: The selected exercise's per-session history, newest first — each session's day and its set breakdown.
+    sql: |-
+      WITH numbered AS (
+          SELECT es.id, es.session_id, es.weight, es.reps, es.weight_unit,
+                 ROW_NUMBER() OVER (PARTITION BY es.session_id ORDER BY es.id)
+               - ROW_NUMBER() OVER (PARTITION BY es.session_id, es.weight, es.reps ORDER BY es.id) AS grp
+          FROM exercise_sets es
+          WHERE es.exercise_id = :rowid
+      ),
+      islands AS (
+          SELECT session_id, weight, reps, weight_unit, MIN(id) AS first_set_id, COUNT(*) AS n
+          FROM numbered
+          GROUP BY session_id, weight, reps, grp
+      ),
+      runs_text AS (
+          -- Same set-breakdown shape as the feed cards: bare reps for weightless sets, weight×reps otherwise.
+          SELECT session_id, first_set_id,
+                 CASE WHEN weight IS NULL THEN COALESCE(reps, '?')
+                      ELSE RTRIM(RTRIM(printf('%f', weight), '0'), '.') || weight_unit || '×' || COALESCE(reps, '?')
+                 END || CASE WHEN n > 1 THEN ' ×' || n ELSE '' END AS run_text
+          FROM islands
+      )
+      SELECT date(s.started_at) AS day,
+             (SELECT GROUP_CONCAT(rt.run_text, ', ' ORDER BY rt.first_set_id)
+                FROM runs_text rt WHERE rt.session_id = s.id) AS sets
+      FROM sessions s
+      WHERE s.id IN (SELECT session_id FROM exercise_sets WHERE exercise_id = :rowid)
+      ORDER BY s.started_at DESC
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    display:
+      mode: table
+    attached_to: exercise-list
+
+  # Program actions. The whole plan lives behind the Programs tab: a program card opens its planned
+  # sessions, a planned session opens its prescriptions — the Workouts view's single add slot stays
+  # with the blank add-session.
+  - name: add-program
+    label: Add program
+    description: Creates a training program, in rotation from the start — toggle it off when it's not what you
+      currently train from.
+    # Not inline on purpose: a program is created a few times a year, and a lone always-visible name
+    # box above the cards reads as a search field — the + Add dialog is the honest affordance.
+    sql: INSERT INTO programs (name, notes) VALUES (:name, :notes)
+    params:
+      - name: name
+        type: text
+        source: prompt
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: programs-list
+
+  - name: edit-program
+    label: Edit program
+    description: Corrects the selected program's name and notes.
+    sql: UPDATE programs SET name = :name, notes = :notes WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: programs-list
+
+  - name: delete-program
+    label: Delete program
+    description: Deletes the selected program and its planned sessions; logged sessions are untouched.
+    sql: DELETE FROM programs WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: programs-list
+
+  - name: toggle-program
+    label: Toggle active
+    description: Flips whether the selected program is in rotation — the marker that separates what you currently
+      train from and past or upcoming blocks.
+    sql: UPDATE programs SET active = 1 - active WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: programs-list
+
+  # Row-detail: tapping a program opens its planned sessions — editable, startable, and each opening
+  # its own prescriptions one level further down.
+  - name: program-detail
+    label: Program
+    description: The selected program's planned sessions — a gym one with its prescription line, a run one with its
+      targets — plus notes and when it was last done; start one to log it today.
+    # The raw name, kind, notes, and targets ride along so the edit dialog seeds what is stored (target pace
+    # pre-formatted as M:SS, parsed back on save); the composed body renders under a display_ name to keep it out
+    # of the seed. Its lines are each optional — a leading char(10) per line with SUBSTR stripping the first one —
+    # and the run line's target parts join on ' · ' the same way, guarded per part since printf never returns NULL.
+    sql: |-
+      SELECT ps.id AS rowid, ps.name, ps.kind, ps.notes,
+             pr.target_distance_km,
+             CASE WHEN pr.target_pace_seconds_per_km IS NOT NULL
+                  THEN printf('%d:%02d', pr.target_pace_seconds_per_km / 60, pr.target_pace_seconds_per_km % 60)
+             END AS target_pace,
+             pr.target_duration_minutes,
+             NULLIF(SUBSTR(
+               COALESCE(char(10) || CASE WHEN ps.kind = 'run' THEN
+                    'Run' || COALESCE(' — target ' || NULLIF(SUBSTR(
+                        COALESCE(CASE WHEN pr.target_distance_km IS NOT NULL THEN ' · '
+                                 || RTRIM(RTRIM(printf('%f', pr.target_distance_km), '0'), '.') || ' km' END, '')
+                     || COALESCE(CASE WHEN pr.target_pace_seconds_per_km IS NOT NULL THEN ' · '
+                                 || printf('%d:%02d', pr.target_pace_seconds_per_km / 60,
+                                           pr.target_pace_seconds_per_km % 60) || ' /km' END, '')
+                     || COALESCE(' · ' || pr.target_duration_minutes || ' min', ''),
+                    4), ''), '')
+               END, '')
+               || COALESCE(char(10) || (SELECT GROUP_CONCAT(
+                         CASE WHEN pe.target_reps IS NULL THEN e.name || ' ×' || pe.target_sets
+                              ELSE e.name || ' ' || pe.target_sets || '×' || pe.target_reps END, ' · '
+                              ORDER BY pe.position, pe.id)
+                  FROM program_exercises pe
+                  JOIN exercises e ON e.id = pe.exercise_id
+                 WHERE pe.program_session_id = ps.id), '')
+               || COALESCE(char(10) || ps.notes, '')
+               || COALESCE(char(10) || 'Last done ' || (SELECT date(MAX(s.started_at)) FROM sessions s
+                    WHERE s.program_session_id = ps.id), ''),
+             2), '') AS display_body
+      FROM program_sessions ps
+      LEFT JOIN program_runs pr ON pr.program_session_id = ps.id
+      WHERE ps.program_id = :rowid
+      ORDER BY ps.name COLLATE NOCASE
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: programs-list
+    display:
+      mode: cards
+      columns:
+        - {column: name, role: title}
+        - {column: display_body, role: body}
+      slots:
+        add: add-program-session
+        edit: edit-program-session
+        delete: delete-program-session
+        detail: program-session-detail
+        row_actions:
+          - start-program-session
+
+  - name: add-program-session
+    label: Add program session
+    description: Adds a planned session to the open program — gym unless run is given. A gym one takes its exercise
+      prescriptions from its card afterwards; a run one takes its targets here, and with the distance, target pace
+      and duration each derive from the other when left empty.
+    # A run kind always gets its program_runs row, even target-less — the edit dialog then fills it. Pace and
+    # duration are two views of the same fact once the distance is known, so each derives from the other.
+    sql: |-
+      INSERT INTO program_sessions (program_id, name, kind, notes)
+      VALUES (:parent_rowid, :name, COALESCE(:kind, 'gym'), :notes);
+      INSERT INTO program_runs (program_session_id, target_distance_km, target_pace_seconds_per_km,
+                                target_duration_minutes)
+      SELECT last_insert_rowid(), :target_distance_km,
+             CASE
+               WHEN :target_pace IS NULL THEN
+                    CASE WHEN :target_duration_minutes IS NOT NULL AND :target_distance_km > 0 THEN
+                         CAST(ROUND(:target_duration_minutes * 60.0 / :target_distance_km) AS INTEGER)
+                    END
+               WHEN instr(:target_pace, ':') > 0 THEN
+                    CAST(SUBSTR(:target_pace, 1, instr(:target_pace, ':') - 1) AS INTEGER) * 60
+                    + CAST(SUBSTR(:target_pace, instr(:target_pace, ':') + 1) AS INTEGER)
+               ELSE CAST(:target_pace AS INTEGER)
+             END,
+             COALESCE(:target_duration_minutes,
+                 (SELECT CAST(ROUND(:target_distance_km * p.s / 60.0) AS INTEGER)
+                    FROM (SELECT CASE
+                                   WHEN :target_pace IS NULL THEN NULL
+                                   WHEN instr(:target_pace, ':') > 0 THEN
+                                        CAST(SUBSTR(:target_pace, 1, instr(:target_pace, ':') - 1) AS INTEGER) * 60
+                                        + CAST(SUBSTR(:target_pace, instr(:target_pace, ':') + 1) AS INTEGER)
+                                   ELSE CAST(:target_pace AS INTEGER)
+                                 END AS s) p
+                   WHERE p.s IS NOT NULL))
+      WHERE COALESCE(:kind, 'gym') = 'run'
+    params:
+      - name: parent_rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        default: "gym"
+        options:
+          - gym
+          - run
+      - name: target_distance_km
+        type: float
+        source: prompt
+        optional: true
+        hint: e.g. 10
+        when: {param: kind, value: run}
+      - name: target_pace
+        type: text
+        source: prompt
+        optional: true
+        hint: min:sec per km, e.g. 5:30; empty derives it from duration and distance
+        when: {param: kind, value: run}
+      - name: target_duration_minutes
+        type: integer
+        source: prompt
+        optional: true
+        hint: empty derives it from pace and distance
+        when: {param: kind, value: run}
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: program-detail
+
+  - name: edit-program-session
+    label: Edit program session
+    description: Corrects the selected planned session's name, kind, notes, and — for a run — its targets, deriving
+      target pace and duration from each other when one is left empty; the kind keeps its stored value when cleared.
+    # The targets half is an upsert scoped to the run kind: a session planned as gym and later flipped to run
+    # gains its program_runs row here. Flipping to gym leaves the row in place, hidden — the targets come back
+    # if the session flips back.
+    sql: |-
+      UPDATE program_sessions SET name = :name, kind = COALESCE(:kind, kind), notes = :notes WHERE id = :rowid;
+      INSERT INTO program_runs (program_session_id, target_distance_km, target_pace_seconds_per_km,
+                                target_duration_minutes)
+      SELECT :rowid, :target_distance_km,
+             CASE
+               WHEN :target_pace IS NULL THEN
+                    CASE WHEN :target_duration_minutes IS NOT NULL AND :target_distance_km > 0 THEN
+                         CAST(ROUND(:target_duration_minutes * 60.0 / :target_distance_km) AS INTEGER)
+                    END
+               WHEN instr(:target_pace, ':') > 0 THEN
+                    CAST(SUBSTR(:target_pace, 1, instr(:target_pace, ':') - 1) AS INTEGER) * 60
+                    + CAST(SUBSTR(:target_pace, instr(:target_pace, ':') + 1) AS INTEGER)
+               ELSE CAST(:target_pace AS INTEGER)
+             END,
+             COALESCE(:target_duration_minutes,
+                 (SELECT CAST(ROUND(:target_distance_km * p.s / 60.0) AS INTEGER)
+                    FROM (SELECT CASE
+                                   WHEN :target_pace IS NULL THEN NULL
+                                   WHEN instr(:target_pace, ':') > 0 THEN
+                                        CAST(SUBSTR(:target_pace, 1, instr(:target_pace, ':') - 1) AS INTEGER) * 60
+                                        + CAST(SUBSTR(:target_pace, instr(:target_pace, ':') + 1) AS INTEGER)
+                                   ELSE CAST(:target_pace AS INTEGER)
+                                 END AS s) p
+                   WHERE p.s IS NOT NULL))
+      WHERE (SELECT kind FROM program_sessions WHERE id = :rowid) = 'run'
+      ON CONFLICT(program_session_id) DO UPDATE SET
+          target_distance_km = excluded.target_distance_km,
+          target_pace_seconds_per_km = excluded.target_pace_seconds_per_km,
+          target_duration_minutes = excluded.target_duration_minutes
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - gym
+          - run
+      - name: target_distance_km
+        type: float
+        source: prompt
+        optional: true
+        hint: e.g. 10
+        when: {param: kind, value: run}
+      - name: target_pace
+        type: text
+        source: prompt
+        optional: true
+        hint: min:sec per km, e.g. 5:30; empty derives it from duration and distance
+        when: {param: kind, value: run}
+      - name: target_duration_minutes
+        type: integer
+        source: prompt
+        optional: true
+        hint: empty derives it from pace and distance
+        when: {param: kind, value: run}
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: program-detail
+
+  - name: delete-program-session
+    label: Delete program session
+    description: Deletes the selected planned session and its prescriptions; logged sessions are untouched.
+    sql: DELETE FROM program_sessions WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: program-detail
+
+  - name: start-program-session
+    label: Start now
+    description: Logs the selected planned session as today's session — a gym one gets one skeleton set per
+      prescribed set (weight and reps left empty to fill while training), a run one gets its empty run row,
+      listed in the Runs tab to fill in; the plan's name, targets, and notes ride along in the session notes.
+    # The later statements resolve the session the first one just created via MAX(id) rather than
+    # last_insert_rowid(), whose value would move to the run row or the first skeleton set row mid-insert.
+    # The notes carry the plan's name, a run's target line, and the plan's own notes as prose — the intent
+    # stays in sight while the actual stats are filled in, without seeding any data column with a target.
+    sql: |-
+      INSERT INTO sessions (kind, started_at, notes, program_session_id)
+      SELECT ps.kind, datetime('now'),
+             ps.name || COALESCE(' — target ' || NULLIF(SUBSTR(
+                 COALESCE(CASE WHEN pr.target_distance_km IS NOT NULL THEN ' · '
+                          || RTRIM(RTRIM(printf('%f', pr.target_distance_km), '0'), '.') || ' km' END, '')
+              || COALESCE(CASE WHEN pr.target_pace_seconds_per_km IS NOT NULL THEN ' · '
+                          || printf('%d:%02d', pr.target_pace_seconds_per_km / 60,
+                                    pr.target_pace_seconds_per_km % 60) || ' /km' END, '')
+              || COALESCE(' · ' || pr.target_duration_minutes || ' min', ''),
+             4), ''), '') || COALESCE(' — ' || ps.notes, ''),
+             ps.id
+      FROM program_sessions ps
+      LEFT JOIN program_runs pr ON pr.program_session_id = ps.id
+      WHERE ps.id = :rowid;
+      INSERT INTO runs (session_id)
+      SELECT s.id FROM sessions s
+      WHERE s.id = (SELECT MAX(id) FROM sessions)
+        AND (SELECT kind FROM program_sessions WHERE id = :rowid) = 'run';
+      WITH RECURSIVE seq(n) AS (
+          SELECT 1
+          UNION ALL
+          SELECT n + 1 FROM seq
+          WHERE n < (SELECT MAX(target_sets) FROM program_exercises WHERE program_session_id = :rowid)
+      )
+      INSERT INTO exercise_sets (session_id, exercise_id, set_number)
+      SELECT (SELECT MAX(id) FROM sessions), pe.exercise_id,
+             -- Positions run straight through the session so the skeleton reads in prescription order,
+             -- one exercise finished before the next starts.
+             ROW_NUMBER() OVER (ORDER BY pe.position, pe.id, seq.n)
+      FROM program_exercises pe
+      JOIN seq ON seq.n <= pe.target_sets
+      WHERE pe.program_session_id = :rowid
+      ORDER BY pe.position, pe.id, seq.n
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: program-detail
+
+  # Nested row-detail: tapping a planned session inside a program's detail opens its prescriptions
+  # as an editable checklist — the second drill level under the Programs tab.
+  - name: program-session-detail
+    label: Program session
+    description: The selected planned session's prescriptions, one line per exercise with its set and rep targets.
+    sql: |-
+      SELECT pe.id AS rowid,
+             pe.position || ': ' ||
+             CASE WHEN pe.target_reps IS NULL THEN e.name || ' — ' || pe.target_sets || ' sets'
+                  ELSE e.name || ' — ' || pe.target_sets || '×' || pe.target_reps END AS line,
+             pe.position, pe.target_sets, pe.target_reps
+      FROM program_exercises pe
+      JOIN exercises e ON e.id = pe.exercise_id
+      WHERE pe.program_session_id = :rowid
+      ORDER BY pe.position, pe.id
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: program-detail
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+      slots:
+        add: add-program-exercise
+        edit: edit-program-exercise
+        delete: delete-program-exercise
+        reorder: reorder-program-exercises
+
+  - name: add-program-exercise
+    label: Add program exercise
+    description: Prescribes an exercise in the open planned session — picked from the catalog, or typed as a new
+      name to create it — defaulting to 3 sets when no count is given, with an optional rep target.
+    sql: |-
+      -- Resolves the exercise case-insensitively so a typed name never forks the catalog on case alone
+      -- (exercises.name is UNIQUE but not NOCASE); a genuinely new name is created as typed.
+      INSERT INTO exercises (name)
+      SELECT TRIM(:exercise)
+      WHERE NULLIF(TRIM(:exercise), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM exercises WHERE name = TRIM(:exercise) COLLATE NOCASE);
+      INSERT INTO program_exercises (program_session_id, exercise_id, position, target_sets, target_reps)
+      SELECT :parent_rowid,
+             -- Exact spelling first, then any case twin a pre-existing catalog may carry — one row always.
+             (SELECT e.id FROM exercises e WHERE e.name = TRIM(:exercise) COLLATE NOCASE
+              ORDER BY e.name = TRIM(:exercise) DESC, e.id LIMIT 1),
+             -- Takes the next free position in the planned session, so prescriptions read back in the
+             -- order they were added.
+             COALESCE((SELECT MAX(pe.position) FROM program_exercises pe
+                       WHERE pe.program_session_id = :parent_rowid), 0) + 1,
+             COALESCE(:target_sets, 3), :target_reps
+      WHERE NULLIF(TRIM(:exercise), '') IS NOT NULL
+    params:
+      - name: parent_rowid
+        type: integer
+        source: selection-single
+      - name: exercise
+        type: text
+        source: lookup
+        hint: pick from the catalog, or type a new name to create it
+        lookup:
+          table: exercises
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: target_sets
+        type: integer
+        source: prompt
+        optional: true
+      - name: target_reps
+        type: integer
+        source: prompt
+        optional: true
+    attached_to: program-session-detail
+
+  - name: edit-program-exercise
+    label: Edit prescription
+    description: Corrects the selected prescription's position and set and rep targets — the position is what the
+      prescription list sorts on, so renumbering is how an exercise gets moved; sets fall back to 3 when cleared.
+    # A cleared position keeps the stored one rather than binding NULL into a NOT NULL column.
+    sql: |-
+      UPDATE program_exercises
+      SET position = COALESCE(:position, position),
+          target_sets = COALESCE(:target_sets, 3), target_reps = :target_reps
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: position
+        type: integer
+        source: prompt
+        optional: true
+        hint: where the exercise sits in the session — reuse another line's number to land right after it
+      - name: target_sets
+        type: integer
+        source: prompt
+        optional: true
+      - name: target_reps
+        type: integer
+        source: prompt
+        optional: true
+    attached_to: program-session-detail
+
+  - name: delete-program-exercise
+    label: Remove from program
+    description: Removes the selected prescription from its planned session.
+    sql: DELETE FROM program_exercises WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: program-session-detail
+
+  - name: reorder-program-exercises
+    label: Reorder prescriptions
+    description: Persists a dragged prescription order — each listed exercise's position becomes its place in the
+      dropped list.
+    sql: |-
+      UPDATE program_exercises
+      SET position = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                      WHERE je.value = program_exercises.id)
+      WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+    params:
+      - name: ordered_rowids
+        type: integer
+        source: reorder
+    attached_to: program-session-detail
+
+  - name: add-session
+    label: Add session
+    description: Starts a session — gym unless another kind is given, stamped with the current moment when no start
+      is given. A gym session takes sets from its card afterwards; a run session gets its empty run row, listed in
+      the Runs tab to fill in.
+    sql: |-
+      INSERT INTO sessions (kind, started_at, ended_at, location, notes, duration_minutes, perceived_effort)
+      VALUES (:kind, COALESCE(:started_at, datetime('now')), :ended_at, :location, :notes,
+              :duration_minutes, :perceived_effort);
+      INSERT INTO runs (session_id) SELECT last_insert_rowid() WHERE :kind = 'run'
+    params:
+      # Pre-selected on gym so the quick add logs a gym session in one tap — the Runs tab's add-run owns the
+      # run entry path, though picking run here still works (pair it via log-run afterwards).
+      - name: kind
+        type: text
+        source: prompt
+        options: [gym, run]
+        optional: true
+        default: gym
+        inline: true
+      - name: started_at
+        type: datetime
+        source: prompt
+        optional: true
+      - name: ended_at
+        type: datetime
+        source: prompt
+        optional: true
+      - name: location
+        type: text
+        source: prompt
+        optional: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+      - name: duration_minutes
+        type: integer
+        source: prompt
+        optional: true
+      - name: perceived_effort
+        type: integer
+        source: prompt
+        optional: true
+        hint: RPE 1-10
+    attached_to: workouts
+
+  - name: edit-session
+    label: Edit session
+    description: Corrects the selected session — kind, start, end, location, notes, duration, and perceived effort.
+    sql: |-
+      UPDATE sessions
+      SET kind = :kind, started_at = :started_at, ended_at = :ended_at, location = :location, notes = :notes,
+          duration_minutes = :duration_minutes, perceived_effort = :perceived_effort
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: kind
+        type: text
+        source: prompt
+        options: [gym, run]
+      - name: started_at
+        type: datetime
+        source: prompt
+        optional: true
+      - name: ended_at
+        type: datetime
+        source: prompt
+        optional: true
+      - name: location
+        type: text
+        source: prompt
+        optional: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+      - name: duration_minutes
+        type: integer
+        source: prompt
+        optional: true
+      - name: perceived_effort
+        type: integer
+        source: prompt
+        optional: true
+        hint: RPE 1-10
+    attached_to: workouts
+
+  - name: log-run
+    label: Log run
+    description: Records the selected run session's distance, pace, route, heart rate, and elevation — re-running it
+      updates them. Pace reads M:SS (or plain seconds) per km; left empty it is derived from the session's duration
+      and the distance.
+    sql: |-
+      INSERT INTO runs (session_id, distance_km, route, avg_pace_seconds_per_km, avg_heart_rate, elevation_gain_m)
+      VALUES (:rowid, :distance_km, :route,
+              CASE
+                WHEN :pace IS NULL THEN
+                     CASE WHEN :distance_km > 0 THEN
+                          (SELECT CAST(ROUND(s.duration_minutes * 60.0 / :distance_km) AS INTEGER)
+                             FROM sessions s WHERE s.id = :rowid AND s.duration_minutes IS NOT NULL)
+                     END
+                WHEN instr(:pace, ':') > 0 THEN
+                     CAST(SUBSTR(:pace, 1, instr(:pace, ':') - 1) AS INTEGER) * 60
+                     + CAST(SUBSTR(:pace, instr(:pace, ':') + 1) AS INTEGER)
+                ELSE CAST(:pace AS INTEGER)
+              END,
+              :avg_heart_rate, :elevation_gain_m)
+      ON CONFLICT(session_id) DO UPDATE
+      SET distance_km = excluded.distance_km, route = excluded.route,
+          avg_pace_seconds_per_km = excluded.avg_pace_seconds_per_km,
+          avg_heart_rate = excluded.avg_heart_rate, elevation_gain_m = excluded.elevation_gain_m
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: distance_km
+        type: float
+        source: prompt
+      - name: pace
+        type: text
+        source: prompt
+        optional: true
+        hint: min:sec per km — 5:30; empty derives it from duration and distance
+      - name: route
+        type: text
+        source: prompt
+        optional: true
+      - name: avg_heart_rate
+        type: integer
+        source: prompt
+        optional: true
+        hint: bpm
+      - name: elevation_gain_m
+        type: integer
+        source: prompt
+        optional: true
+    attached_to: workouts
+
+  - name: add-run
+    label: Add run
+    description: Logs a run in one go — the session and its run details together. The start defaults to the current
+      moment; pace reads M:SS (or plain seconds) per km, and with the distance, pace and duration each derive from
+      the other when left empty.
+    # Pace and duration are two views of the same fact once the distance is known, so each derives from the
+    # other when left empty; explicit values always win.
+    sql: |-
+      INSERT INTO sessions (kind, started_at, duration_minutes, perceived_effort, location, notes)
+      VALUES ('run', COALESCE(:started_at, datetime('now')),
+              COALESCE(:duration_minutes,
+                  (SELECT CAST(ROUND(:distance_km * p.s / 60.0) AS INTEGER)
+                     FROM (SELECT CASE
+                                    WHEN :pace IS NULL THEN NULL
+                                    WHEN instr(:pace, ':') > 0 THEN
+                                         CAST(SUBSTR(:pace, 1, instr(:pace, ':') - 1) AS INTEGER) * 60
+                                         + CAST(SUBSTR(:pace, instr(:pace, ':') + 1) AS INTEGER)
+                                    ELSE CAST(:pace AS INTEGER)
+                                  END AS s) p
+                    WHERE p.s IS NOT NULL)),
+              :perceived_effort, :location, :notes);
+      INSERT INTO runs (session_id, distance_km, route, avg_pace_seconds_per_km, avg_heart_rate, elevation_gain_m)
+      VALUES (last_insert_rowid(), :distance_km, :route,
+              CASE
+                WHEN :pace IS NULL THEN
+                     CASE WHEN :duration_minutes IS NOT NULL AND :distance_km > 0 THEN
+                          CAST(ROUND(:duration_minutes * 60.0 / :distance_km) AS INTEGER)
+                     END
+                WHEN instr(:pace, ':') > 0 THEN
+                     CAST(SUBSTR(:pace, 1, instr(:pace, ':') - 1) AS INTEGER) * 60
+                     + CAST(SUBSTR(:pace, instr(:pace, ':') + 1) AS INTEGER)
+                ELSE CAST(:pace AS INTEGER)
+              END,
+              :avg_heart_rate, :elevation_gain_m)
+    params:
+      # The two inline fields are the self-completing minimum: distance and duration are exactly the
+      # pace-derive inputs, so a quick add comes out with its pace computed. Everything else via the dialog.
+      - name: distance_km
+        type: float
+        source: prompt
+        inline: true
+      - name: pace
+        type: text
+        source: prompt
+        optional: true
+        hint: min:sec per km — 5:30; empty derives it from duration and distance
+      - name: duration_minutes
+        type: integer
+        source: prompt
+        optional: true
+        inline: true
+      - name: started_at
+        type: datetime
+        source: prompt
+        optional: true
+      - name: route
+        type: text
+        source: prompt
+        optional: true
+        hint: the course — e.g. River loop
+      - name: location
+        type: text
+        source: prompt
+        optional: true
+        hint: where in the world — e.g. a city
+      - name: avg_heart_rate
+        type: integer
+        source: prompt
+        optional: true
+        hint: bpm
+      - name: elevation_gain_m
+        type: integer
+        source: prompt
+        optional: true
+      - name: perceived_effort
+        type: integer
+        source: prompt
+        optional: true
+        hint: RPE 1-10
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: run-list
+
+  - name: edit-run
+    label: Edit run
+    description: Corrects the selected run — session timing and notes alongside distance, pace, route, heart rate,
+      and elevation, in one dialog. Pace reads M:SS (or plain seconds) per km, and with the distance, pace and
+      duration each derive from the other when left empty.
+    # The runs half is an upsert, not a plain UPDATE: the Runs tab also lists run sessions whose runs row is
+    # missing, and editing one must pair it rather than silently update zero rows.
+    sql: |-
+      UPDATE sessions
+      SET started_at = :started_at,
+          duration_minutes = COALESCE(:duration_minutes,
+              (SELECT CAST(ROUND(:distance_km * p.s / 60.0) AS INTEGER)
+                 FROM (SELECT CASE
+                                WHEN :pace IS NULL THEN NULL
+                                WHEN instr(:pace, ':') > 0 THEN
+                                     CAST(SUBSTR(:pace, 1, instr(:pace, ':') - 1) AS INTEGER) * 60
+                                     + CAST(SUBSTR(:pace, instr(:pace, ':') + 1) AS INTEGER)
+                                ELSE CAST(:pace AS INTEGER)
+                              END AS s) p
+                WHERE p.s IS NOT NULL)),
+          perceived_effort = :perceived_effort, location = :location, notes = :notes
+      WHERE id = :rowid;
+      INSERT INTO runs (session_id, distance_km, route, avg_pace_seconds_per_km, avg_heart_rate, elevation_gain_m)
+      VALUES (:rowid, :distance_km, :route,
+              CASE
+                WHEN :pace IS NULL THEN
+                     CASE WHEN :duration_minutes IS NOT NULL AND :distance_km > 0 THEN
+                          CAST(ROUND(:duration_minutes * 60.0 / :distance_km) AS INTEGER)
+                     END
+                WHEN instr(:pace, ':') > 0 THEN
+                     CAST(SUBSTR(:pace, 1, instr(:pace, ':') - 1) AS INTEGER) * 60
+                     + CAST(SUBSTR(:pace, instr(:pace, ':') + 1) AS INTEGER)
+                ELSE CAST(:pace AS INTEGER)
+              END,
+              :avg_heart_rate, :elevation_gain_m)
+      ON CONFLICT(session_id) DO UPDATE
+      SET distance_km = excluded.distance_km, route = excluded.route,
+          avg_pace_seconds_per_km = excluded.avg_pace_seconds_per_km,
+          avg_heart_rate = excluded.avg_heart_rate, elevation_gain_m = excluded.elevation_gain_m
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: distance_km
+        type: float
+        source: prompt
+      - name: pace
+        type: text
+        source: prompt
+        optional: true
+        hint: min:sec per km — 5:30; empty derives it from duration and distance
+      - name: duration_minutes
+        type: integer
+        source: prompt
+        optional: true
+      - name: started_at
+        type: datetime
+        source: prompt
+        optional: true
+      - name: route
+        type: text
+        source: prompt
+        optional: true
+        hint: the course — e.g. River loop
+      - name: location
+        type: text
+        source: prompt
+        optional: true
+        hint: where in the world — e.g. a city
+      - name: avg_heart_rate
+        type: integer
+        source: prompt
+        optional: true
+        hint: bpm
+      - name: elevation_gain_m
+        type: integer
+        source: prompt
+        optional: true
+      - name: perceived_effort
+        type: integer
+        source: prompt
+        optional: true
+        hint: RPE 1-10
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: run-list
+
+  - name: delete-run
+    label: Delete run
+    description: Deletes the selected run's session; its run details cascade away.
+    sql: DELETE FROM sessions WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: run-list
+
+  - name: delete-session
+    label: Delete session
+    description: Deletes the selected session; its sets or run details cascade away.
+    sql: DELETE FROM sessions WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: workouts
+
+  # Row-detail: tapping a session card opens its sets as an editable checklist; the add slot binds
+  # the open session's id as :parent_rowid, so new sets land in that session.
+  - name: session-detail
+    label: Session
+    description: The selected session's sets, one line per set — editable from the session's card.
+    sql: |-
+      SELECT es.id AS rowid,
+             es.set_number || ': ' || e.name || COALESCE(' — ' || es.reps || ' reps', '')
+                    -- printf('%f', NULL) yields '0.0', not NULL, so the weight clause needs an
+                    -- explicit NULL guard instead of leaning on COALESCE.
+                    || CASE WHEN es.weight IS NULL THEN ''
+                            ELSE ' @ ' || RTRIM(RTRIM(printf('%f', es.weight), '0'), '.')
+                                 || ' ' || es.weight_unit END AS line,
+             e.name AS exercise, es.set_number, es.reps, es.weight, es.notes
+      FROM exercise_sets es
+      JOIN exercises e ON e.id = es.exercise_id
+      WHERE es.session_id = :rowid
+      ORDER BY es.set_number, es.id
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: workouts
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+      slots:
+        add: log-set
+        edit: edit-set
+        delete: delete-set
+        reorder: reorder-sets
+
+  - name: log-set
+    label: Log set
+    description: Logs one set in the open session — exercise picked from the catalog, or typed as a new name to
+      create it — with reps and an optional weight.
+    sql: |-
+      -- Resolves the exercise case-insensitively so a typed name never forks the catalog on case alone
+      -- (exercises.name is UNIQUE but not NOCASE); a genuinely new name is created as typed.
+      INSERT INTO exercises (name)
+      SELECT TRIM(:exercise)
+      WHERE NULLIF(TRIM(:exercise), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM exercises WHERE name = TRIM(:exercise) COLLATE NOCASE);
+      INSERT INTO exercise_sets (session_id, exercise_id, set_number, reps, weight, notes)
+      SELECT :parent_rowid,
+             -- Exact spelling first, then any case twin a pre-existing catalog may carry — one row always.
+             (SELECT e.id FROM exercises e WHERE e.name = TRIM(:exercise) COLLATE NOCASE
+              ORDER BY e.name = TRIM(:exercise) DESC, e.id LIMIT 1),
+             -- Takes the next free position in the session, so sets read back in the order they happened;
+             -- alternating two movements stays interleaved because that is how it was trained.
+             COALESCE((SELECT MAX(es.set_number) FROM exercise_sets es
+                       WHERE es.session_id = :parent_rowid), 0) + 1,
+             :reps, :weight, :notes
+      WHERE NULLIF(TRIM(:exercise), '') IS NOT NULL
+    params:
+      - name: parent_rowid
+        type: integer
+        source: selection-single
+      - name: exercise
+        type: text
+        source: lookup
+        hint: pick from the catalog, or type a new name to create it
+        lookup:
+          table: exercises
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: reps
+        type: integer
+        source: prompt
+      - name: weight
+        type: float
+        source: prompt
+        optional: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        hint: e.g. each arm, drop set, form check
+    attached_to: session-detail
+
+  - name: edit-set
+    label: Edit set
+    description: Corrects the selected set's position, reps, weight, and notes — the position is what the
+      session's set list sorts on, so renumbering is how a set gets moved.
+    # A cleared position keeps the stored one rather than binding NULL into a NOT NULL column.
+    sql: |-
+      UPDATE exercise_sets
+      SET set_number = COALESCE(:set_number, set_number), reps = :reps, weight = :weight, notes = :notes
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: set_number
+        type: integer
+        source: prompt
+        optional: true
+        hint: where the set sits in the session — reuse another set's number to land right after it
+      - name: reps
+        type: integer
+        source: prompt
+        optional: true
+      - name: weight
+        type: float
+        source: prompt
+        optional: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        hint: e.g. each arm, drop set, form check
+    attached_to: session-detail
+
+  - name: delete-set
+    label: Delete set
+    description: Removes the selected set.
+    sql: DELETE FROM exercise_sets WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: session-detail
+
+  - name: reorder-sets
+    label: Reorder sets
+    description: Persists a dragged set order — each listed set's position becomes its place in the dropped list.
+    sql: |-
+      UPDATE exercise_sets
+      SET set_number = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                        WHERE je.value = exercise_sets.id)
+      WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+    params:
+      - name: ordered_rowids
+        type: integer
+        source: reorder
+    attached_to: session-detail
+
+skills:
+  - name: workouts-orientation
+    description: How to shape a session with its sets or run, the exercises catalog, the programs and their planned
+      sessions, timing conventions, and pace formatting.
+    body: |
+      Every workout is a row in `sessions`. Use `kind` to fork:
+
+      - **`kind = 'gym'`** → also insert per-set rows into `exercise_sets` (one row per set performed). The
+        session's set list sorts on `set_number`: `log-set` appends at the next position, so sets read back in
+        the order they were logged — alternating two movements stays interleaved because that is how it was
+        trained. Moving a set is a renumber via `edit-set` (reuse another set's number to land right after it) or
+        `reorder-sets` (the app's drag handles; over MCP pass every set id in the new order as `ordered_rowids`);
+        never reorder a session on the user's behalf.
+      - **`kind = 'run'`** → also insert **one** matching row into `runs`. The 1:1 pairing is the model;
+        don't put distance / pace / route on `sessions`. The `add-run` action does both inserts in one step,
+        and `add-session` seeds the empty `runs` row itself when given the run kind.
+
+      `add-session` defaults `kind` to gym when omitted — for a run, prefer `add-run` over passing the kind.
+      The kinds are not exclusive containers: a `run` session may also carry `exercise_sets` rows (strength
+      done during or after the run) — its feed card then shows the set breakdown under the run stats.
+
+      ## Session timing
+
+      `started_at` and `ended_at` are `YYYY-MM-DD HH:MM:SS` datetimes; all three timing columns are nullable.
+      `add-session` stamps `started_at` with the current moment when the param is omitted — right when the user
+      logs as they train. For a past session, pass `started_at` explicitly. Beyond the start, fill only what the
+      user said — don't fabricate an end time or duration to look complete.
+
+      - *"I ran for 30 min"* → `duration_minutes = 30`, `started_at` left to the stamp, `ended_at` NULL.
+      - *"I trained from 7 to 8"* → `started_at` + `ended_at` set, leave `duration_minutes` NULL.
+      - *"I trained Tuesday"* (no time given) → `started_at = '2026-08-04 00:00:00'` — midnight stands in for an
+        unknown time of day; day-level queries and ordering still come out right.
+
+      ## Exercises catalog
+
+      `exercises.name` is UNIQUE. `log-set` and `add-program-exercise` take the exercise by name (their
+      `exercise` param): they resolve it case-insensitively and create a missing name on the fly, so one call
+      is enough whether or not the exercise exists yet. Still reuse existing spellings — look one up first
+      (`SELECT id, name FROM exercises WHERE name LIKE '%…%'`) and pass what you find; run `add-exercise`
+      directly only to pre-fill `muscle_group` / `equipment` on a new entry. If duplicates slip in anyway,
+      `merge-exercise` folds one into another — the duplicate's sets and program prescriptions move to the
+      survivor, then the duplicate is deleted.
+
+      For stats, prefer the ready-made formulas over hand-written queries: `exercise-list` gives every
+      exercise's last session's sets (with its day), PR (with the day it was reached), and session count;
+      `exercise-detail` gives one exercise's per-session history (each session's day and set breakdown).
+
+      ## Programs
+
+      The whole plan lives behind the Programs tab, drilling down card by card: a program opens its planned
+      sessions, and a planned session opens its prescriptions. `programs` holds the training programs
+      ("PPL winter block"); `active` marks the ones in rotation — any number at once, purely a badge that
+      sorts them first (`toggle-program` flips it). `program_sessions` + `program_exercises` hold each
+      program's planned sessions ("Push day A") with per-exercise set/rep targets; `add-program-session`
+      binds the program it was opened from as `:parent_rowid` — over MCP, pass the program's id explicitly.
+      Prescriptions sort on `program_exercises.position`: `add-program-exercise` appends at the next one, and
+      moving an exercise is a renumber via `edit-program-exercise` (reuse another line's number to land right
+      after it) or `reorder-program-exercises` (the app's drag handles; over MCP pass every prescription id in
+      the new order as `ordered_rowids`) — the skeleton a session starts with follows the same order.
+      They are templates — nothing in them is a workout that happened. A planned session is gym by default;
+      `kind = 'run'` plans a run instead, with its targets in `program_runs` (1:1 — target distance, pace as
+      seconds-per-km, duration; with the distance, target pace and duration derive from each other when one is
+      left empty, like on real runs). Targets are the plan, never copied into a logged run's data columns —
+      starting a planned run writes them as prose into the session notes ("Easy 10k — target 10 km · 5:30 /km")
+      so the plan stays in sight; compare them to what actually happened instead of backfilling.
+      `start-program-session` logs one as a real session for today — a gym one gets one
+      `exercise_sets` row per prescribed set with `weight` and `reps` NULL, to be filled via `edit-set` while
+      training; a run one gets its empty `runs` row, listed in the Runs tab to fill in via `edit-run` — and
+      stamps `sessions.program_session_id`, which is what the planned-session cards' "Last done" line reads.
+      Sets left empty at the end were skipped — record only what actually happened, and don't backfill
+      targets as if they were done.
+
+      ## Runs
+
+      The Runs tab lists every `kind = 'run'` session. `add-run` logs a complete run in one step; a run added
+      through `add-session` starts as a date-only stub whose stats are filled in via `edit-run` or the feed's
+      `log-run`. `runs.route` names the course ("River loop"); where in the world it happened (a city, a park)
+      belongs on `sessions.location` — don't stuff a place name into the route.
+
+      `runs.avg_pace_seconds_per_km` is an integer (seconds). The `pace` params accept `M:SS` (`5:30`) or plain
+      seconds (`330`). With the distance, pace and duration each derive from the other when left empty —
+      explicit values always win. On display, format pace back as `M:SS /km`. For totals, prefer `run-summary`
+      (count, total and longest km, best and average pace, optional `:days` window) over hand-written queries.

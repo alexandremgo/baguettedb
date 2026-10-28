@@ -1,0 +1,20 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # AIR_BUILD_TARGET is set per-service in compose (e.g. "monolith", "auth", "bdbs", "databases").
+  cmd = "go build -o /tmp/${AIR_BUILD_TARGET} ./cmd/${AIR_BUILD_TARGET}"
+  full_bin = "/tmp/${AIR_BUILD_TARGET}"
+  delay = 1000
+  exclude_dir = ["tmp", "bin", "vendor", ".git", ".claude", "scripts"]
+  exclude_regex = ["_test\\.go$"]
+  include_ext = ["go", "toml", "yaml"]
+  kill_delay = "1s"
+  send_interrupt = true
+  stop_on_error = true
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

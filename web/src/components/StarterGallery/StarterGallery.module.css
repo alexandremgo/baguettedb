@@ -1,0 +1,143 @@
+.container {
+  max-width: 960px;
+}
+
+/* Placeholder cards mirroring the grid while the starters load. */
+.skeletonCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.skeletonTitle {
+  height: 16px;
+  width: 45%;
+}
+
+.skeletonLine {
+  height: 12px;
+  width: 100%;
+}
+
+.skeletonLineShort {
+  height: 12px;
+  width: 60%;
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-6);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.cardButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card {
+  height: 100%;
+  transition: box-shadow var(--duration-fast), border-color var(--duration-fast);
+}
+
+.cardButton:hover .card,
+.cardButton:focus-visible .card {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.cardBody {
+  padding: var(--space-4);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.cardIcon {
+  font-size: var(--text-xl);
+}
+
+.cardName {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.cardDesc {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-3);
+}
+
+.cardMeta {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-2);
+}
+
+.cardPreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.previewChip {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
+.previewMore {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.blankLink {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+}
+
+.dialogForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 320px;
+}
+
+.error {
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

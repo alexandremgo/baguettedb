@@ -1,0 +1,169 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Type-aware control widths: the field (and its label row) runs the form's width, while the control
+   caps at what its content can be — a "--:--" time stretched across the page reads as broken, and the
+   size doubles as affordance. Free text and textareas stay uncapped. */
+.sizeNumber {
+  max-width: 200px;
+}
+
+.sizeDate {
+  max-width: 180px;
+}
+
+.sizeDatetime {
+  max-width: 240px;
+}
+
+.sizeTime {
+  max-width: 140px;
+}
+
+/* A closed vocabulary sizes to its longest entry: never narrower than the 360px short-list comfort,
+   never wider than the form (a select's intrinsic width already reflects its longest option). */
+.sizeSelect {
+  width: fit-content;
+  min-width: min(360px, 100%);
+  max-width: 100%;
+}
+
+/* A lookup whose labels all fit stays at the 360px comfort width; longer labels drop this cap and
+   take the row (decided in JS — an input's intrinsic width knows nothing of its option list). */
+.lookupCap {
+  max-width: 360px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.type {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.optional {
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--color-text-tertiary);
+}
+
+/* Authored param hint, kept fully visible beside the label (a placeholder would clip inside the input). */
+.hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-align: right;
+}
+
+.checkbox {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.groupRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.groupRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.groupRow > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.groupRemove {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.groupRemove:hover {
+  color: var(--color-destructive);
+  border-color: var(--color-destructive);
+}
+
+.groupAdd {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.groupAdd:hover {
+  background-color: var(--color-surface-hover);
+}
+
+/* Multiline text param: the Input look, grown into a resizable textarea. */
+.textarea {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color var(--duration-fast),
+    box-shadow var(--duration-fast);
+}
+
+.textarea::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}

@@ -1,0 +1,58 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.explain {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.quota {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.quotaNext {
+  color: var(--color-text-secondary);
+}
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--color-destructive);
+}
+
+.success {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.passphraseRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.passphraseInput {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}

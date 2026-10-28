@@ -1,0 +1,5 @@
+SQLCipher 4.15.0
+SQLite 3.53.0 baseline
+Upstream commit: 4525003a53a7fc63ca75c59b22c79608659ca12f0131f52c18637f829977f20b
+Source tarball: https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.15.0.tar.gz
+SHA-256 (tarball): 21f5dfb2558a2a87740bb060ba75aadfec2e6119e08a87c3546c54751395a28d

@@ -1,0 +1,951 @@
+# Shopping & pantry — a shopping list backed by what is already at home, for food and household supplies
+# alike, connected through a shared item catalog; plus an inbox where whole lists are dropped as written
+# for an assistant to sort into the shopping list.
+key: shopping-pantry
+version: 1
+name: Shopping & pantry
+description: Track what to buy and what you have at home — food and household supplies alike — through a shared item catalog that remembers how each thing is bought.
+icon: "🛒"
+tags:
+  - home
+  - shopping
+
+schema:
+  - |-
+    -- What kind of thing an item is (produce, dairy, cleaning, pharmacy…). Rows are created on the fly
+    -- from a free-text name, so the catalog stays exactly as big as what is in use. COLLATE NOCASE for
+    -- the same reason as items.name: the free-text field would otherwise make "Produce" a second category.
+    CREATE TABLE categories (
+        id   INTEGER PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE
+    )
+  - |-
+    -- Shared catalog of items, referenced by groceries / inventory. Create an item once, reuse it
+    -- everywhere. name is COLLATE NOCASE, so "Milk" and "milk" are one item: the unique constraint rejects
+    -- the second spelling, and resolving an item by name matches whatever case was typed.
+    -- habit says how the item is bought — a staple is rebought as it runs out, an occasional one now and
+    -- then, a one-off once. Every item is a staple until said otherwise, so the catalog never holds an
+    -- unsorted row; the two list views open on staples.
+    CREATE TABLE items (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        category_id INTEGER REFERENCES categories(id),
+        habit TEXT NOT NULL DEFAULT 'staple' CHECK (habit IN ('staple', 'occasional', 'one-off')),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - CREATE INDEX idx_items_category_id ON items(category_id)
+  - |-
+    -- Options source for item pickers: the catalog name, with the item's category name and habit alongside
+    -- for the add dialog's fill, which copies them into its own fields when an existing item is picked.
+    CREATE VIEW item_options AS
+        SELECT i.name AS name, c.name AS category, i.habit AS habit
+        FROM items i LEFT JOIN categories c ON c.id = i.category_id
+        ORDER BY i.name
+  - |-
+    -- Shopping list. bought_at IS NULL means pending, IS NOT NULL means bought.
+    -- Rows stay after buying so the user keeps purchase history.
+    CREATE TABLE groceries (
+        id INTEGER PRIMARY KEY,
+        item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
+        quantity REAL,
+        unit TEXT,                                        -- free-text, e.g. "g", "cup", "piece"
+        store TEXT,                                       -- free-text, e.g. "Green Market"
+        added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        bought_at TEXT,
+        -- The pantry batch the checkbox created, so un-checking removes that exact row. Deleting the
+        -- batch from the pantry drops the link, and a later un-check then correctly removes nothing.
+        stocked_batch_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL
+    )
+  - CREATE INDEX idx_groceries_item_id ON groceries(item_id)
+  - CREATE INDEX idx_groceries_pending ON groceries(bought_at) WHERE bought_at IS NULL
+  - CREATE INDEX idx_groceries_store ON groceries(store)
+  - |-
+    -- Options source for the store filter: one row per shop, spelled the way it is written most
+    -- often, so "Green Market" and "green market" collapse to a single entry. Leans on SQLite's
+    -- bare-column rule — with a single MAX() aggregate, the bare columns come from the row that won it.
+    CREATE VIEW store_options AS
+        SELECT store, MAX(n) AS n
+        FROM (SELECT store, COUNT(*) AS n FROM groceries
+              WHERE TRIM(COALESCE(store, '')) <> '' GROUP BY store)
+        GROUP BY store COLLATE NOCASE
+  - |-
+    -- What is at home. One row per batch (per purchase), not per item — separate expiry dates for
+    -- stock acquired at different times. Total for an item = SUM(quantity) across its batches.
+    -- Convention: empty batches (quantity = 0) get deleted.
+    CREATE TABLE inventory (
+        id INTEGER PRIMARY KEY,
+        item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
+        quantity REAL,
+        unit TEXT,
+        expires_at TEXT,                                  -- nullable: most household items have none
+        acquired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - CREATE INDEX idx_inventory_item_id ON inventory(item_id)
+  - CREATE INDEX idx_inventory_expires_at ON inventory(expires_at) WHERE expires_at IS NOT NULL
+  - |-
+    -- A whole list dropped as written (a note, a message, a recipe's ingredients), waiting for an
+    -- assistant to sort its lines into the shopping list. sorted_at IS NULL until then; the text stays
+    -- afterwards until cleared.
+    CREATE TABLE inbox (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sorted_at TEXT
+    )
+
+formulas:
+  # Views first: actions further down attach to their view by name. The three visible surfaces are the
+  # shopping-list checklist, the pantry grid, and the inbox cards, plus the one standalone action that
+  # clears sorted inbox entries; every other formula is dialog plumbing or assistant-only. Display slots
+  # are applied after all formulas exist, so slot refs resolve by name.
+  - name: pending-groceries
+    label: Shopping list
+    description: The shopping list as a checklist — check an item off to mark it bought, tap again to undo. Opens on staples; check more habits to widen it, or none for everything.
+    sql: |-
+      SELECT g.id AS rowid,
+             -- quantity is REAL, so a plain concatenation would render 2 as "2.0"; whole numbers
+             -- drop the decimal, fractional ones keep it.
+             i.name || COALESCE(' — ' || (CASE WHEN g.quantity = CAST(g.quantity AS INTEGER)
+                                               THEN CAST(CAST(g.quantity AS INTEGER) AS TEXT)
+                                               ELSE CAST(g.quantity AS TEXT) END)
+                                      || COALESCE(' ' || g.unit, ''), '')
+                    || COALESCE(' @ ' || g.store, '') AS line,
+             CASE WHEN g.bought_at IS NULL THEN 0 ELSE 1 END AS bought,
+             g.quantity, g.unit, g.store, i.name, c.name AS category, i.habit, i.notes
+      FROM groceries g
+      JOIN items i ON i.id = g.item_id
+      LEFT JOIN categories c ON c.id = i.category_id
+      -- Just-bought items linger checked for 10 minutes so a mistaken tap can be tapped back.
+      WHERE (g.bought_at IS NULL OR g.bought_at >= datetime('now', '-10 minutes'))
+        AND (:store IS NULL OR g.store = :store COLLATE NOCASE)
+        -- No category picked binds an empty array, which is "no constraint"; picks narrow to any of them.
+        AND (json_array_length(:categories) = 0
+             OR i.category_id IN (SELECT je.value FROM json_each(:categories) je))
+        -- Staples by default, the everyday run; more habits checked widen it, none checked means all.
+        AND (json_array_length(:habit) = 0 OR i.habit IN (SELECT je.value FROM json_each(:habit) je))
+      ORDER BY g.store, i.name
+    params:
+      - name: store
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: store_options
+          label_column: store
+          value_column: store
+      - name: categories
+        type: integer
+        source: lookup
+        optional: true
+        multiple: true
+        lookup:
+          table: categories
+          label_column: name
+          value_column: id
+      # Opens on staples; unchecking everything reads as "no constraint" rather than "nothing".
+      - name: habit
+        type: text
+        source: prompt
+        optional: true
+        multiple: true
+        defaults: [staple]
+        options: [staple, occasional, one-off]
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+        - {column: bought, role: check}
+      slots:
+        add: add-grocery
+        toggle: mark-bought
+        edit: edit-grocery
+        delete: remove-grocery
+        detail: grocery-at-home
+        # The two edits side by side, the list's own line first; Details and Remove line trail them.
+        row_actions:
+          - edit-grocery
+          - edit-item
+
+  - name: pantry
+    label: Pantry
+    description: One row per catalog item — what is in stock, what is on the list, and how often it has been bought. Opens on staples; check more habits to widen it, or none for everything. Click a row for its batches.
+    sql: |-
+      SELECT i.id AS rowid, i.name, c.name AS category, i.habit,
+             COALESCE(b.batches, 0) AS batches, b.in_stock, b.next_expiry,
+             COALESCE(p.on_list, 0) AS on_list,
+             COALESCE(h.times_bought, 0) AS times_bought, h.last_bought, i.notes
+      FROM items i
+      LEFT JOIN categories c ON c.id = i.category_id
+      -- Stock is counted in batches, not summed quantity: a batch with an unrecorded quantity is
+      -- still stock, and in_stock adds up mixed units, so it reads as a total only per unit.
+      LEFT JOIN (SELECT item_id, COUNT(*) AS batches, SUM(quantity) AS in_stock,
+                        MIN(expires_at) AS next_expiry
+                 FROM inventory GROUP BY item_id) b ON b.item_id = i.id
+      LEFT JOIN (SELECT item_id, COUNT(*) AS on_list FROM groceries
+                 WHERE bought_at IS NULL GROUP BY item_id) p ON p.item_id = i.id
+      LEFT JOIN (SELECT item_id, COUNT(*) AS times_bought, MAX(bought_at) AS last_bought
+                 FROM groceries WHERE bought_at IS NOT NULL GROUP BY item_id) h ON h.item_id = i.id
+      WHERE (COALESCE(:show_all, 0) = 1 OR COALESCE(b.batches, 0) > 0)
+        -- Staples by default: the things that run out are what the pantry is for; none checked means all.
+        AND (json_array_length(:habit) = 0 OR i.habit IN (SELECT je.value FROM json_each(:habit) je))
+        -- No category picked binds an empty array, which is "no constraint"; picks narrow to any of them.
+        AND (json_array_length(:categories) = 0
+             OR i.category_id IN (SELECT je.value FROM json_each(:categories) je))
+        AND (:query IS NULL
+             OR i.name LIKE '%' || :query || '%'
+             OR COALESCE(c.name, '') LIKE '%' || :query || '%')
+        -- "Today or already expired" is just 0 days: date('now', '+0 days') is today and <= sweeps in
+        -- every past date, which the expiring-soonest-first ORDER BY then puts on top.
+        AND (:expiring_within_days IS NULL
+             OR (b.next_expiry IS NOT NULL
+                 AND b.next_expiry <= date('now', '+' || :expiring_within_days || ' days')))
+      ORDER BY b.next_expiry IS NULL, b.next_expiry, i.name
+    params:
+      - name: habit
+        type: text
+        source: prompt
+        optional: true
+        multiple: true
+        defaults: [staple]
+        options: [staple, occasional, one-off]
+      - name: categories
+        type: integer
+        source: lookup
+        optional: true
+        multiple: true
+        lookup:
+          table: categories
+          label_column: name
+          value_column: id
+      - name: query
+        type: text
+        source: prompt
+        optional: true
+        hint: matches item name or category
+      - name: expiring_within_days
+        type: integer
+        source: prompt
+        optional: true
+        hint: only stock expiring within this many days — 0 means today or already expired
+      - name: show_all
+        type: boolean
+        source: prompt
+        optional: true
+        hint: include items with nothing in stock — the whole catalog
+    display:
+      mode: table
+      slots:
+        add: stock-item
+        edit: edit-catalog-item
+        delete: delete-catalog-item
+        detail: item-batches
+        row_actions:
+          # add-to-list first: restocking is the everyday act, merging duplicates the rare cleanup.
+          - add-to-list
+          - merge-item
+
+  - name: inbox-cards
+    label: Inbox
+    description: Lists dropped as written, waiting to be sorted into the shopping list — ask the assistant to sort one, then mark it. Sorted entries linger 10 minutes, then drop off.
+    sql: |-
+      SELECT x.id AS rowid,
+             -- The date and a line count name the card; the body is the text itself, so the title stays
+             -- short even when the first line is long.
+             'Dropped ' || date(x.created_at) || ' · '
+               || (length(TRIM(x.text, char(10))) - length(replace(TRIM(x.text, char(10)), char(10), '')) + 1)
+               || ' lines' AS title,
+             x.text AS body,
+             x.text, x.created_at, x.sorted_at
+      FROM inbox x
+      -- Sorted entries linger 10 minutes so a mistaken mark can be undone; show_sorted brings them all back.
+      WHERE (COALESCE(:show_sorted, 0) = 1
+             OR x.sorted_at IS NULL
+             OR x.sorted_at >= datetime('now', '-10 minutes'))
+      -- Newest first; the id breaks ties between drops made in the same second.
+      ORDER BY x.sorted_at IS NOT NULL, x.created_at DESC, x.id DESC
+    params:
+      - name: show_sorted
+        type: boolean
+        source: prompt
+        optional: true
+        hint: include entries already sorted into the list
+    display:
+      mode: cards
+      columns:
+        - {column: title, role: title}
+        - {column: body, role: body}
+      slots:
+        add: drop-list
+        edit: edit-dropped-list
+        delete: delete-dropped-list
+        detail: dropped-list
+        # The check role and toggle slot are checklist-only, so marking an entry sorted is a menu entry.
+        row_actions:
+          - mark-sorted
+
+  - name: mark-bought
+    label: Bought
+    description: Flips the selected grocery between pending and bought. Checking it also stocks the pantry with a batch; un-checking takes that batch back out unless it has been edited or partly used since.
+    sql: |-
+      UPDATE groceries
+      SET bought_at = CASE WHEN bought_at IS NULL THEN CURRENT_TIMESTAMP ELSE NULL END
+      WHERE id = :rowid;
+      -- Un-check: removes exactly the batch this checkbox created — the id recorded in stocked_batch_id,
+      -- not a lookalike match — but only while it still says what the check put there. Given an expiry, or
+      -- partly used, it stays: the un-tap gives the pending line back without discarding a correction.
+      -- Compared by content rather than by updated_at, because CURRENT_TIMESTAMP counts whole seconds and
+      -- an edit made in the same second as the check would be indistinguishable from no edit at all.
+      -- IS, not =, so NULLs compare.
+      DELETE FROM inventory
+      WHERE id = (SELECT stocked_batch_id FROM groceries WHERE id = :rowid AND bought_at IS NULL)
+        AND expires_at IS NULL
+        AND quantity IS (SELECT quantity FROM groceries WHERE id = :rowid)
+        AND unit IS (SELECT unit FROM groceries WHERE id = :rowid);
+      -- Check: stocks what the line says, with no expiry — set one from the item's batches in the
+      -- pantry, where the date is a picker rather than a guess made at the till.
+      INSERT INTO inventory (item_id, quantity, unit)
+      SELECT g.item_id, g.quantity, g.unit
+      FROM groceries g WHERE g.id = :rowid AND g.bought_at IS NOT NULL;
+      -- Remembers which batch the check created so an un-check removes that exact row, and forgets it
+      -- on the way back out. The EXISTS guard keeps a stale last_insert_rowid() from being stored if
+      -- the insert above matched nothing.
+      UPDATE groceries
+      SET stocked_batch_id = CASE WHEN bought_at IS NULL THEN NULL ELSE last_insert_rowid() END
+      WHERE id = :rowid
+        AND (bought_at IS NULL
+             OR EXISTS (SELECT 1 FROM inventory
+                        WHERE id = last_insert_rowid() AND item_id = groceries.item_id))
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: pending-groceries
+
+  - name: edit-item
+    label: Edit catalog item
+    description: Edits the catalog item behind the selected grocery line — its name, category, habit and notes. The item is shared, so a change reaches every list line and pantry batch using it.
+    sql: |-
+      INSERT INTO categories (name)
+      SELECT TRIM(:category) WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+      ON CONFLICT(name) DO NOTHING;
+      UPDATE items
+      SET name = COALESCE(NULLIF(TRIM(:name), ''), name),
+          category_id = (SELECT id FROM categories WHERE name = TRIM(:category)),
+          habit = COALESCE(:habit, habit),
+          notes = :notes
+      WHERE id = (SELECT item_id FROM groceries WHERE id = :rowid)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+        optional: true
+        hint: renames it everywhere — leave empty to keep the current name
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: pick one, or type a new one to create it — empty clears the assignment
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: habit
+        type: text
+        source: prompt
+        optional: true
+        options: [staple, occasional, one-off]
+        hint: "staple: rebought as it runs out; occasional: now and then; one-off: once"
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: pending-groceries
+
+  - name: add-grocery
+    label: Add to list
+    description: Adds an item to the shopping list by name — with an optional quantity, unit, store, category and habit — creating it in the catalog if needed. A category or habit given for an existing item re-files it; left empty, the item keeps its own (a new item starts as a staple).
+    sql: |-
+      INSERT INTO categories (name)
+      SELECT TRIM(:category) WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+      ON CONFLICT(name) DO NOTHING;
+      -- A new item takes the category and habit given (habit falls back to the column default, staple); an
+      -- existing one is re-filed only for the fields that were filled — the WHERE keeps empty fields from
+      -- touching the row at all, so nothing is cleared and no no-op update lands in the change log.
+      INSERT INTO items (name, category_id, habit)
+      SELECT TRIM(:item), (SELECT id FROM categories WHERE name = TRIM(:category)), COALESCE(:habit, 'staple')
+      WHERE NULLIF(TRIM(:item), '') IS NOT NULL
+      ON CONFLICT(name) DO UPDATE
+          SET category_id = COALESCE(excluded.category_id, items.category_id),
+              habit = COALESCE(:habit, items.habit)
+          WHERE (excluded.category_id IS NOT NULL AND excluded.category_id IS NOT items.category_id)
+             OR (:habit IS NOT NULL AND :habit IS NOT items.habit);
+      INSERT INTO groceries (item_id, quantity, unit, store)
+      SELECT i.id, :quantity, NULLIF(TRIM(:unit), ''),
+             -- A shop already on file keeps the spelling the picker offers, so typing it in another
+             -- case doesn't split the list in two; a genuinely new shop keeps what was typed.
+             COALESCE((SELECT s.store FROM store_options s WHERE s.store = TRIM(:store) COLLATE NOCASE),
+                      NULLIF(TRIM(:store), ''))
+      FROM items i WHERE i.name = TRIM(:item)
+    params:
+      # Inline params render in declaration order: "2 × milk @ Green Market" is the shopping-list
+      # idiom. unit, category and habit stay out of the bar — six fields wrap badly on a phone and
+      # they are usually implicit — so they are reached through the dialog, seeded with whatever is
+      # already typed. item and store are creatable pickers: suggestions surface what is already on
+      # file (the catalog spelling, the shop's usual case) while typing past them still creates freely.
+      # Picking an existing item fills the dialog's category and habit with the catalog's filing, so
+      # what the dialog shows is what the item has and changing either re-files it. Neither carries a
+      # dialog default: a preselected value could not be told apart from a deliberate pick, and the
+      # SQL re-files an existing item only on a deliberate one.
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+        inline: true
+      - name: item
+        type: text
+        source: lookup
+        inline: true
+        lookup:
+          table: item_options
+          label_column: name
+          value_column: name
+          allow_new: true
+          fill: {category: category, habit: habit}
+      - name: store
+        type: text
+        source: lookup
+        optional: true
+        inline: true
+        lookup:
+          table: store_options
+          label_column: store
+          value_column: store
+          allow_new: true
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+        hint: e.g. g, cup, piece
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: files a new item, or re-files an existing one — empty keeps what it has
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: habit
+        type: text
+        source: prompt
+        optional: true
+        options: [staple, occasional, one-off]
+        hint: sets it on a new item (staple when empty), or changes it on an existing one — empty keeps what it has
+    attached_to: pending-groceries
+
+  - name: edit-grocery
+    label: Edit line
+    description: Updates the selected grocery's quantity, unit, and store.
+    sql: |-
+      UPDATE groceries
+      SET quantity = :quantity,
+          unit = NULLIF(TRIM(:unit), ''),
+          -- Same canonicalising rule as the quick add: a shop already on file keeps the spelling the
+          -- picker offers, a cleared field stores NULL rather than '' so it drops out of the options.
+          store = COALESCE((SELECT s.store FROM store_options s WHERE s.store = TRIM(:store) COLLATE NOCASE),
+                           NULLIF(TRIM(:store), ''))
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+        hint: e.g. g, cup, piece
+      # The same creatable picker as the quick add, so correcting a line offers the shops already on
+      # file instead of asking for the name to be retyped.
+      - name: store
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: store_options
+          label_column: store
+          value_column: store
+          allow_new: true
+    attached_to: pending-groceries
+
+  - name: remove-grocery
+    label: Remove line
+    description: Removes the selected grocery from the shopping list.
+    sql: DELETE FROM groceries WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: pending-groceries
+
+  # Row-detail: clicking a shopping-list line answers "do I actually need this?" — what is already at
+  # home for that item, plus how often it has been bought. Read-only on purpose: batches get corrected
+  # from the pantry, where the batch actions live.
+  - name: grocery-at-home
+    label: At home
+    description: What is already at home for the selected line's item — its pantry batches, and how often it has
+      been bought.
+    sql: |-
+      SELECT line FROM (
+          -- Batch lines borrow item-batches' formatting so the same stock reads the same everywhere.
+          SELECT 0 AS section, inv.expires_at IS NULL AS no_expiry, COALESCE(inv.expires_at, '') AS ord,
+                 COALESCE((CASE WHEN inv.quantity = CAST(inv.quantity AS INTEGER)
+                                THEN CAST(CAST(inv.quantity AS INTEGER) AS TEXT)
+                                ELSE CAST(inv.quantity AS TEXT) END)
+                          || COALESCE(' ' || inv.unit, '') || ' — ', '')
+                 || COALESCE('expires ' || inv.expires_at || ' — ', '')
+                 || 'added ' || date(inv.acquired_at) AS line
+          FROM inventory inv
+          WHERE inv.item_id = (SELECT item_id FROM groceries WHERE id = :rowid)
+          UNION ALL
+          -- One trailing history line; the HAVING drops it entirely for a never-bought item, since an
+          -- aggregate with no FROM rows would otherwise still emit one NULL-dated line.
+          SELECT 1, 0, '',
+                 CASE WHEN COUNT(*) = 1 THEN 'bought once — ' ELSE 'bought ' || COUNT(*) || ' times — last ' END
+                 || date(MAX(bought_at))
+          FROM groceries
+          WHERE item_id = (SELECT item_id FROM groceries WHERE id = :rowid) AND bought_at IS NOT NULL
+          HAVING COUNT(*) > 0
+      )
+      ORDER BY section, no_expiry, ord
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: pending-groceries
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+
+  - name: edit-catalog-item
+    label: Edit item
+    description: Renames the selected catalog item and sets its category, habit and notes — the change reaches every list line and pantry batch using it.
+    sql: |-
+      INSERT INTO categories (name)
+      SELECT TRIM(:category) WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+      ON CONFLICT(name) DO NOTHING;
+      UPDATE items
+      SET name = COALESCE(NULLIF(TRIM(:name), ''), name),
+          category_id = (SELECT id FROM categories WHERE name = TRIM(:category)),
+          habit = COALESCE(:habit, habit),
+          notes = :notes
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+        optional: true
+        hint: renames it everywhere — leave empty to keep the current name
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: pick one, or type a new one to create it — empty clears the assignment
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: habit
+        type: text
+        source: prompt
+        optional: true
+        options: [staple, occasional, one-off]
+        hint: "staple: rebought as it runs out; occasional: now and then; one-off: once"
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: pantry
+
+  - name: delete-catalog-item
+    label: Delete item
+    description: Removes the selected item from the catalog. Only works once nothing references it — an item still on a list or in a batch is kept.
+    sql: DELETE FROM items WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: pantry
+
+  - name: merge-item
+    label: Merge duplicate
+    description: Folds a duplicate item into the selected one — its list lines and pantry batches move over, then the duplicate is deleted. The selected row is the one that survives.
+    sql: |-
+      UPDATE groceries SET item_id = :rowid WHERE item_id = :duplicate_id AND :duplicate_id <> :rowid;
+      UPDATE inventory SET item_id = :rowid WHERE item_id = :duplicate_id AND :duplicate_id <> :rowid;
+      DELETE FROM items WHERE id = :duplicate_id AND id <> :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: duplicate_id
+        type: integer
+        source: lookup
+        hint: the duplicate to absorb — its lines and batches move to this item, then it is deleted
+        lookup:
+          table: items
+          label_column: name
+          value_column: id
+          exclude_selection: true
+    attached_to: pantry
+
+  - name: add-to-list
+    label: Add to list
+    description: Puts the selected item back on the shopping list, with no quantity — set one from the list if it
+      matters. Does nothing while a pending line for it already exists; the on_list column shows which.
+    sql: |-
+      INSERT INTO groceries (item_id)
+      SELECT :rowid
+      WHERE NOT EXISTS (SELECT 1 FROM groceries WHERE item_id = :rowid AND bought_at IS NULL)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: pantry
+
+  # Not inline on purpose: the pantry add covers shopping done off the list — a few times a week at
+  # most — and its natural moment sets an expiry, so the dialog's date picker is the honest affordance.
+  - name: stock-item
+    label: Stock pantry
+    description: Puts a batch straight into the pantry — for something bought without going through the list —
+      creating the item in the catalog if needed.
+    sql: |-
+      INSERT INTO items (name)
+      SELECT TRIM(:item) WHERE NULLIF(TRIM(:item), '') IS NOT NULL
+      ON CONFLICT(name) DO NOTHING;
+      INSERT INTO inventory (item_id, quantity, unit, expires_at)
+      SELECT i.id, :quantity, NULLIF(TRIM(:unit), ''), :expires_at
+      FROM items i WHERE i.name = TRIM(:item)
+    params:
+      # Creatable picker over the catalog: value_column is the name itself, so picking and typing
+      # submit the same thing and the resolve-or-create SQL serves both.
+      - name: item
+        type: text
+        source: lookup
+        hint: pick from the catalog, or type a new name to create it
+        lookup:
+          table: item_options
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+        hint: e.g. g, cup, piece
+      - name: expires_at
+        type: date
+        source: prompt
+        optional: true
+        hint: empty for no expiry
+    attached_to: pantry
+
+  # Row-detail: clicking a pantry row opens that item's batches, each with its own expiry.
+  - name: item-batches
+    label: Batches
+    description: The selected item's pantry batches, one line per batch with its quantity and expiry date.
+    sql: |-
+      -- Every segment of the title is optional except the acquisition date, so each optional piece
+      -- carries its own trailing separator and the always-present "added" anchors the line: a batch
+      -- with no quantity, unit, or expiry still reads "added 2026-08-09" instead of NULL-ing blank.
+      SELECT inv.id AS rowid,
+             COALESCE((CASE WHEN inv.quantity = CAST(inv.quantity AS INTEGER)
+                            THEN CAST(CAST(inv.quantity AS INTEGER) AS TEXT)
+                            ELSE CAST(inv.quantity AS TEXT) END)
+                      || COALESCE(' ' || inv.unit, '') || ' — ', '')
+             || COALESCE('expires ' || inv.expires_at || ' — ', '')
+             || 'added ' || date(inv.acquired_at) AS line,
+             inv.quantity, inv.unit, inv.expires_at
+      FROM inventory inv
+      WHERE inv.item_id = :rowid
+      ORDER BY inv.expires_at IS NULL, inv.expires_at, inv.id
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: pantry
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+      slots:
+        edit: edit-batch
+        delete: delete-batch
+        row_actions:
+          - use-some
+
+  - name: edit-batch
+    label: Edit batch
+    description: Corrects the selected batch's quantity, unit, and expiry date.
+    sql: |-
+      UPDATE inventory SET quantity = :quantity, unit = :unit, expires_at = :expires_at,
+                           updated_at = CURRENT_TIMESTAMP
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+      - name: expires_at
+        type: date
+        source: prompt
+        optional: true
+        hint: empty for no expiry
+    attached_to: item-batches
+
+  - name: use-some
+    label: Used some
+    description: Takes an amount out of the selected batch; the batch is removed once it reaches zero. A batch with no recorded quantity is left alone.
+    sql: |-
+      UPDATE inventory SET quantity = quantity - :amount, updated_at = CURRENT_TIMESTAMP
+      WHERE id = :rowid;
+      DELETE FROM inventory WHERE id = :rowid AND quantity IS NOT NULL AND quantity <= 0
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: amount
+        type: float
+        source: prompt
+        hint: how much was used, in the batch's unit
+    attached_to: item-batches
+
+  - name: delete-batch
+    label: Toss batch
+    description: Removes the selected batch from the pantry — for stock thrown away rather than used.
+    sql: DELETE FROM inventory WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: item-batches
+
+  # Hidden: nothing reads bought rows, so running this only ever loses data. It stays available to
+  # an assistant on request, but is not a button.
+  - name: clear-purchase-history
+    label: Clear purchase history
+    description: Deletes every grocery line already marked bought, discarding the purchase history the pantry counts from.
+    hidden: true
+    sql: DELETE FROM groceries WHERE bought_at IS NOT NULL
+
+  # Not inline on purpose: a textarea in the bar would dwarf the cards, and dropping a list is a
+  # once-in-a-while act.
+  - name: drop-list
+    label: Drop a list
+    description: Saves a list as written — from a note, a message, a recipe — for the assistant to sort into the shopping list.
+    sql: |-
+      -- TRIM alone strips spaces only, and a textarea's "blank" is usually a newline: the explicit set
+      -- covers spaces, tabs and both line-break characters.
+      INSERT INTO inbox (text)
+      SELECT :text WHERE NULLIF(TRIM(:text, ' ' || char(9) || char(10) || char(13)), '') IS NOT NULL
+    params:
+      - name: text
+        type: text
+        source: prompt
+        multiline: true
+        hint: one item per line, as written — quantities and shops welcome
+    attached_to: inbox-cards
+
+  - name: mark-sorted
+    label: Mark sorted
+    description: Flips the selected entry between waiting and sorted — sorted once its lines are on the shopping list.
+    sql: |-
+      UPDATE inbox
+      SET sorted_at = CASE WHEN sorted_at IS NULL THEN CURRENT_TIMESTAMP ELSE NULL END
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: inbox-cards
+
+  - name: edit-dropped-list
+    label: Edit
+    description: Rewrites the selected entry's text.
+    sql: |-
+      UPDATE inbox SET text = :text
+      WHERE id = :rowid AND NULLIF(TRIM(:text, ' ' || char(9) || char(10) || char(13)), '') IS NOT NULL
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: text
+        type: text
+        source: prompt
+        multiline: true
+    attached_to: inbox-cards
+
+  - name: delete-dropped-list
+    label: Delete
+    description: Deletes the selected entry.
+    sql: DELETE FROM inbox WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: inbox-cards
+
+  # Row-detail: a long list is cut off in its card; opening it shows the whole text.
+  - name: dropped-list
+    label: Dropped list
+    description: One inbox entry in full — its text, when it was dropped, and when it was sorted.
+    sql: |-
+      SELECT x.text, x.created_at, x.sorted_at
+      FROM inbox x WHERE x.id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: inbox-cards
+
+  # Visible, unlike clear-purchase-history: a sorted entry carries no history anything else counts from,
+  # so clearing them loses nothing.
+  - name: clear-sorted
+    label: Clear sorted
+    description: Deletes inbox entries already sorted, on or before the given day — today if left empty, which clears every sorted one. Entries still waiting are never touched.
+    sql: |-
+      DELETE FROM inbox
+      WHERE sorted_at IS NOT NULL
+        AND date(sorted_at) <= COALESCE(:before, date('now'))
+    params:
+      - name: before
+        type: date
+        source: prompt
+        optional: true
+        hint: sorted on or before this day — empty means today, i.e. all of them
+
+  # Hidden: the assistant's answer to "what do we usually need?" — offered, never added unasked.
+  - name: restock-suggestions
+    label: Restock suggestions
+    description: Staples that are neither in stock nor on the list — the things that run out, most recently bought first, never-bought ones last.
+    hidden: true
+    sql: |-
+      SELECT i.id AS rowid, i.name, c.name AS category,
+             COALESCE(h.times_bought, 0) AS times_bought, date(h.last_bought) AS last_bought
+      FROM items i
+      LEFT JOIN categories c ON c.id = i.category_id
+      LEFT JOIN (SELECT item_id, COUNT(*) AS times_bought, MAX(bought_at) AS last_bought
+                 FROM groceries WHERE bought_at IS NOT NULL GROUP BY item_id) h ON h.item_id = i.id
+      WHERE i.habit = 'staple'
+        AND NOT EXISTS (SELECT 1 FROM inventory inv WHERE inv.item_id = i.id)
+        AND NOT EXISTS (SELECT 1 FROM groceries g WHERE g.item_id = i.id AND g.bought_at IS NULL)
+      ORDER BY h.last_bought IS NULL, h.last_bought DESC, i.name
+
+skills:
+  - name: shopping-orientation
+    description: How the item catalog (categories and habits), the per-batch pantry, the inbox, and the buy-then-stock workflow fit together.
+    body: |
+      This bdb tracks shopping (`groceries`), what is at home (`inventory`), and whole lists dropped as
+      written for sorting (`inbox`). Food and household supplies alike — cleaning products, toiletries,
+      batteries — belong here; anything bought for the home is an item.
+
+      **Item catalog.** `items` is the shared catalog behind `groceries` and `inventory` (strict foreign
+      keys). It is meant to stay small and reused. **To put something on the list, run `add-grocery`** —
+      it resolves the item by name and creates it only if missing, so it is the right call whether or not
+      the item exists yet. Before you do, **look for an existing name**
+      (`SELECT id, name FROM items WHERE name LIKE '%…%'`) and pass the spelling you find, preferring the
+      singular lowercase form — `tomato`, not `Tomatoes` or `2 tomatoes`. `add-grocery` takes `quantity`,
+      `unit`, `store`, `category` and `habit` of its own, so none of them ever belong in the item name. Its
+      `category` and `habit` file a new item (habit falls back to `staple`), re-file an existing one when
+      given, and leave an existing item alone when empty — so pass them only to set or change something.
+      `items.name` is `COLLATE NOCASE`, so `Milk` and `milk` are already one item — that guard catches case
+      alone, not `tomato` vs `tomatoes`, which is why the search comes first.
+
+      To stock the pantry without going through the list — something bought on a whim — run `stock-item`:
+      it resolves or creates the item by name the same way and inserts a batch, with an optional expiry.
+      The look-for-an-existing-name rule applies to its `item` param too. Raw inserts into `items` are
+      rarely needed after those two. Deleting an item still referenced by a grocery or a batch is blocked;
+      remove the referencing rows first.
+
+      **Categories** say what kind of thing an item is. `items.category_id` points at the `categories`
+      table, created on the fly: `add-grocery`, `edit-item` and `edit-catalog-item` take one `category`
+      field that picks from the existing catalog or creates what is typed. Reuse existing spellings
+      (lowercase, singular — `produce`, `cleaning`, `pharmacy`, not `Produce` or `vegetables`) rather than
+      inventing near-duplicates.
+
+      **Habits** say how an item is bought: `items.habit` is `staple` (rebought as it runs out — the default
+      for every new item), `occasional` (now and then), or `one-off` (once: a vacuum cleaner, a birthday
+      cake). Set it from `add-grocery`, `edit-item` or `edit-catalog-item`. **Both the shopping list and the
+      pantry open on staples**: their `habit` filter is a multi-select defaulting to `["staple"]`, so when
+      asked "what's on the list?" pass `habit: []` (an empty pick means no constraint) before answering
+      that a one-off is not there. Don't tag a durable one-off as `staple` just because it was bought once.
+
+      **Stores and units** stay free text on the grocery line. `add-grocery` binds a shop already on file
+      to the spelling it is written with, so case alone never splits the list; reuse existing spellings for
+      `unit` too.
+
+      **Inbox.** A member can drop a whole list as written — a note, a message, a recipe's ingredients —
+      with `drop-list`; it lands in `inbox` with `sorted_at` NULL. **Sorting an entry is your job**: read
+      its `text`, split it into lines, and for each line resolve the item against the catalog (the
+      look-for-an-existing-name rule), split out the quantity, unit and store, and run `add-grocery`. Skip
+      lines that are clearly not items (headings, blank lines). When a line is ambiguous — a quantity with
+      no unit, a name that could be two catalog items — ask rather than guess. Once every line is on the
+      list, run `mark-sorted` on the entry so it drops off the tab. Never parse an entry with SQL string
+      tricks: a reader in the loop is the whole point. Sorted entries accumulate out of sight;
+      `clear-sorted` deletes them up to a day (all of them when the day is left empty) and never touches
+      a waiting one.
+
+      **Pantry batches.** `inventory` holds one row per batch (per purchase), so batches keep their own
+      expiry dates. An item's total stock is `SUM(quantity)` across its batches, grouped by unit — the
+      `pantry` view's `in_stock` sums them regardless of unit, so treat it as a rough total and read the
+      batches for the real answer. Delete a batch when its quantity reaches 0 (`use-some` does that).
+
+      **The pantry view** is one row per catalog item, showing stock, how many lines are on the list, and
+      how often it has been bought; it hides items with nothing in stock until `show_all` is set, and its
+      `categories` filter takes any number of category ids. Restocking starts there: `add-to-list` puts the
+      row's item back on the shopping list with no quantity, and does nothing while a pending line for it
+      already exists — `on_list` shows which. The hidden `restock-suggestions` view lists staples that are
+      neither in stock nor on the list — read it when asked "what do we usually need?", and offer its rows
+      rather than adding them unasked. The pantry is also where duplicates get cleaned up: an item nothing
+      references any more can be deleted outright, and `merge-item` folds a duplicate into the row it is
+      run from — its lines and batches move over before the duplicate is deleted. Nothing prunes the
+      catalog automatically: an item bought once is history worth keeping, so removing one is always a
+      deliberate act.
+
+      **Buying.** "I bought it" is one action: `mark-bought`, the checklist's checkbox. It FLIPS
+      `bought_at` (set ↔ NULL; pending = `bought_at IS NULL`) **and stocks the pantry** with a batch
+      carrying the line's quantity and unit and no expiry. Just-bought rows linger checked in the list
+      for 10 minutes, and tapping again both un-buys the line and removes the batch the check made —
+      but only if that batch is untouched. Set an expiry on it, or use some of it, and the un-tap
+      leaves it alone rather than discarding the correction; the link is `groceries.stocked_batch_id`,
+      so it is always that exact batch and never a lookalike. Expiry dates are set afterwards from the
+      pantry's batch list, not at the till. `add-grocery` is the inline add. Bought rows stay as
+      purchase history — the pantry's `times_bought` and `last_bought` are counted from them, and
+      `clear-purchase-history` is the only thing that removes them. It is hidden for that reason; warn
+      plainly before running it.

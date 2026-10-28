@@ -1,0 +1,46 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-1-5);
+  padding: var(--space-12) var(--space-4);
+}
+
+.compact {
+  padding: var(--space-6) var(--space-4);
+}
+
+.iconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-tertiary);
+}
+
+.compact .iconWrap {
+  width: 32px;
+  height: 32px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.action {
+  margin-top: var(--space-2);
+}

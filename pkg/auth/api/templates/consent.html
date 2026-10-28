@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize - BaguetteDB</title>
+    {{template "auth-favicon"}}
+    {{template "auth-style"}}
+</head>
+<body>
+    <main class="card">
+        {{template "auth-brand"}}
+        <h1>Authorize {{if .ClientName}}{{.ClientName}}{{else}}this app{{end}}</h1>
+        <p class="subtitle">
+            {{if .ClientName}}{{.ClientName}}{{else}}An app{{end}} is asking to connect to your BaguetteDB account.
+        </p>
+        <form method="POST" action="">
+            <input type="hidden" name="challenge" value="{{.Challenge}}">
+            <ul class="scopes">
+                {{range .Scopes}}
+                <li class="scope-item">
+                    <input type="checkbox" name="grant_scope" value="{{.Name}}" id="scope-{{.Name}}" checked>
+                    <label for="scope-{{.Name}}" class="scope-label">{{.Label}}</label>
+                </li>
+                {{end}}
+            </ul>
+            <div class="actions">
+                <button type="submit" name="action" value="deny" class="btn btn-secondary">Cancel</button>
+                <button type="submit" name="action" value="allow" class="btn btn-primary">Authorize</button>
+            </div>
+        </form>
+    </main>
+    {{template "auth-footer"}}
+</body>
+</html>

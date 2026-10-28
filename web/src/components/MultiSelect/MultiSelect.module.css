@@ -1,0 +1,129 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Styled like the Combobox input so the closed control reads as a picker. */
+.trigger {
+  position: relative;
+  height: 36px;
+  padding: 0 var(--space-8) 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--color-text-secondary);
+}
+
+.trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}
+
+.triggerError {
+  border-color: var(--color-destructive);
+}
+
+/* Positioned at viewport coordinates by showAnchoredPopover; inset/margin/padding reset the
+   [popover] UA defaults. z-index only matters for the no-Popover-API fallback. */
+.panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: var(--space-1);
+  z-index: 10;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.header {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-1);
+}
+
+.headerAction {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.headerAction:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.search {
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.option:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.note {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.errorText {
+  font-size: var(--text-xs);
+  color: var(--color-destructive);
+}

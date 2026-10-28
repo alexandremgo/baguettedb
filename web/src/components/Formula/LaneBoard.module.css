@@ -1,0 +1,268 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.addBar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.board {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  /* When the columns do overflow, a scroll settles on a column edge instead of a half-clipped
+     card; proximity keeps free scrolling possible mid-drag. */
+  scroll-snap-type: x proximity;
+}
+
+.lane {
+  /* Columns share the row's width inside a fixed band, so the usual 3-4 column board fills the
+     viewport with no horizontal scroll at all; overflow (and the snap above) only appears when
+     they genuinely can't fit. */
+  flex: 1 1 260px;
+  min-width: 240px;
+  max-width: 340px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-well);
+  transition: box-shadow var(--duration-fast);
+}
+
+.laneOver {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.laneHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.laneHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) 0;
+  min-width: 0;
+}
+
+/* A lane's own "+" (a calendar day's add): small, quiet, revealed by the header's hover on a
+   pointer device and always visible on touch, where there is no hover. */
+.laneAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast), background var(--duration-fast);
+}
+
+.laneHeaderRow:hover .laneAdd,
+.laneAdd:focus-visible {
+  opacity: 1;
+}
+
+.laneAdd:hover {
+  background: var(--color-surface-active);
+  color: var(--color-text);
+}
+
+@media (hover: none) {
+  .laneAdd {
+    opacity: 1;
+  }
+}
+
+/* The highlighted lane — a calendar's today — carries a primary tint on its header text and a
+   hairline of primary at the top. */
+.laneHighlighted {
+  box-shadow: inset 0 2px 0 var(--color-primary);
+}
+
+.laneHighlighted .laneTitle {
+  color: var(--color-primary);
+}
+
+/* The stacked layout's collapse toggle: the whole header is the tap target. */
+.laneToggle {
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  align-items: center;
+  padding: var(--space-1);
+  /* A finger resting on the toggle must never start a text selection. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.laneChevron {
+  display: inline-flex;
+  color: var(--color-text-secondary);
+}
+
+.laneCollapsed .laneCards {
+  display: none;
+}
+
+.laneTitle {
+  font-weight: var(--font-medium, 500);
+  font-size: var(--text-sm);
+}
+
+.laneCount {
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-active);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.laneCards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Keeps an emptied column a real drop target instead of collapsing to its header. */
+  min-height: var(--space-8);
+}
+
+/* An empty column reads as a place to drop, not a dead box. */
+.laneCards:empty {
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  /* Touch keeps scrolling from a card (manipulation, not none) — the long-press sensor claims the
+     gesture only once its hold delay passes. The selection/callout suppressions stop iOS from
+     turning that hold into text selection or a context menu. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.cardDragging {
+  z-index: 10;
+  box-shadow: var(--shadow-lg);
+  opacity: 0.95;
+}
+
+.cardMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  padding-right: var(--space-8);
+  min-width: 0;
+  text-align: left;
+}
+
+button.cardMain {
+  cursor: pointer;
+}
+
+.cardTitle {
+  font-weight: var(--font-medium, 500);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.cardBody {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  /* Newlines in the body column render as lines: note bodies and group_concat'd child rows both
+     read as lists, Keep-style. */
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* A markdown body sizes to its content, capped in height; block layout replaces the plain
+   body's pre-line + line-clamp, which markdown handles itself. */
+.cardBodyMarkdown {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.cardMenu {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+}
+
+.empty {
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* The stacked layout — forced below the app's mobile breakpoint, chosen on wider screens: the lanes
+   go full-width and scroll vertically with the page, each collapsing from its header, so reaching
+   another lane is a scan down, never a horizontal scroll. */
+.boardStacked {
+  flex-direction: column;
+  align-items: stretch;
+  overflow-x: visible;
+  scroll-snap-type: none;
+  padding-bottom: 0;
+}
+
+.boardStacked .lane {
+  flex: none;
+  min-width: 0;
+  max-width: none;
+  scroll-snap-align: none;
+}
+
+.error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-destructive-subtle);
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}

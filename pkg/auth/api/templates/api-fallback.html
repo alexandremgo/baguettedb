@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BaguetteDB API</title>
+    {{template "auth-favicon"}}
+    {{template "auth-style"}}
+    <style>
+        .card { max-width: 480px; text-align: center; }
+        .description {
+            color: var(--color-text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        .mcp-section {
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            text-align: left;
+        }
+        .mcp-label {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        .mcp-url-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .mcp-url {
+            flex: 1;
+            font-family: "SF Mono", "Fira Code", Menlo, monospace;
+            font-size: 0.85rem;
+            color: var(--color-text);
+            background: var(--color-surface-secondary);
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            word-break: break-all;
+        }
+        .copy-btn {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--color-border-strong);
+            border-radius: var(--radius-md);
+            background: var(--color-surface);
+            color: var(--color-text);
+            font-size: 0.8rem;
+            font-family: inherit;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background-color 150ms ease;
+        }
+        .copy-btn:hover { background: var(--color-surface-hover); }
+        .copy-btn.copied {
+            background: var(--color-primary);
+            color: var(--color-text-on-primary);
+            border-color: var(--color-primary);
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        {{template "auth-brand"}}
+        <h1>BaguetteDB API</h1>
+        <p class="description">
+            A collaborative database platform. Create and share personal databases —
+            bdbs for short — and connect AI assistants via the MCP protocol.
+        </p>
+        <div class="mcp-section">
+            <div class="mcp-label">MCP Server URL</div>
+            <div class="mcp-url-row">
+                <code class="mcp-url" id="mcp-url">{{.MCPURL}}</code>
+                <button class="copy-btn" id="copy-btn" onclick="copyURL()">Copy</button>
+            </div>
+        </div>
+    </main>
+    <script>
+        function copyURL() {
+            var url = document.getElementById('mcp-url').textContent;
+            var btn = document.getElementById('copy-btn');
+            navigator.clipboard.writeText(url).then(function() {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(function() {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

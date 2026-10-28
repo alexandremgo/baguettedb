@@ -1,0 +1,665 @@
+# Recipes & meal plan — a recipe box kept as free text, and a week-at-a-time meal planner where a meal
+# can be one of those recipes or any dish typed on the spot, on a day or waiting in an unscheduled tray.
+key: recipes-meal-plan
+version: 1
+name: Recipes & meal plan
+description: Keep your recipes as you cook them and plan the week's meals on a calendar — a recipe or any dish per meal, batches served over several days, and the history of what you cooked.
+icon: "🍽️"
+tags:
+  - home
+  - food
+
+schema:
+  - |-
+    -- Recipes are self-contained: ingredients and preparation_steps are free text (pasted as written),
+    -- never linked to a catalog. source captures provenance (a name or a URL); yield is one forgiving
+    -- free-text field for portions and time. Tags are a JSON array of lowercase strings. name is
+    -- COLLATE NOCASE so a meal typed as "pumpkin soup" still links to "Pumpkin soup".
+    CREATE TABLE recipes (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE,
+        source TEXT,                                      -- e.g. "NYT Cooking", "a friend", or a URL
+        yield TEXT,                                       -- free-text, e.g. "4 servings (~45 min)"
+        ingredients TEXT,
+        preparation_steps TEXT,
+        tools TEXT,                                       -- free-text equipment list
+        tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags) AND json_type(tags) = 'array'),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  - |-
+    -- The moments of a day a meal can go in. Seeded with the usual four; a slot typed past the
+    -- suggestions in any meal dialog is appended, so "brunch" is typed once and offered from then on.
+    -- position is a real column, so the vocabulary can be reordered, and it orders a day's meals.
+    CREATE TABLE meal_slots (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        position INTEGER NOT NULL
+    )
+  - |-
+    -- One planned (or cooked) meal. Flexible by nullability: plan_date NULL is the unscheduled tray,
+    -- slot_id NULL is "some time that day", and the meal is either a recipe (recipe_id) or free text
+    -- (dish) — the CHECK keeps at least one. from_meal_id marks a serving of an earlier batch: it points
+    -- at the meal the batch was made on, so the cooking history counts the batch once, and the servings
+    -- go with their batch when it is deleted (nothing to come from any more).
+    CREATE TABLE meals (
+        id INTEGER PRIMARY KEY,
+        plan_date TEXT,
+        slot_id INTEGER REFERENCES meal_slots(id) ON DELETE SET NULL,
+        recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
+        dish TEXT,
+        notes TEXT,
+        from_meal_id INTEGER REFERENCES meals(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CHECK (recipe_id IS NOT NULL OR dish IS NOT NULL)
+    )
+  - CREATE INDEX idx_meals_plan_date ON meals(plan_date)
+  - CREATE INDEX idx_meals_recipe_id ON meals(recipe_id)
+  - CREATE INDEX idx_meals_from_meal_id ON meals(from_meal_id)
+  - |-
+    -- One-column lookup source so tag pickers offer the tags that actually exist.
+    CREATE VIEW tag_options AS SELECT DISTINCT value AS tag FROM recipes, json_each(recipes.tags)
+  - |-
+    -- Lookup source for slot pickers; the picker itself lists names alphabetically.
+    CREATE VIEW slot_options AS SELECT name, position FROM meal_slots ORDER BY position
+  - |-
+    -- Lookup source for the meal field: recipe names to pick from, anything else typed is a dish.
+    CREATE VIEW recipe_options AS SELECT name FROM recipes ORDER BY name
+
+seed:
+  - table: meal_slots
+    columns: [name, position]
+    rows:
+      - [breakfast, 1]
+      - [lunch, 2]
+      - [dinner, 3]
+      - [snack, 4]
+
+formulas:
+  # Views first: actions further down attach to their view by name. The two visible surfaces are the
+  # recipe cards and the meal-plan calendar; every other formula is dialog plumbing or assistant-only.
+  # Display slots are applied after all formulas exist, so slot refs resolve by name.
+  - name: recipe-cards
+    label: Recipes
+    description: The recipe box as cards — name, yield, tags, and ingredients at a glance, with when it was last cooked; filter by text or by tag.
+    sql: |-
+      SELECT r.id AS rowid, r.name,
+             -- Paragraph breaks (two newlines) between the segments, or markdown runs them together.
+             COALESCE(r.yield || char(10, 10), '')
+               || COALESCE((SELECT '#' || group_concat(value, ' #') FROM json_each(r.tags)) || char(10, 10), '')
+               || COALESCE('cooked ' || (SELECT COUNT(*) FROM meals m
+                                         WHERE m.recipe_id = r.id AND m.from_meal_id IS NULL
+                                           AND m.plan_date <= date('now', 'localtime'))
+                           || '×, last ' || (SELECT MAX(m.plan_date) FROM meals m
+                                             WHERE m.recipe_id = r.id AND m.from_meal_id IS NULL
+                                               AND m.plan_date <= date('now', 'localtime'))
+                           || char(10, 10), '')
+               || COALESCE(r.ingredients, '') AS body,
+             r.yield, r.ingredients, r.preparation_steps, r.source, r.tools,
+             -- The tags reshaped for the edit dialog's group seed, which wants {tag: …} objects;
+             -- storage stays the plain string array every query reads.
+             (SELECT json_group_array(json_object('tag', je.value)) FROM json_each(r.tags) je) AS tags,
+             r.notes
+      FROM recipes r
+      WHERE (:search IS NULL
+             OR r.name LIKE '%' || :search || '%'
+             OR COALESCE(r.ingredients, '') LIKE '%' || :search || '%'
+             OR COALESCE(r.source, '') LIKE '%' || :search || '%'
+             OR r.tags LIKE '%' || :search || '%')
+        AND (:tag IS NULL OR EXISTS (SELECT 1 FROM json_each(r.tags) WHERE value = :tag))
+      ORDER BY r.name
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name, ingredients, source, tags
+      - name: tag
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: tag_options
+          label_column: tag
+          value_column: tag
+    display:
+      mode: cards
+      columns:
+        - {column: name, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: add-recipe
+        edit: edit-recipe
+        delete: delete-recipe
+        detail: recipe-detail
+        row_actions:
+          # plan-it first: planning is the everyday act, logging a cook the quick afterthought.
+          - plan-recipe
+          - cooked-it
+
+  - name: meal-plan
+    label: Meal plan
+    description: The week's meals on a calendar — a recipe or a free-text dish per meal, with its slot and notes; meals without a date wait in the unscheduled tray.
+    sql: |-
+      SELECT m.id AS rowid,
+             COALESCE(r.name, m.dish) AS title,
+             -- slot — made <day> — notes, each part only when present; RTRIM drops a trailing separator.
+             NULLIF(RTRIM(COALESCE(s.name || ' — ', '')
+                          || CASE WHEN b.id IS NOT NULL
+                                  THEN 'made ' || COALESCE(b.plan_date, 'earlier') || ' — ' ELSE '' END
+                          || COALESCE(m.notes, ''), ' —'), '') AS body,
+             m.plan_date AS day,
+             -- Raw columns named after the edit dialog's params, so the form seeds from the row.
+             COALESCE(r.name, m.dish) AS meal, s.name AS slot, m.notes, b.plan_date AS made_on
+      FROM meals m
+      LEFT JOIN recipes r ON r.id = m.recipe_id
+      LEFT JOIN meal_slots s ON s.id = m.slot_id
+      LEFT JOIN meals b ON b.id = m.from_meal_id
+      -- A NULL day is the tray and must survive the window test; an omitted bound (NULL) means no bound.
+      WHERE m.plan_date IS NULL
+         OR ((:window_start IS NULL OR m.plan_date >= :window_start)
+             AND (:window_end IS NULL OR m.plan_date <= :window_end))
+      -- Within a day: slot order, unslotted meals last, then insertion order.
+      ORDER BY m.plan_date, s.position IS NULL, s.position, m.id
+    params:
+      - name: window_start
+        type: date
+        source: window
+      - name: window_end
+        type: date
+        source: window
+    display:
+      mode: calendar
+      columns:
+        - {column: title, role: title}
+        - {column: body, role: body}
+        - {column: day, role: day}
+      slots:
+        add: add-meal
+        move: move-meal
+        edit: edit-meal
+        delete: delete-meal
+        detail: meal-detail
+        row_actions:
+          - serve-again
+          - unplan-meal
+
+  # ---- Recipes: the cards' slots and row actions ----
+
+  - name: recipe-detail
+    label: Recipe
+    description: One recipe's full record, with how often and when it was last cooked.
+    sql: |-
+      SELECT r.name, r.source, r.yield, r.ingredients, r.preparation_steps, r.tools, r.tags, r.notes,
+             (SELECT COUNT(*) FROM meals m WHERE m.recipe_id = r.id AND m.from_meal_id IS NULL
+                AND m.plan_date <= date('now', 'localtime')) AS times_cooked,
+             (SELECT MAX(m.plan_date) FROM meals m WHERE m.recipe_id = r.id AND m.from_meal_id IS NULL
+                AND m.plan_date <= date('now', 'localtime')) AS last_cooked
+      FROM recipes r WHERE r.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: ingredients, format: markdown}
+        - {column: preparation_steps, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: recipe-cards
+
+  - name: add-recipe
+    label: Add recipe
+    description: Adds a recipe with its free-text ingredients, steps, tools, notes, and tags one per row.
+    sql: |-
+      INSERT INTO recipes (name, yield, ingredients, preparation_steps, source, tools, tags, notes)
+      VALUES (TRIM(:name), :yield, :ingredients, :preparation_steps, :source, :tools,
+              -- Recomposes the stored string array from the group's {tag: …} rows, dropping blank
+              -- rows and trimming the rest; no rows (or an omitted group) store '[]'.
+              (SELECT json_group_array(TRIM(json_extract(je.value, '$.tag')))
+               FROM json_each(:tags) je
+               WHERE TRIM(COALESCE(json_extract(je.value, '$.tag'), '')) <> ''),
+              :notes)
+    params:
+      - name: name
+        type: text
+        source: prompt
+        inline: true
+      - name: yield
+        type: text
+        source: prompt
+        optional: true
+        hint: portions and time, e.g. 4 servings (~45 min)
+      - name: ingredients
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: preparation_steps
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: source
+        type: text
+        source: prompt
+        optional: true
+        hint: where it came from — a name or a link
+      - name: tools
+        type: text
+        source: prompt
+        optional: true
+        hint: equipment, free text — e.g. blender, cast-iron pan
+      - name: tags
+        type: group
+        source: prompt
+        optional: true
+        hint: one row per tag
+        # Creatable picker per row: existing tags surface as suggestions (the reuse the skill asks
+        # for), typing past them still creates freely.
+        fields:
+          - name: tag
+            type: text
+            source: lookup
+            optional: true
+            lookup:
+              table: tag_options
+              label_column: tag
+              value_column: tag
+              allow_new: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+    attached_to: recipe-cards
+
+  - name: edit-recipe
+    label: Edit recipe
+    description: Rewrites the selected recipe whole — name, yield, markdown ingredients and steps, source, tools, tags, and notes; tags not passed back are removed.
+    sql: |-
+      UPDATE recipes SET name = TRIM(:name), yield = :yield, ingredients = :ingredients,
+                         preparation_steps = :preparation_steps, source = :source, tools = :tools,
+                         tags = (SELECT json_group_array(TRIM(json_extract(je.value, '$.tag')))
+                                 FROM json_each(:tags) je
+                                 WHERE TRIM(COALESCE(json_extract(je.value, '$.tag'), '')) <> ''),
+                         notes = :notes
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: yield
+        type: text
+        source: prompt
+        optional: true
+        hint: portions and time, e.g. 4 servings (~45 min)
+      - name: ingredients
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: preparation_steps
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: source
+        type: text
+        source: prompt
+        optional: true
+        hint: where it came from — a name or a link
+      - name: tools
+        type: text
+        source: prompt
+        optional: true
+        hint: equipment, free text — e.g. blender, cast-iron pan
+      - name: tags
+        type: group
+        source: prompt
+        optional: true
+        hint: one row per tag
+        fields:
+          - name: tag
+            type: text
+            source: lookup
+            optional: true
+            lookup:
+              table: tag_options
+              label_column: tag
+              value_column: tag
+              allow_new: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+    attached_to: recipe-cards
+
+  - name: delete-recipe
+    label: Delete recipe
+    description: Deletes the selected recipe; meals that used it keep its name as their dish, so the plan and the cooking history still say what was cooked.
+    sql: |-
+      UPDATE meals SET dish = (SELECT name FROM recipes WHERE id = :rowid)
+      WHERE recipe_id = :rowid AND dish IS NULL;
+      DELETE FROM recipes WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: recipe-cards
+
+  - name: plan-recipe
+    label: Plan it
+    description: Puts the selected recipe on the meal plan — on a day and slot, or with no day to queue it in the unscheduled tray. A slot typed past the suggestions is created.
+    sql: |-
+      INSERT INTO meal_slots (name, position)
+      SELECT TRIM(:slot), COALESCE((SELECT MAX(position) FROM meal_slots), 0) + 1
+      WHERE TRIM(COALESCE(:slot, '')) <> ''
+        AND NOT EXISTS (SELECT 1 FROM meal_slots WHERE name = TRIM(:slot));
+      INSERT INTO meals (plan_date, slot_id, recipe_id, notes)
+      VALUES (:day, (SELECT id FROM meal_slots WHERE name = TRIM(:slot)), :rowid, NULLIF(TRIM(:notes), ''))
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: day
+        type: date
+        source: prompt
+        optional: true
+        hint: empty queues it unscheduled
+      - name: slot
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: slot_options
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: recipe-cards
+
+  - name: cooked-it
+    label: Cooked it today
+    description: Logs the selected recipe as today's meal, no slot — the quick way to keep the cooking history honest.
+    sql: INSERT INTO meals (plan_date, recipe_id) VALUES (date('now', 'localtime'), :rowid)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: recipe-cards
+
+  # ---- Meal plan: the calendar's slots and row actions ----
+
+  - name: add-meal
+    label: Plan a meal
+    description: "Plans a meal: pick a recipe or type any dish, on a day and slot or with no day to queue it. A slot typed past the suggestions is created."
+    sql: |-
+      INSERT INTO meal_slots (name, position)
+      SELECT TRIM(:slot), COALESCE((SELECT MAX(position) FROM meal_slots), 0) + 1
+      WHERE TRIM(COALESCE(:slot, '')) <> ''
+        AND NOT EXISTS (SELECT 1 FROM meal_slots WHERE name = TRIM(:slot));
+      -- The meal field links a recipe when its text matches a recipe name (COLLATE NOCASE on the
+      -- column), otherwise the text is the dish.
+      INSERT INTO meals (plan_date, slot_id, recipe_id, dish, notes)
+      VALUES (:day,
+              (SELECT id FROM meal_slots WHERE name = TRIM(:slot)),
+              (SELECT id FROM recipes WHERE name = TRIM(:meal) ORDER BY id LIMIT 1),
+              CASE WHEN EXISTS (SELECT 1 FROM recipes WHERE name = TRIM(:meal)) THEN NULL ELSE TRIM(:meal) END,
+              NULLIF(TRIM(:notes), ''))
+    params:
+      # The meal is the inline field: the calendar's quick-add bar takes a recipe or any dish; the day
+      # (seeded by a day's own "+"), slot, and notes are reached through the dialog.
+      - name: meal
+        type: text
+        source: lookup
+        inline: true
+        hint: a recipe, or any dish
+        lookup:
+          table: recipe_options
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: day
+        type: date
+        source: prompt
+        optional: true
+        hint: empty queues it unscheduled
+      - name: slot
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: slot_options
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: meal-plan
+
+  - name: edit-meal
+    label: Edit meal
+    description: Rewrites the selected meal — recipe or dish, day, slot, notes; an emptied day sends it back to the tray. A serving keeps pointing at the batch it came from.
+    sql: |-
+      INSERT INTO meal_slots (name, position)
+      SELECT TRIM(:slot), COALESCE((SELECT MAX(position) FROM meal_slots), 0) + 1
+      WHERE TRIM(COALESCE(:slot, '')) <> ''
+        AND NOT EXISTS (SELECT 1 FROM meal_slots WHERE name = TRIM(:slot));
+      UPDATE meals
+      SET plan_date = :day,
+          slot_id = (SELECT id FROM meal_slots WHERE name = TRIM(:slot)),
+          recipe_id = (SELECT id FROM recipes WHERE name = TRIM(:meal) ORDER BY id LIMIT 1),
+          dish = CASE WHEN EXISTS (SELECT 1 FROM recipes WHERE name = TRIM(:meal)) THEN NULL ELSE TRIM(:meal) END,
+          notes = NULLIF(TRIM(:notes), '')
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: meal
+        type: text
+        source: lookup
+        hint: a recipe, or any dish
+        lookup:
+          table: recipe_options
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: day
+        type: date
+        source: prompt
+        optional: true
+        hint: empty sends it to the tray
+      - name: slot
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: slot_options
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+    attached_to: meal-plan
+
+  - name: move-meal
+    label: Move to day
+    description: Moves the selected meal to another day; its slot follows it.
+    sql: UPDATE meals SET plan_date = :day WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      # The calendar's drop target: a bare date the destination day binds to.
+      - name: day
+        type: date
+        source: prompt
+    attached_to: meal-plan
+
+  - name: serve-again
+    label: Serve again
+    description: "Plans more servings of the selected meal's batch, one per day listed: same recipe or dish, linked to the meal it was made on, so they count as eaten rather than cooked; keeps the slot unless another is picked."
+    sql: |-
+      INSERT INTO meal_slots (name, position)
+      SELECT TRIM(:slot), COALESCE((SELECT MAX(position) FROM meal_slots), 0) + 1
+      WHERE TRIM(COALESCE(:slot, '')) <> ''
+        AND NOT EXISTS (SELECT 1 FROM meal_slots WHERE name = TRIM(:slot));
+      -- One serving per day row; a serving of a serving still points at the original batch. No notes
+      -- are carried over — a batch's note ("friends over") is about the batch, not its leftovers.
+      INSERT INTO meals (plan_date, slot_id, recipe_id, dish, from_meal_id)
+      SELECT json_extract(je.value, '$.day'),
+             COALESCE((SELECT id FROM meal_slots WHERE name = TRIM(:slot)), m.slot_id),
+             m.recipe_id, m.dish, COALESCE(m.from_meal_id, m.id)
+      FROM meals m, json_each(:days) je
+      WHERE m.id = :rowid AND TRIM(COALESCE(json_extract(je.value, '$.day'), '')) <> ''
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: days
+        type: group
+        source: prompt
+        hint: one row per day it is eaten again
+        fields:
+          - name: day
+            type: date
+            source: prompt
+      - name: slot
+        type: text
+        source: lookup
+        optional: true
+        hint: empty keeps the meal's slot
+        lookup:
+          table: slot_options
+          label_column: name
+          value_column: name
+          allow_new: true
+    attached_to: meal-plan
+
+  - name: unplan-meal
+    label: Unschedule
+    description: Takes the selected meal off its day and back into the unscheduled tray, keeping its slot and notes.
+    sql: UPDATE meals SET plan_date = NULL WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: meal-plan
+
+  - name: delete-meal
+    label: Delete meal
+    description: Deletes the selected meal from the plan; the servings planned from its batch go with it.
+    sql: DELETE FROM meals WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: meal-plan
+
+  - name: meal-detail
+    label: Meal
+    description: One meal with, when it links a recipe, that recipe's ingredients and steps.
+    sql: |-
+      SELECT COALESCE(r.name, m.dish) AS meal, s.name AS slot, m.plan_date AS day, b.plan_date AS made_on,
+             m.notes, r.yield, r.ingredients, r.preparation_steps, r.tools, r.tags, r.source
+      FROM meals m
+      LEFT JOIN recipes r ON r.id = m.recipe_id
+      LEFT JOIN meal_slots s ON s.id = m.slot_id
+      LEFT JOIN meals b ON b.id = m.from_meal_id
+      WHERE m.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: ingredients, format: markdown}
+        - {column: preparation_steps, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: meal-plan
+
+  # ---- Assistant-only: the slot vocabulary ----
+
+  - name: reorder-slots
+    label: Reorder slots
+    description: Renumbers the meal slots from a JSON array of slot names in their new order; slots not named keep their relative order after the named ones.
+    hidden: true
+    sql: |-
+      UPDATE meal_slots
+      SET position = COALESCE((SELECT je.key + 1 FROM json_each(:names) je
+                               WHERE je.value = meal_slots.name COLLATE NOCASE),
+                              position + (SELECT COUNT(*) FROM json_each(:names)))
+    params:
+      - name: names
+        type: text
+        source: prompt
+        hint: JSON array of slot names, first to last
+
+  - name: rename-slot
+    label: Rename slot
+    description: Renames a meal slot; every meal in it follows.
+    hidden: true
+    sql: UPDATE meal_slots SET name = TRIM(:new_name) WHERE name = :slot
+    params:
+      - name: slot
+        type: text
+        source: lookup
+        lookup:
+          table: slot_options
+          label_column: name
+          value_column: name
+      - name: new_name
+        type: text
+        source: prompt
+
+skills:
+  - name: recipes-orientation
+    description: How the recipe box, the meal model and its nulls, the slot vocabulary, batches and servings, and the cross-bdb shopping-list workflow fit together.
+    body: |
+      This bdb keeps a recipe box (`recipes`) and a meal plan (`meals`) laid out on a calendar, a week at
+      a time. Recipes are self-contained free text; meals are flexible by what they leave empty.
+
+      **Recipes.** `ingredients` / `preparation_steps` are free text pasted as written — never link them
+      to another bdb's catalog. `tags` is a JSON array of lowercase strings (query with `json_each`);
+      reuse the tags already on file (`tag_options`) rather than inventing near-duplicates. `add-recipe`
+      and `edit-recipe` take tags as one row per tag. To answer "can I make this?", read the recipe
+      text against the pantry of a shopping bdb, if the user has one, and say what is missing.
+
+      **Meals.** One row per meal. `plan_date` NULL means the meal waits in the unscheduled tray (an
+      "up next" queue); `slot_id` NULL means some time that day; the meal is either a recipe
+      (`recipe_id`, joined at read time, so renaming the recipe renames the meal) or a free-text `dish`
+      — never both, never neither. `add-meal` and `edit-meal` take one `meal` field: text matching a
+      recipe name links the recipe, anything else becomes the dish. `plan-recipe` plans a recipe from
+      the box, `cooked-it` logs a recipe as today's meal without planning it first, `unplan-meal` sends
+      a meal back to the tray, and a drag between days runs `move-meal`. Deleting a recipe keeps its
+      name as the `dish` of the meals that used it.
+
+      **Slots** are the moments of a day (`meal_slots`: breakfast, lunch, dinner, snack out of the box).
+      Every `slot` field picks from them or creates what is typed — reuse before creating, and prefer
+      the existing spelling; a new slot lands last. `reorder-slots` takes a JSON array of names in
+      their new order (`["breakfast","brunch","lunch","dinner","snack"]`); `rename-slot` renames one
+      and every meal in it follows. A day's meals list in slot order, unslotted ones last.
+
+      **Batches and servings.** A meal cooked once and eaten over several days is one meal plus
+      servings: `serve-again` takes a meal and a list of days (`days: [{"day": "2026-09-09"},
+      {"day": "2026-09-10"}]`) and plans one serving per day, each pointing at the batch through
+      `from_meal_id`. The cooking history — the cards' "cooked N×, last …", `recipe-detail`'s
+      `times_cooked` / `last_cooked` — counts meals with `from_meal_id IS NULL` and a date up to
+      today, so a batch counts once. Deleting a batch deletes its servings with it.
+
+      **Shopping list from the plan.** When asked what to buy for the week, run `meal-plan` with the
+      week's `window_start` / `window_end`, read the planned recipes' `ingredients`, and collect what
+      the pantry lacks. Adding to the list is the shopping bdb's job: call its `add-grocery` with its
+      catalog's spellings, one line per item. Never write into another bdb's tables directly.

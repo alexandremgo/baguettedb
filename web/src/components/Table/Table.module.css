@@ -1,0 +1,61 @@
+.wrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  font-size: var(--text-sm);
+}
+
+.th {
+  /* Inert unless the wrapper is height-capped into its own scroll container — then the header
+     stays pinned while rows scroll under it. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--color-surface);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.tr:last-child .td {
+  border-bottom: none;
+}
+
+.tr:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.right {
+  text-align: right;
+}
+
+.fit {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.empty {
+  padding: var(--space-8) var(--space-3);
+  text-align: center;
+  color: var(--color-text-tertiary);
+}

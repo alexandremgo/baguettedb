@@ -1,0 +1,26 @@
+# Build context of Dockerfile.dev. Keeps local state, secrets, editor files and host build output out of the image
+# layers; the source is mounted over /src at runtime.
+.git
+.github
+.claude
+.vscode
+.zed
+bin
+tmp
+local-data
+local-secrets
+.env
+.mcp.json
+/auth
+/bdbs
+/databases
+/mcp-gateway
+/monolith
+/mcp-reference
+web/node_modules
+web/dist
+web/dev-dist
+web/.env.development
+web/public/config.json
+pkg/webui/dist
+docs/

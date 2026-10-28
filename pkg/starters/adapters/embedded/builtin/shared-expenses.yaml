@@ -1,0 +1,1242 @@
+# Shared expenses — Tricount-style cost splitting. Facts are stored (who paid, who owes);
+# balances are always derived, never a column. Members are rows, so nothing hardcodes a person.
+key: shared-expenses
+version: 1
+name: Shared expenses
+description: Split costs with your group — expenses with payers and shares, balances derived on demand, settlements, and recurring bills.
+icon: "💶"
+tags:
+  - money
+  - group
+
+schema:
+  - |-
+    -- The people sharing costs. Rows, not columns — adding a member is one INSERT, and every
+    -- split / balance query pivots over this table. is_active = 0 means "no longer splitting new
+    -- expenses"; keep the row so their history and balance stay intact.
+    CREATE TABLE members (
+        id         INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL,
+        is_active  INTEGER NOT NULL DEFAULT 1
+    )
+  - |-
+    -- Options source for the equal-split set, so a member who stopped splitting is simply not
+    -- offered rather than picked and then dropped. Only the equal-split picker reads this — naming
+    -- someone explicitly (a payer, a custom share, a settlement) still goes against members.
+    CREATE VIEW splitting_members AS
+        SELECT id, name FROM members WHERE is_active = 1
+  - |-
+    -- Optional grouping for expenses (Groceries, Rent, Dining…). default_split is free text
+    -- (e.g. 'equal') — a hint for the agent, not an enforced rule.
+    CREATE TABLE categories (
+        id             INTEGER PRIMARY KEY,
+        name           TEXT NOT NULL,
+        default_split  TEXT
+    )
+  - |-
+    -- One spending event. Holds only the what / when / how-much — never who paid or who owes
+    -- (those live in expense_payers / expense_shares). All amounts across the tracker share one
+    -- implicit currency of the household's choosing; a purchase made in another one is converted
+    -- before entry.
+    CREATE TABLE expenses (
+        id           INTEGER PRIMARY KEY,
+        description  TEXT NOT NULL,
+        date         TEXT NOT NULL,                       -- ISO 'YYYY-MM-DD'
+        category_id  INTEGER REFERENCES categories(id),
+        total_amount REAL NOT NULL,
+        recurring_id INTEGER REFERENCES recurring_expenses(id),  -- set when materialized from a recurring bill
+        created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - CREATE INDEX idx_expenses_date ON expenses(date)
+  - |-
+    -- Who fronted the money. SUM(amount_paid) per expense = total_amount. Usually one row
+    -- (whoever paid), but supports a split payment.
+    CREATE TABLE expense_payers (
+        id          INTEGER PRIMARY KEY,
+        expense_id  INTEGER NOT NULL REFERENCES expenses(id),
+        member_id   INTEGER NOT NULL REFERENCES members(id),
+        amount_paid REAL NOT NULL
+    )
+  - CREATE INDEX idx_payers_expense ON expense_payers(expense_id)
+  - |-
+    -- Who owes. SUM(share_amount) per expense = total_amount. One row per member with a stake
+    -- — a solo item is just that member's larger share.
+    CREATE TABLE expense_shares (
+        id           INTEGER PRIMARY KEY,
+        expense_id   INTEGER NOT NULL REFERENCES expenses(id),
+        member_id    INTEGER NOT NULL REFERENCES members(id),
+        share_amount REAL NOT NULL
+    )
+  - CREATE INDEX idx_shares_expense ON expense_shares(expense_id)
+  - |-
+    -- Real money moving to square up — NOT a shared cost. from_member pays to_member. Kept
+    -- separate from expenses so balances stay correct: a repayment clears a debt, it is not a
+    -- new expense.
+    CREATE TABLE settlements (
+        id           INTEGER PRIMARY KEY,
+        date         TEXT NOT NULL,
+        from_member  INTEGER NOT NULL REFERENCES members(id),
+        to_member    INTEGER NOT NULL REFERENCES members(id),
+        amount       REAL NOT NULL,
+        note         TEXT
+    )
+  - |-
+    -- Templates for repeating costs (rent, utilities). Pull-based: nothing auto-generates —
+    -- occurrences are materialized on demand (see the whats-due view + apply-recurring action).
+    CREATE TABLE recurring_expenses (
+        id           INTEGER PRIMARY KEY,
+        description  TEXT NOT NULL,
+        category_id  INTEGER REFERENCES categories(id),
+        total_amount REAL NOT NULL,
+        frequency    TEXT NOT NULL,                       -- 'daily' | 'weekly' | 'monthly' | 'yearly'
+        interval_n   INTEGER NOT NULL DEFAULT 1,          -- every N periods
+        start_date   TEXT NOT NULL,
+        end_date     TEXT,                                -- nullable = open-ended
+        next_due     TEXT NOT NULL,                       -- advanced each time an occurrence is generated
+        is_active    INTEGER NOT NULL DEFAULT 1
+    )
+  - CREATE INDEX idx_recurring_due ON recurring_expenses(next_due)
+  - |-
+    -- Payer templates for a recurring expense — copied into expense_payers when an occurrence
+    -- is generated.
+    CREATE TABLE recurring_payers (
+        id           INTEGER PRIMARY KEY,
+        recurring_id INTEGER NOT NULL REFERENCES recurring_expenses(id),
+        member_id    INTEGER NOT NULL REFERENCES members(id),
+        amount_paid  REAL NOT NULL
+    )
+  - CREATE INDEX idx_rec_payers_rec ON recurring_payers(recurring_id)
+  - |-
+    -- Share templates for a recurring expense — copied into expense_shares when an occurrence
+    -- is generated.
+    CREATE TABLE recurring_shares (
+        id           INTEGER PRIMARY KEY,
+        recurring_id INTEGER NOT NULL REFERENCES recurring_expenses(id),
+        member_id    INTEGER NOT NULL REFERENCES members(id),
+        share_amount REAL NOT NULL
+    )
+  - CREATE INDEX idx_rec_shares_rec ON recurring_shares(recurring_id)
+
+formulas:
+  # Views first: attached formulas further down resolve their parents by name.
+  - name: expenses-list
+    label: Expenses
+    description: All expenses newest first with who-paid and who-owes as JSON; click one for its breakdown.
+    # paid_by / owed_by are name-keyed for readable display. payers / shares repeat the same data
+    # id-keyed ({member, amount} arrays) and are hidden from the grid — they only seed the edit
+    # dialog's payer/share group rows (which bind member ids), so opening the pencil pre-fills them.
+    # category is the name, not the id: it reads in the grid and seeds the edit dialog's creatable
+    # category field.
+    sql: |-
+      SELECT e.id AS rowid, e.date, e.description, e.total_amount,
+             (SELECT c.name FROM categories c WHERE c.id = e.category_id) AS category,
+             (SELECT json_group_object(m.name, ep.amount_paid)
+                FROM expense_payers ep JOIN members m ON m.id = ep.member_id
+               WHERE ep.expense_id = e.id) AS paid_by,
+             (SELECT json_group_object(m.name, es.share_amount)
+                FROM expense_shares es JOIN members m ON m.id = es.member_id
+               WHERE es.expense_id = e.id) AS owed_by,
+             (SELECT json_group_array(json_object('member', ep.member_id, 'amount', ep.amount_paid))
+                FROM expense_payers ep WHERE ep.expense_id = e.id) AS payers,
+             (SELECT json_group_array(json_object('member', es.member_id, 'amount', es.share_amount))
+                FROM expense_shares es WHERE es.expense_id = e.id) AS shares
+      FROM expenses e
+      WHERE (:query IS NULL OR TRIM(:query) = ''
+             OR e.description LIKE '%' || :query || '%'
+             OR EXISTS (SELECT 1 FROM categories c
+                        WHERE c.id = e.category_id AND c.name LIKE '%' || :query || '%'))
+        -- Same period scoping as the members view: empty = everything, month alone = current year.
+        AND ((:month IS NULL AND :year IS NULL)
+             OR ((:month IS NULL OR CAST(strftime('%m', e.date) AS INTEGER) = :month)
+                 AND CAST(strftime('%Y', e.date) AS INTEGER)
+                     = COALESCE(:year, CAST(strftime('%Y', 'now') AS INTEGER))))
+        AND (
+          (SELECT date FROM expenses WHERE id = :cursor) IS NULL
+          OR e.date <  (SELECT date FROM expenses WHERE id = :cursor)
+          OR (e.date = (SELECT date FROM expenses WHERE id = :cursor) AND e.id < :cursor)
+        )
+      ORDER BY e.date DESC, e.id DESC
+      LIMIT :limit
+    params:
+      - name: query
+        type: text
+        source: prompt
+        optional: true
+        hint: search by description or category
+      - name: month
+        type: integer
+        source: prompt
+        optional: true
+        options:
+          - { value: 1, label: January }
+          - { value: 2, label: February }
+          - { value: 3, label: March }
+          - { value: 4, label: April }
+          - { value: 5, label: May }
+          - { value: 6, label: June }
+          - { value: 7, label: July }
+          - { value: 8, label: August }
+          - { value: 9, label: September }
+          - { value: 10, label: October }
+          - { value: 11, label: November }
+          - { value: 12, label: December }
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+        hint: defaults to the current year when a month is set
+      - name: cursor
+        type: integer
+        source: pagination
+      - name: limit
+        type: integer
+        source: pagination
+    display:
+      mode: table
+      columns:
+        - column: payers
+          hidden: true
+        - column: shares
+          hidden: true
+      slots:
+        add: add-expense
+        edit: edit-expense
+        delete: delete-expense
+        detail: expense-detail
+
+  # The greedy settle-up plan: a recursive CTE carries every member's remaining balance as one JSON
+  # object (id → amount) and, per step, pairs the largest debtor with the largest creditor for
+  # min(debt, credit) — at most one transfer fewer than there are unsettled members. Each row's
+  # rowid is the paying member, and to_member / amount ride along raw so the attached settle-up
+  # opens pre-filled with exactly the suggested transfer. Empty view = everyone is square. The
+  # 0.005 epsilons stop the recursion at half-a-cent so rounding drift can't spin it forever, with
+  # a step ceiling as the hard backstop.
+  - name: balances
+    label: Balances
+    description: The shortest way to get everyone square — one suggested payback per row, largest debts first; run Settle up on a row to record exactly that transfer.
+    sql: |-
+      -- bal: each member's net balance — what they paid or paid back, minus what they consumed or received.
+      WITH RECURSIVE bal(id, b) AS (
+        SELECT m.id, ROUND(
+              COALESCE((SELECT SUM(ep.amount_paid) FROM expense_payers ep WHERE ep.member_id = m.id), 0)
+            - COALESCE((SELECT SUM(es.share_amount) FROM expense_shares es WHERE es.member_id = m.id), 0)
+            - COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.to_member = m.id), 0)
+            + COALESCE((SELECT SUM(s.amount) FROM settlements s WHERE s.from_member = m.id), 0), 2)
+        FROM members m
+      ),
+      -- plan: the greedy loop. j is the loop state — every remaining balance as one JSON object
+      -- (member id → amount) — and each recursion step emits one transfer and writes the state back.
+      plan(step, debtor, creditor, amt, j) AS (
+        -- Step 0 only seeds the state; it carries no transfer.
+        SELECT 0, NULL, NULL, NULL,
+               (SELECT json_group_object(CAST(id AS TEXT), b) FROM bal)
+        UNION ALL
+        SELECT step + 1,
+               -- debtor: the most negative balance; creditor: the most positive. Smaller id breaks ties.
+               (SELECT CAST(je.key AS INTEGER) FROM json_each(j) je
+                ORDER BY je.value, CAST(je.key AS INTEGER) LIMIT 1),
+               (SELECT CAST(je.key AS INTEGER) FROM json_each(j) je
+                ORDER BY je.value DESC, CAST(je.key AS INTEGER) LIMIT 1),
+               -- amt: the debtor pays as much as this creditor can absorb — min(debt, credit).
+               ROUND(MIN(-(SELECT MIN(je.value) FROM json_each(j) je),
+                          (SELECT MAX(je.value) FROM json_each(j) je)), 2),
+               -- Writes both adjusted balances back: debtor moves up by amt, creditor down by amt.
+               json_set(j,
+                 '$."' || (SELECT je.key FROM json_each(j) je
+                           ORDER BY je.value, CAST(je.key AS INTEGER) LIMIT 1) || '"',
+                 ROUND((SELECT MIN(je.value) FROM json_each(j) je)
+                     + MIN(-(SELECT MIN(je.value) FROM json_each(j) je),
+                            (SELECT MAX(je.value) FROM json_each(j) je)), 2),
+                 '$."' || (SELECT je.key FROM json_each(j) je
+                           ORDER BY je.value DESC, CAST(je.key AS INTEGER) LIMIT 1) || '"',
+                 ROUND((SELECT MAX(je.value) FROM json_each(j) je)
+                     - MIN(-(SELECT MIN(je.value) FROM json_each(j) je),
+                            (SELECT MAX(je.value) FROM json_each(j) je)), 2))
+        FROM plan
+        -- Recurses only while someone still owes AND someone is still owed more than half a cent
+        -- (rounding drift can leave one side short); the step cap is the hard backstop.
+        WHERE step < 100
+          AND (SELECT MAX(je.value) FROM json_each(j) je) > 0.005
+          AND (SELECT MIN(je.value) FROM json_each(j) je) < -0.005
+      )
+      -- One row per emitted step: the payer as rowid, the readable line, and the settle-up seeds.
+      SELECT p.debtor AS rowid,
+             (SELECT name FROM members WHERE id = p.debtor) || ' pays '
+               || (SELECT name FROM members WHERE id = p.creditor)
+               || ' · ' || printf('%.2f', p.amt) AS transfer,
+             p.amt AS amount, p.creditor AS to_member
+      FROM plan p
+      WHERE p.step > 0 AND p.amt > 0.005
+      ORDER BY p.step
+    display:
+      mode: table
+      columns:
+        - column: to_member
+          hidden: true
+      slots:
+        row_actions:
+          - record-settlement
+
+  - name: members
+    label: Members
+    description: Each member's balance, derived from expenses and settlements — positive means they are owed money, and status says whether they still split new expenses (those who don't are sorted last). All-time by default; set month and/or year to scope one period (month alone uses the current year). Click a member for their settlements.
+    sql: |-
+      SELECT m.id AS rowid, m.name,
+        ROUND(
+            COALESCE((SELECT SUM(ep.amount_paid) FROM expense_payers ep
+                       JOIN expenses e ON e.id = ep.expense_id
+                      WHERE ep.member_id = m.id
+                        AND ((:month IS NULL AND :year IS NULL)
+                             OR ((:month IS NULL OR CAST(strftime('%m', e.date) AS INTEGER) = :month)
+                                 AND CAST(strftime('%Y', e.date) AS INTEGER)
+                                     = COALESCE(:year, CAST(strftime('%Y', 'now') AS INTEGER))))), 0)
+          - COALESCE((SELECT SUM(es.share_amount) FROM expense_shares es
+                       JOIN expenses e ON e.id = es.expense_id
+                      WHERE es.member_id = m.id
+                        AND ((:month IS NULL AND :year IS NULL)
+                             OR ((:month IS NULL OR CAST(strftime('%m', e.date) AS INTEGER) = :month)
+                                 AND CAST(strftime('%Y', e.date) AS INTEGER)
+                                     = COALESCE(:year, CAST(strftime('%Y', 'now') AS INTEGER))))), 0)
+          - COALESCE((SELECT SUM(s.amount) FROM settlements s
+                      WHERE s.to_member = m.id
+                        AND ((:month IS NULL AND :year IS NULL)
+                             OR ((:month IS NULL OR CAST(strftime('%m', s.date) AS INTEGER) = :month)
+                                 AND CAST(strftime('%Y', s.date) AS INTEGER)
+                                     = COALESCE(:year, CAST(strftime('%Y', 'now') AS INTEGER))))), 0)
+          + COALESCE((SELECT SUM(s.amount) FROM settlements s
+                      WHERE s.from_member = m.id
+                        AND ((:month IS NULL AND :year IS NULL)
+                             OR ((:month IS NULL OR CAST(strftime('%m', s.date) AS INTEGER) = :month)
+                                 AND CAST(strftime('%Y', s.date) AS INTEGER)
+                                     = COALESCE(:year, CAST(strftime('%Y', 'now') AS INTEGER))))), 0)
+        , 2) AS balance,
+        CASE WHEN m.is_active = 1 THEN 'splitting' ELSE 'not splitting' END AS status
+      FROM members m
+      ORDER BY m.is_active DESC, balance DESC
+    params:
+      - name: month
+        type: integer
+        source: prompt
+        optional: true
+        options:
+          - { value: 1, label: January }
+          - { value: 2, label: February }
+          - { value: 3, label: March }
+          - { value: 4, label: April }
+          - { value: 5, label: May }
+          - { value: 6, label: June }
+          - { value: 7, label: July }
+          - { value: 8, label: August }
+          - { value: 9, label: September }
+          - { value: 10, label: October }
+          - { value: 11, label: November }
+          - { value: 12, label: December }
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+        hint: defaults to the current year when a month is set
+    display:
+      mode: table
+      slots:
+        add: add-member
+        detail: member-settlements
+        row_actions:
+          - toggle-member-splitting
+
+  - name: expenses-for-period
+    label: Expenses for period
+    hidden: true
+    description: Expenses in one period with who-paid and who-owes as JSON; month optional, year defaults to the current one.
+    sql: |-
+      SELECT e.id AS rowid, e.date, e.description, e.total_amount,
+             (SELECT c.name FROM categories c WHERE c.id = e.category_id) AS category,
+             (SELECT json_group_object(m.name, ep.amount_paid)
+                FROM expense_payers ep JOIN members m ON m.id = ep.member_id
+               WHERE ep.expense_id = e.id) AS paid_by,
+             (SELECT json_group_object(m.name, es.share_amount)
+                FROM expense_shares es JOIN members m ON m.id = es.member_id
+               WHERE es.expense_id = e.id) AS owed_by
+      FROM expenses e
+      WHERE (:month IS NULL OR CAST(strftime('%m', e.date) AS INTEGER) = :month)
+        AND CAST(strftime('%Y', e.date) AS INTEGER)
+            = COALESCE(:year, CAST(strftime('%Y', 'now') AS INTEGER))
+      ORDER BY e.date DESC, e.id DESC
+    params:
+      - name: month
+        type: integer
+        source: prompt
+        optional: true
+        hint: 1-12 — all months when empty
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+        hint: defaults to the current year when a month is set
+
+  - name: whats-due
+    label: What's due
+    hidden: true
+    description: Active recurring bills due today or earlier, ready to be applied.
+    sql: |-
+      SELECT r.id AS rowid, r.description, r.total_amount, r.frequency, r.interval_n,
+             r.next_due
+      FROM recurring_expenses r
+      WHERE r.is_active = 1
+        AND r.next_due <= date('now')
+        AND (r.end_date IS NULL OR r.next_due <= r.end_date)
+      ORDER BY r.next_due
+
+  - name: recurring
+    label: Recurring bills
+    description: All active recurring bills with their cadence, next due date, and payer/share templates as JSON — apply a due one from its row menu.
+    # cadence / paid_by / owed_by are the readable display; the trailing raw columns (frequency,
+    # interval_n, end_date, category, id-keyed payers / shares) are hidden from the grid and only
+    # seed the edit dialog, so opening the pencil pre-fills what is stored.
+    sql: |-
+      SELECT r.id AS rowid, r.description,
+             CASE WHEN r.interval_n = 1 THEN r.frequency
+                  ELSE r.interval_n || '× ' || r.frequency END AS cadence,
+             r.total_amount, r.next_due,
+             CASE WHEN r.next_due <= date('now') THEN 1 ELSE 0 END AS due,
+             (SELECT json_group_object(m.name, rp.amount_paid)
+                FROM recurring_payers rp JOIN members m ON m.id = rp.member_id
+               WHERE rp.recurring_id = r.id) AS paid_by,
+             (SELECT json_group_object(m.name, rs.share_amount)
+                FROM recurring_shares rs JOIN members m ON m.id = rs.member_id
+               WHERE rs.recurring_id = r.id) AS owed_by,
+             (SELECT c.name FROM categories c WHERE c.id = r.category_id) AS category,
+             r.frequency, r.interval_n, r.end_date,
+             (SELECT json_group_array(json_object('member', rp.member_id, 'amount', rp.amount_paid))
+                FROM recurring_payers rp WHERE rp.recurring_id = r.id) AS payers,
+             (SELECT json_group_array(json_object('member', rs.member_id, 'amount', rs.share_amount))
+                FROM recurring_shares rs WHERE rs.recurring_id = r.id) AS shares
+      FROM recurring_expenses r
+      WHERE r.is_active = 1
+      ORDER BY r.next_due
+    display:
+      mode: table
+      columns:
+        - column: frequency
+          hidden: true
+        - column: interval_n
+          hidden: true
+        - column: end_date
+          hidden: true
+        - column: payers
+          hidden: true
+        - column: shares
+          hidden: true
+      slots:
+        add: add-recurring
+        edit: edit-recurring
+        row_actions:
+          - apply-recurring
+          - stop-recurring
+
+  - name: add-recurring
+    label: Add recurring bill
+    description: Creates a recurring bill template with explicit payer and share rows (each summing to the total); apply it from its row to generate expenses. The category is picked or typed — a new name creates it.
+    sql: |-
+      INSERT INTO categories (name)
+      SELECT TRIM(:category)
+      WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM categories WHERE name = TRIM(:category) COLLATE NOCASE);
+
+      INSERT INTO recurring_expenses
+             (description, category_id, total_amount, frequency, interval_n,
+              start_date, end_date, next_due)
+      VALUES (:description,
+              (SELECT c.id FROM categories c WHERE c.name = TRIM(:category) COLLATE NOCASE
+               ORDER BY c.name = TRIM(:category) DESC, c.id LIMIT 1),
+              ROUND(:total_amount, 2),
+              :frequency, :interval_n, :start_date, :end_date,
+              COALESCE(:next_due, :start_date));
+
+      INSERT INTO recurring_payers (recurring_id, member_id, amount_paid)
+      SELECT (SELECT MAX(id) FROM recurring_expenses), json_extract(je.value, '$.member'),
+             ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:payers) je;
+
+      INSERT INTO recurring_shares (recurring_id, member_id, share_amount)
+      SELECT (SELECT MAX(id) FROM recurring_expenses), json_extract(je.value, '$.member'),
+             ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:shares) je
+    params:
+      - name: description
+        type: text
+        source: prompt
+      - name: total_amount
+        type: float
+        source: prompt
+      - name: frequency
+        type: text
+        source: prompt
+        options: [daily, weekly, monthly, yearly]
+      - name: start_date
+        type: date
+        source: prompt
+      - name: next_due
+        type: date
+        source: prompt
+        optional: true
+        hint: defaults to the start date
+      - name: interval_n
+        type: integer
+        source: prompt
+        optional: true
+        default: "1"
+        hint: every N periods
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: pick one, or type a new name to create it
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: end_date
+        type: date
+        source: prompt
+        optional: true
+        hint: open-ended when empty
+      - name: payers
+        type: group
+        source: prompt
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+      - name: shares
+        type: group
+        source: prompt
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+    attached_to: recurring
+
+  # Same both-or-nothing contract as edit-expense, applied to the templates: a one-sided payers or
+  # shares fill would break the sums-to-total invariant, so it changes no amounts. The template
+  # rewrite is a parent UPDATE plus DELETE + INSERT, so this action derives verb `delete` and needs
+  # the any-verb edit slot.
+  - name: edit-recurring
+    label: Edit bill
+    description: Edits the selected recurring bill — description, cadence, due and end dates, and category always (a typed category name creates it, an emptied field clears it); the payer/share templates are replaced only when both are filled (the total then derives from the payers).
+    sql: |-
+      INSERT INTO categories (name)
+      SELECT TRIM(:category)
+      WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM categories WHERE name = TRIM(:category) COLLATE NOCASE);
+
+      UPDATE recurring_expenses
+      SET description  = COALESCE(NULLIF(TRIM(:description), ''), description),
+          frequency    = COALESCE(:frequency, frequency),
+          interval_n   = COALESCE(:interval_n, interval_n),
+          next_due     = COALESCE(:next_due, next_due),
+          -- An emptied end date clears it: the bill goes back to open-ended.
+          end_date     = :end_date,
+          category_id  = (SELECT c.id FROM categories c WHERE c.name = TRIM(:category) COLLATE NOCASE
+                          ORDER BY c.name = TRIM(:category) DESC, c.id LIMIT 1),
+          total_amount = CASE WHEN json_array_length(:payers) > 0 AND json_array_length(:shares) > 0
+                              THEN ROUND((SELECT SUM(json_extract(je.value, '$.amount')) FROM json_each(:payers) je), 2)
+                              ELSE total_amount END
+      WHERE id = :rowid;
+
+      DELETE FROM recurring_payers
+      WHERE recurring_id = :rowid AND json_array_length(:payers) > 0 AND json_array_length(:shares) > 0;
+
+      DELETE FROM recurring_shares
+      WHERE recurring_id = :rowid AND json_array_length(:payers) > 0 AND json_array_length(:shares) > 0;
+
+      INSERT INTO recurring_payers (recurring_id, member_id, amount_paid)
+      SELECT :rowid, json_extract(je.value, '$.member'), ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:payers) je
+      WHERE json_array_length(:shares) > 0;
+
+      INSERT INTO recurring_shares (recurring_id, member_id, share_amount)
+      SELECT :rowid, json_extract(je.value, '$.member'), ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:shares) je
+      WHERE json_array_length(:payers) > 0
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: description
+        type: text
+        source: prompt
+      - name: frequency
+        type: text
+        source: prompt
+        optional: true
+        options: [daily, weekly, monthly, yearly]
+        hint: unchanged if empty
+      - name: interval_n
+        type: integer
+        source: prompt
+        optional: true
+        hint: every N periods — unchanged if empty
+      - name: next_due
+        type: date
+        source: prompt
+        optional: true
+        hint: unchanged if empty
+      - name: end_date
+        type: date
+        source: prompt
+        optional: true
+        hint: empty means open-ended
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: pick one or type a new name — empty clears it
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: payers
+        type: group
+        source: prompt
+        optional: true
+        hint: the template is replaced only when shares is filled too; empty keeps the amounts
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+      - name: shares
+        type: group
+        source: prompt
+        optional: true
+        hint: filled together with payers — each member's share of the total
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+    attached_to: recurring
+
+  - name: stop-recurring
+    label: Stop bill
+    description: Deactivates the selected recurring bill — it leaves the list and is never applied again; already materialized expenses stay.
+    sql: UPDATE recurring_expenses SET is_active = 0 WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: recurring
+
+  - name: toggle-member-splitting
+    label: Toggle splitting
+    description: Flips whether the selected member splits new expenses. Someone not splitting keeps their whole history and their balance stays owed or owing — they are only left out of new equal splits. Their row stays in the Members tab, sorted last, showing status 'not splitting'.
+    sql: UPDATE members SET is_active = 1 - is_active WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: members
+
+  - name: add-member
+    label: Add member
+    description: Adds a person to the expense tracker.
+    sql: |-
+      INSERT INTO members (name) VALUES (NULLIF(TRIM(:name), ''))
+    params:
+      - name: name
+        type: text
+        source: prompt
+    attached_to: members
+
+  # One entry point for spending, two-faced on the custom-split toggle. The inline bar covers the
+  # everyday equal split — one payer fronted the whole amount, split equally among the share_among
+  # members (a multi-select over the members still splitting, all of them by default), the
+  # leftover cent(s) going to the payer when checked, else the first checked member, so shares
+  # still sum to the total. The dialog's custom-split toggle swaps the faces: paid_by and
+  # share_among count only while it is off, the explicit payer/share rows only while it is on — so
+  # a half-filled custom is rejected up front instead of falling back. The SQL keeps the
+  # both-or-nothing guard as backstop for values written past the forms, and :amount stays the
+  # canonical total either way, so each group must sum to it.
+  - name: add-expense
+    label: Add expense
+    description: Adds an expense; split equally among the share_among members by default (everyone unless narrowed; paid_by fronts it), or by the explicit payer and share rows when custom split is ticked — both groups required then, paid_by not. Date defaults to today; a typed category name creates it.
+    sql: |-
+      -- Resolves the category case-insensitively so a typed name never forks the list on case alone
+      -- (categories.name is neither UNIQUE nor NOCASE); a genuinely new name is created as typed.
+      INSERT INTO categories (name)
+      SELECT TRIM(:category)
+      WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM categories WHERE name = TRIM(:category) COLLATE NOCASE);
+
+      INSERT INTO expenses (description, date, category_id, total_amount)
+      VALUES (:description, COALESCE(:date, date('now')),
+              -- Exact spelling first, then any case twin a pre-existing list may carry — one row always.
+              (SELECT c.id FROM categories c WHERE c.name = TRIM(:category) COLLATE NOCASE
+               ORDER BY c.name = TRIM(:category) DESC, c.id LIMIT 1),
+              ROUND(:amount, 2));
+
+      -- Custom split: the explicit rows, only when the tick is set and both groups are filled.
+      INSERT INTO expense_payers (expense_id, member_id, amount_paid)
+      SELECT (SELECT MAX(id) FROM expenses), json_extract(je.value, '$.member'),
+             ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:payers) je
+      WHERE :custom_split = 1 AND json_array_length(:shares) > 0;
+
+      INSERT INTO expense_shares (expense_id, member_id, share_amount)
+      SELECT (SELECT MAX(id) FROM expenses), json_extract(je.value, '$.member'),
+             ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:shares) je
+      WHERE :custom_split = 1 AND json_array_length(:payers) > 0;
+
+      -- Equal split, whenever the custom rows don't apply.
+      INSERT INTO expense_payers (expense_id, member_id, amount_paid)
+      SELECT (SELECT MAX(id) FROM expenses), :paid_by, ROUND(:amount, 2)
+      WHERE :custom_split IS NOT 1 OR json_array_length(:payers) = 0 OR json_array_length(:shares) = 0;
+
+      -- The split set is exactly the checked share_among members — every id given gets a share, so
+      -- the shares always sum to the total. Nothing is filtered out here on purpose: who is offered
+      -- and who the "everyone" default covers is splitting_members' job, and dropping a row at this
+      -- point would silently under-insert instead. An id naming nobody is rejected by the
+      -- expense_shares -> members foreign key rather than vanishing. The leftover cent(s) go to the
+      -- payer when checked, else to the first checked entry.
+      WITH picked(id, pos) AS (
+          SELECT je.value, je.key FROM json_each(:share_among) je
+      ), b(base, n) AS (
+          SELECT ROUND(:amount, 2), (SELECT COUNT(*) FROM picked)
+      )
+      INSERT INTO expense_shares (expense_id, member_id, share_amount)
+      SELECT (SELECT MAX(id) FROM expenses), p.id,
+             CASE WHEN p.id = COALESCE((SELECT k.id FROM picked k WHERE k.id = :paid_by),
+                                       (SELECT k2.id FROM picked k2 ORDER BY k2.pos LIMIT 1))
+                  THEN ROUND(b.base - ROUND(b.base / b.n, 2) * (b.n - 1), 2)
+                  ELSE ROUND(b.base / b.n, 2) END
+      FROM picked p, b
+      WHERE :custom_split IS NOT 1 OR json_array_length(:payers) = 0 OR json_array_length(:shares) = 0
+    params:
+      # The inline bar is the everyday entry — "Dinner 45.50 Alice" — with all three required
+      # fields marked, so the form can submit; the rest stays behind the "⋯" dialog.
+      - name: description
+        type: text
+        source: prompt
+        inline: true
+      - name: amount
+        type: float
+        source: prompt
+        inline: true
+      - name: paid_by
+        type: integer
+        source: lookup
+        inline: true
+        when: {param: custom_split, value: "false"}
+        hint: fronts the whole amount, split equally among the share-among members
+        lookup:
+          table: members
+          label_column: name
+          value_column: id
+      - name: share_among
+        type: integer
+        source: lookup
+        multiple: true
+        default: all
+        when: {param: custom_split, value: "false"}
+        hint: who splits it — everyone still splitting, by default
+        lookup:
+          table: splitting_members
+          label_column: name
+          value_column: id
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: pick one, or type a new name to create it
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: date
+        type: date
+        source: prompt
+        optional: true
+        hint: defaults to today
+      - name: custom_split
+        type: boolean
+        source: prompt
+        optional: true
+        hint: tick for uneven shares, a subset, or several payers
+      - name: payers
+        type: group
+        source: prompt
+        when: {param: custom_split, value: "true"}
+        hint: who fronted money — the amounts must sum to the total
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+      - name: shares
+        type: group
+        source: prompt
+        when: {param: custom_split, value: "true"}
+        hint: who owes — the amounts must sum to the total
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+    attached_to: expenses-list
+
+  # Full edit in the pencil: description / date / category always; the payer and share rows are
+  # replaced only when BOTH groups come in non-empty — the dialog seeds them from the row, and a
+  # one-sided fill would break the payers-sum = shares-sum invariant, so it changes nothing. When
+  # they are given the total derives from the payers' sum. The child rewrite is a parent UPDATE
+  # plus DELETE + INSERT, so this action derives verb `delete` and needs the any-verb edit slot.
+  - name: edit-expense
+    label: Edit expense
+    description: Edits the selected expense — description, date and category always (a typed category name creates it, an emptied field clears it); the split is replaced only when both payers and shares are filled (the total then derives from the payers).
+    sql: |-
+      INSERT INTO categories (name)
+      SELECT TRIM(:category)
+      WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM categories WHERE name = TRIM(:category) COLLATE NOCASE);
+
+      UPDATE expenses
+      SET description  = COALESCE(NULLIF(TRIM(:description), ''), description),
+          date         = COALESCE(:date, date),
+          -- An emptied field clears the category: the subquery resolves nothing and NULL lands.
+          category_id  = (SELECT c.id FROM categories c WHERE c.name = TRIM(:category) COLLATE NOCASE
+                          ORDER BY c.name = TRIM(:category) DESC, c.id LIMIT 1),
+          total_amount = CASE WHEN json_array_length(:payers) > 0 AND json_array_length(:shares) > 0
+                              THEN ROUND((SELECT SUM(json_extract(je.value, '$.amount')) FROM json_each(:payers) je), 2)
+                              ELSE total_amount END
+      WHERE id = :rowid;
+
+      DELETE FROM expense_payers
+      WHERE expense_id = :rowid AND json_array_length(:payers) > 0 AND json_array_length(:shares) > 0;
+
+      DELETE FROM expense_shares
+      WHERE expense_id = :rowid AND json_array_length(:payers) > 0 AND json_array_length(:shares) > 0;
+
+      INSERT INTO expense_payers (expense_id, member_id, amount_paid)
+      SELECT :rowid, json_extract(je.value, '$.member'), ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:payers) je
+      WHERE json_array_length(:shares) > 0;
+
+      INSERT INTO expense_shares (expense_id, member_id, share_amount)
+      SELECT :rowid, json_extract(je.value, '$.member'), ROUND(json_extract(je.value, '$.amount'), 2)
+      FROM json_each(:shares) je
+      WHERE json_array_length(:payers) > 0
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: description
+        type: text
+        source: prompt
+      - name: date
+        type: date
+        source: prompt
+        optional: true
+        hint: unchanged if empty
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        hint: pick one or type a new name — empty clears it
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+      - name: payers
+        type: group
+        source: prompt
+        optional: true
+        hint: the split is replaced only when shares is filled too; empty keeps the amounts
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+      - name: shares
+        type: group
+        source: prompt
+        optional: true
+        hint: filled together with payers — each member's share of the total
+        fields:
+          - name: member
+            type: integer
+            source: lookup
+            lookup:
+              table: members
+              label_column: name
+              value_column: id
+          - name: amount
+            type: float
+            source: prompt
+    attached_to: expenses-list
+
+  - name: delete-expense
+    label: Delete expense
+    description: Deletes the selected expense along with its payer and share rows, so no orphans are left behind.
+    sql: |-
+      DELETE FROM expense_payers WHERE expense_id = :rowid;
+      DELETE FROM expense_shares WHERE expense_id = :rowid;
+      DELETE FROM expenses WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: expenses-list
+
+  # Runs from a suggested transfer's row on Balances: the row's rowid is the paying member, and its
+  # to_member / amount columns pre-fill the dialog with exactly that suggestion — only the receiver
+  # is picked, never the payer themselves.
+  - name: record-settlement
+    label: Settle up
+    description: Logs a payback from the selected member to another — the only correct way to reduce a debt; date defaults to today.
+    sql: |-
+      INSERT INTO settlements (date, from_member, to_member, amount, note)
+      VALUES (COALESCE(:date, date('now')), :rowid, :to_member, ROUND(:amount, 2), :note)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: to_member
+        type: integer
+        source: lookup
+        hint: who gets paid back
+        lookup:
+          table: members
+          label_column: name
+          value_column: id
+          exclude_selection: true
+      - name: amount
+        type: float
+        source: prompt
+      - name: date
+        type: date
+        source: prompt
+        optional: true
+        hint: defaults to today
+      - name: note
+        type: text
+        source: prompt
+        optional: true
+    attached_to: balances
+
+  - name: apply-recurring
+    label: Apply now
+    description: Materializes the selected bill — inserts the expense with its payers and shares at the given date (defaults to today), then advances the next due date.
+    sql: |-
+      INSERT INTO expenses (description, date, category_id, total_amount, recurring_id)
+      SELECT description, COALESCE(:date, date('now')), category_id, total_amount, id
+      FROM recurring_expenses WHERE id = :rowid;
+
+      INSERT INTO expense_payers (expense_id, member_id, amount_paid)
+      SELECT (SELECT MAX(id) FROM expenses), member_id, amount_paid
+      FROM recurring_payers WHERE recurring_id = :rowid;
+
+      INSERT INTO expense_shares (expense_id, member_id, share_amount)
+      SELECT (SELECT MAX(id) FROM expenses), member_id, share_amount
+      FROM recurring_shares WHERE recurring_id = :rowid;
+
+      UPDATE recurring_expenses
+      SET next_due = CASE frequency
+          WHEN 'daily'   THEN date(next_due, '+' || interval_n || ' days')
+          WHEN 'weekly'  THEN date(next_due, '+' || (interval_n * 7) || ' days')
+          WHEN 'monthly' THEN date(next_due, '+' || interval_n || ' months')
+          WHEN 'yearly'  THEN date(next_due, '+' || interval_n || ' years')
+          -- The action's options pin frequency, but agents write the column directly too: a foreign
+          -- value freezes the date (the bill stays visibly due) instead of NULLing a NOT NULL column.
+          ELSE next_due
+      END
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: date
+        type: date
+        source: prompt
+        optional: true
+        hint: defaults to today
+    attached_to: recurring
+
+  # Bulk twin of apply-recurring: one run materializes every bill due at the given date. The
+  # payers/shares copies find the fresh expenses through recurring_id, guarded by NOT EXISTS so
+  # previously applied occurrences are untouched.
+  - name: apply-all-due
+    label: Apply due bills
+    description: Turns every recurring bill due at the given date (defaults to today) into a real expense — with its payers and shares — and advances its next due date.
+    sql: |-
+      INSERT INTO expenses (description, date, category_id, total_amount, recurring_id)
+      SELECT description, COALESCE(:date, date('now')), category_id, total_amount, id
+      FROM recurring_expenses
+      WHERE is_active = 1 AND next_due <= COALESCE(:date, date('now'))
+        AND (end_date IS NULL OR next_due <= end_date);
+
+      INSERT INTO expense_payers (expense_id, member_id, amount_paid)
+      SELECT e.id, rp.member_id, rp.amount_paid
+      FROM expenses e JOIN recurring_payers rp ON rp.recurring_id = e.recurring_id
+      WHERE NOT EXISTS (SELECT 1 FROM expense_payers ep WHERE ep.expense_id = e.id);
+
+      INSERT INTO expense_shares (expense_id, member_id, share_amount)
+      SELECT e.id, rs.member_id, rs.share_amount
+      FROM expenses e JOIN recurring_shares rs ON rs.recurring_id = e.recurring_id
+      WHERE NOT EXISTS (SELECT 1 FROM expense_shares es WHERE es.expense_id = e.id);
+
+      UPDATE recurring_expenses
+      SET next_due = CASE frequency
+          WHEN 'daily'   THEN date(next_due, '+' || interval_n || ' days')
+          WHEN 'weekly'  THEN date(next_due, '+' || (interval_n * 7) || ' days')
+          WHEN 'monthly' THEN date(next_due, '+' || interval_n || ' months')
+          WHEN 'yearly'  THEN date(next_due, '+' || interval_n || ' years')
+          -- Same freeze-not-NULL guard as apply-recurring; here it also keeps one foreign frequency
+          -- from aborting the whole batch.
+          ELSE next_due
+      END
+      WHERE is_active = 1 AND next_due <= COALESCE(:date, date('now'))
+        AND (end_date IS NULL OR next_due <= end_date)
+    params:
+      - name: date
+        type: date
+        source: prompt
+        optional: true
+        hint: defaults to today
+
+  # Row-detail: clicking a member on Members lists their settlements, newest first, both
+  # directions phrased from their side — the one place a mistyped payback is seen and deleted.
+  # Settlements only, deliberately: rows from a second table would need the single rowid channel
+  # the delete menu keys off, and would crowd the rare settlements out of view. The expense story
+  # behind a balance lives on the Expenses tab (search + per-expense breakdown). Checklist mode
+  # because an interactive detail renders as one.
+  - name: member-settlements
+    label: Settlements
+    description: The selected member's settlements, newest first — paybacks they sent and received; a mistyped one is deleted from its row.
+    sql: |-
+      SELECT s.id AS rowid,
+             s.date || ' · Paid back ' || m.name || ' · ' || printf('%.2f', s.amount)
+               || COALESCE(' — ' || s.note, '') AS line,
+             s.date, 'sent' AS direction, m.name AS counterparty, ROUND(s.amount, 2) AS amount, s.note
+      FROM settlements s
+      JOIN members m ON m.id = s.to_member
+      WHERE s.from_member = :rowid
+      UNION ALL
+      SELECT s.id AS rowid,
+             s.date || ' · Paid back by ' || m.name || ' · ' || printf('%.2f', s.amount)
+               || COALESCE(' — ' || s.note, '') AS line,
+             s.date, 'received' AS direction, m.name AS counterparty, ROUND(s.amount, 2) AS amount, s.note
+      FROM settlements s
+      JOIN members m ON m.id = s.from_member
+      WHERE s.to_member = :rowid
+      ORDER BY date DESC, rowid DESC
+      LIMIT 100
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+      slots:
+        delete: delete-settlement
+    attached_to: members
+
+  - name: delete-settlement
+    label: Delete settlement
+    description: Removes the selected settlement — for a mistyped payback; balances re-derive on the next read.
+    sql: DELETE FROM settlements WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: member-settlements
+
+  # Row-detail: clicking an expense in the browse list shows its payers and shares as rows.
+  - name: expense-detail
+    label: Breakdown
+    description: Who paid and who owes for the selected expense, as rows.
+    sql: |-
+      SELECT 'paid' AS role, m.name, ROUND(ep.amount_paid, 2) AS amount
+      FROM expense_payers ep JOIN members m ON m.id = ep.member_id
+      WHERE ep.expense_id = :rowid
+      UNION ALL
+      SELECT 'owes' AS role, m.name, ROUND(es.share_amount, 2) AS amount
+      FROM expense_shares es JOIN members m ON m.id = es.member_id
+      WHERE es.expense_id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: expenses-list
+
+skills:
+  - name: shared-expenses-orientation
+    description: The money rules, sum-to-total invariants, payers-vs-shares model, and the add-expense and settle-up flows.
+    body: |
+      This bdb splits costs between the people in `members`. Facts are stored; **balances are always
+      derived** (net per member on the `members` view, the who-pays-whom plan on `balances`) — never
+      write a balance anywhere.
+
+      ## Money rules
+
+      Every amount in the tracker shares **one household currency**. No column stores it — this
+      skill does:
+
+      > Currency: not set yet
+
+      When the user first reveals it (says it outright, or types amounts with a symbol), replace
+      that line with the actual currency via `update_skill` — one edit, and every assistant
+      sharing this bdb picks it up. A purchase made in another currency is converted into the
+      household currency before entry (note the original amount in the description if it
+      matters). Amounts are REAL, 2 decimals: `ROUND(x, 2)` every money value you compute; a
+      balance is settled when `ROUND(balance, 2) = 0`.
+
+      ## One expense, two independent axes
+
+      `expense_payers` records who fronted the cash; `expense_shares` records who ultimately owes. Each
+      must sum to `total_amount` — the DB doesn't enforce it, so verify with a SELECT after writing.
+      A solo item inside a shared basket raises that member's *share*; it never splits the purchase into
+      two expenses. Worked example: a 32.18 basket, 8.52 of it only for Bob; Alice paid 25, Bob 7.18
+      → one expense, `owed_by` Bob 20.35 / Alice 11.83, `paid_by` Alice 25.00 / Bob 7.18 — Bob owes Alice
+      13.17. When splitting evenly, round each share to 2 decimals and give the leftover cent(s) to one
+      member so shares still sum to the total (34.39 two ways → 17.20 + 17.19).
+
+      ## Adding an expense
+
+      Everything goes through `add-expense`, two-faced on `custom_split`. The common case — one
+      payer, equal split — is the Expenses tab's always-visible quick-add bar (it rounds each share
+      and gives the leftover cent(s) to the payer): `paid_by` is required on this face. The split
+      set is `share_among`, a multi-select over members defaulting to everyone — omit it for the
+      usual all-hands split, or pass an array of member ids (e.g. `[1, 3]`) to split among a
+      subset (the picker offers only the members still splitting, but an id you pass explicitly is
+      always honoured — see "Members who stop splitting"), and when the payer isn't in the
+      set the leftover cent(s) go to the first listed member instead. Any uneven split is the same
+      action's **custom split**: in the app, the "⋯" dialog's custom-split tick swaps the fields;
+      over MCP, set `custom_split: true` and pass the `payers` and `shares` group params (arrays of
+      `{member, amount}` objects) — **both required then, `paid_by` and `share_among` not** (a
+      half-filled custom is rejected up front). `amount` stays the total either way, so each group
+      must sum to it; verify after running. The `paid_by` / `owed_by` JSON columns in the expense
+      views are exactly these rows pivoted by member name.
+
+      ## Categories
+
+      The `category` field on the add and edit actions is a creatable picker: prefer an existing
+      spelling (matching is case-insensitive, so "groceries" and "Groceries" resolve to one row),
+      and a genuinely new name creates the category on the fly. On the edit actions an **omitted or
+      emptied category clears it** — over MCP, re-send the current category with any edit that
+      should keep it. The Expenses list can be searched by description or category via its `query`
+      filter.
+
+      ## Editing an expense
+
+      `edit-expense` corrects a selected expense. Description, date and category always apply. The
+      split (the same `{member, amount}` shape as the custom split) is replaced only when **both**
+      `payers` and `shares` are provided — a one-sided fill changes no amounts, so the invariant
+      can't be half-broken; the total then derives from the payers' sum. Same invariant: verify
+      the shares sum to the payers' total after editing.
+
+      ## Settling up
+
+      The **Balances** tab is the settle-up plan: each row is one suggested payback ("Bob pays
+      Alice · 15.00"), computed greedily from the current balances — at most one transfer fewer
+      than there are unsettled members, and an empty list means everyone is square. Recording one
+      is `record-settlement` from that row: the row binds the payer (over MCP, `rowid` = the
+      payer's member id) and pre-fills the receiver and amount; the dialog accepts a different
+      amount for a partial payback. A settlement is a `settlements` row — real money squaring up,
+      not an expense, and never a reason to edit history. Sign rule: a settlement you *receive*
+      lowers your balance toward 0; one you *pay* raises it. Recording "Alice pays Bob 50" must
+      move both balances toward 0, not push them ±100 apart. The **Members** tab carries each
+      member's net balance; clicking one lists their settlements, sent and received — a mistyped
+      one is deleted from its line there. To explain a balance ("why do I owe that?"), walk the
+      Expenses tab: search it and open an expense's breakdown for who paid and who owes, or scope
+      the members view with its month / year filters.
+
+      ## Members who stop splitting
+
+      A member is never deleted — deleting the row would strand every expense and settlement that
+      references it. `toggle-member-splitting` flips them between **splitting** and **not
+      splitting**, shown in the Members tab's `status` column, with the non-splitters sorted last.
+      It covers both the person who left the household for good and the one who is simply out of
+      the splits for a while. Nothing about the past changes: their history stays, and their balance
+      stays owed or owing until it is settled. They are only left out of **new** equal splits (the
+      `share_among` picker stops offering them, and its "everyone" default stops covering them) —
+      naming someone explicitly still works and is untouched: they can be a payer, be given a share
+      in a custom split, appear in a corrected past expense, and above all be picked in a settlement
+      so their balance can be paid off. Toggle them back the same way when they split again.
+
+      Naming one of them in `share_among` anyway is honoured — an id you pass explicitly always gets
+      a share, so the split still sums to the total. Only the *offer* narrows: the picker stops
+      listing them and the "everyone" default stops reaching them. So when the user names someone
+      who has stopped splitting, check the Members view's `status` column and ask which they mean —
+      never guess:
+
+      - **They are back in the group** — run `toggle-member-splitting` first, then add the expense
+        normally, so every later split covers them too. This is the reading whenever the user says
+        "X is splitting again", "add X back", or talks about future expenses.
+      - **Only this one expense concerns them** — pass their id in `share_among` and leave their
+        status alone. They get their share of this expense and nothing else changes, which is what
+        "just this once" means.
+
+      ## Recurring bills
+
+      Pull-based, no scheduler: `whats-due` lists templates due today or earlier; `apply-recurring`
+      materializes one occurrence at an optional date (default today) and advances `next_due`;
+      `apply-all-due` does the same for every due bill in one run. A materialized expense carries
+      its source in `expenses.recurring_id`. Nothing generates rows on its own — an overdue bill
+      advances one interval per apply, so a bill that is two periods behind needs two applies.
+      `edit-recurring` corrects a bill (its payer/share templates follow the same both-or-nothing
+      replace as `edit-expense`, and an omitted `end_date` makes it open-ended again);
+      `stop-recurring` deactivates one — already materialized expenses stay, and reactivation is a
+      direct `UPDATE recurring_expenses SET is_active = 1` if ever asked.
+
+      Talk to members in plain language ("you owe Alice 12.40"), not in table and column terms.

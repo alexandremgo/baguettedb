@@ -1,0 +1,190 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.name {
+  margin: 0;
+  /* A long name wraps — even one without a break opportunity — rather than pushing the header's
+     controls out of the row. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* The column stretches so the param form runs the bar's width; only the Run button pins left. */
+.params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.runButton {
+  align-self: flex-start;
+}
+
+.paramsToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.paramsChevron {
+  display: inline-flex;
+  color: var(--color-text-secondary);
+}
+
+/* Slim control row for compact chrome — the filters toggle at the left, info/actions at the right,
+   so every screen-level control shares one line. The shell's own header carries the name. */
+.compactToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  min-height: 32px;
+}
+
+.compactSpacer {
+  flex: 1;
+}
+
+.filtersRow {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.loadingRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.loadingRow {
+  height: 44px;
+  border-radius: var(--radius-lg);
+}
+
+/* Below the mobile breakpoint the kind badge drops — the narrow browser shell borrows the
+   standalone chrome's restraint. */
+@media (max-width: 768px) {
+  .kindBadge {
+    display: none;
+  }
+}
+
+.infoToggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.infoToggle:hover,
+.infoToggleActive {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+/* How many filters hold a value — visible while collapsed, so a hidden filter never silently narrows. */
+.paramsCount {
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-align: center;
+}
+
+.status {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.error {
+  padding: var(--space-3);
+  background: var(--color-destructive-subtle);
+  border: 1px solid var(--color-destructive);
+  border-radius: var(--radius-md);
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.selectionBar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.selectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.resultsFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.rowCount {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.notice {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}

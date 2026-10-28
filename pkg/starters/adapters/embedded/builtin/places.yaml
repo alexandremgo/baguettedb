@@ -1,0 +1,369 @@
+# Places — a personal place book: spots to remember and spots to try, split by visited_at.
+# No map rendering; every place carries a link out (user-chosen URL, or a computed maps search).
+key: places
+version: 1
+name: Places
+description: Save the places you love or want to try — restaurants, cafés, shops, viewpoints — with ratings, tags, a wishlist, and map links.
+icon: "📍"
+tags:
+  - travel
+  - lifestyle
+
+schema:
+  - |-
+    -- Place kinds (restaurant, bar, café, shop…). Rows are created on the fly by add-place /
+    -- edit-place from a free-text name, so the catalog stays exactly as big as what's in use.
+    CREATE TABLE categories (
+        id   INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE
+    )
+  - |-
+    -- One saved place. visited_at IS NULL means wishlist ("want to try"), IS NOT NULL means
+    -- visited. link is any URL the user chooses (a maps pin, the place's site); when empty,
+    -- views fall back to a Google Maps search built from name/city or lat/lng. lat/lng are
+    -- optional decimal degrees — they make the fallback link exact.
+    CREATE TABLE places (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL,
+        category_id INTEGER REFERENCES categories(id),
+        city        TEXT,
+        address     TEXT,
+        notes       TEXT,                                 -- markdown
+        rating      INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
+        tags        TEXT,                                 -- free text, comma-separated, lowercase
+        link        TEXT,
+        lat         REAL,
+        lng         REAL,
+        visited_at  TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - CREATE INDEX idx_places_category ON places(category_id)
+  - CREATE INDEX idx_places_wishlist ON places(visited_at) WHERE visited_at IS NULL
+
+formulas:
+  # Views first: attached formulas further down resolve their parents by name. The single visible
+  # surface is the place cards — quick name capture in the bar, filters for the wishlist/visited
+  # split; everything else is dialog plumbing (hidden by the slot pass).
+  - name: places-cards
+    label: Places
+    description: Every saved place as cards — filter by text, category, or visited/wishlist status; click one for its full record.
+    sql: |-
+      SELECT p.id AS rowid, p.name,
+             LTRIM(
+                  CASE WHEN c.name IS NOT NULL AND p.city IS NOT NULL THEN c.name || ' · ' || p.city
+                       ELSE COALESCE(c.name, p.city, '') END
+               || char(10) || char(10)
+               || CASE WHEN p.visited_at IS NOT NULL THEN '✓ visited' ELSE '📌 wishlist' END
+               || COALESCE('  ' || substr('★★★★★', 1, p.rating), '')
+               || COALESCE(char(10) || char(10) || '_' || NULLIF(p.tags, '') || '_', '')
+               || COALESCE(char(10) || char(10) || p.notes, '')
+               || char(10) || char(10)
+               -- A custom link that doesn't look like a maps URL renders as its own link alongside
+               -- the computed Maps search, so a website never costs the map; a maps-looking link
+               -- (or none) keeps the single Maps link.
+               || CASE WHEN NULLIF(p.link, '') IS NOT NULL AND p.link NOT LIKE '%map%' THEN
+                    '[Open link ↗](' || p.link || ')  ·  [Maps ↗]('
+                    || 'https://www.google.com/maps/search/?api=1&query='
+                    || CASE WHEN p.lat IS NOT NULL AND p.lng IS NOT NULL
+                            THEN p.lat || ',' || p.lng
+                            ELSE REPLACE(p.name || COALESCE(' ' || p.city, ''), ' ', '+') END
+                    || ')'
+                  ELSE
+                    '[Open in Maps ↗]('
+                    || COALESCE(NULLIF(p.link, ''),
+                         'https://www.google.com/maps/search/?api=1&query='
+                         || CASE WHEN p.lat IS NOT NULL AND p.lng IS NOT NULL
+                                 THEN p.lat || ',' || p.lng
+                                 ELSE REPLACE(p.name || COALESCE(' ' || p.city, ''), ' ', '+') END)
+                    || ')'
+                  END
+             , char(10)) AS body,
+             p.category_id, (SELECT name FROM categories WHERE id = p.category_id) AS category,
+             p.city, p.address, p.notes, p.rating, p.tags, p.link, p.lat, p.lng,
+             date(p.visited_at) AS visited_on
+      FROM places p
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE (:search IS NULL
+             OR p.name LIKE '%' || :search || '%'
+             OR COALESCE(p.city, '') LIKE '%' || :search || '%'
+             OR COALESCE(p.address, '') LIKE '%' || :search || '%'
+             OR COALESCE(p.tags, '') LIKE '%' || :search || '%')
+        AND (:category_id IS NULL OR p.category_id = :category_id)
+        AND (:status IS NULL
+             OR (:status = 'visited' AND p.visited_at IS NOT NULL)
+             OR (:status = 'wishlist' AND p.visited_at IS NULL))
+      ORDER BY p.created_at DESC, p.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name, city, address, tags
+      - name: category_id
+        type: integer
+        source: lookup
+        optional: true
+        lookup:
+          table: categories
+          label_column: name
+          value_column: id
+      - name: status
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: visited, label: Visited }
+          - { value: wishlist, label: Wishlist }
+        hint: all when empty
+    display:
+      mode: cards
+      columns:
+        - {column: name, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: add-place
+        edit: edit-place
+        delete: delete-place
+        detail: place-detail
+        row_actions:
+          - mark-visited
+
+  - name: place-detail
+    label: Place
+    description: One place's full record.
+    sql: |-
+      SELECT p.name,
+             (SELECT name FROM categories WHERE id = p.category_id) AS category,
+             p.city, p.address, p.rating, p.tags, p.notes,
+             -- The user's own URL and the computed maps search stay separate columns: the custom
+             -- link may be a website, so labeling it "maps" would lie.
+             NULLIF(p.link, '') AS link,
+             'https://www.google.com/maps/search/?api=1&query='
+               || CASE WHEN p.lat IS NOT NULL AND p.lng IS NOT NULL
+                       THEN p.lat || ',' || p.lng
+                       ELSE REPLACE(p.name || COALESCE(' ' || p.city, ''), ' ', '+') END AS maps,
+             p.lat, p.lng, p.visited_at, p.created_at
+      FROM places p WHERE p.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: notes, format: markdown}
+        - {column: link, format: markdown}
+        - {column: maps, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: places-cards
+
+  - name: add-place
+    label: Add place
+    description: Saves a place, creating its category in the catalog if new; lands on the wishlist unless marked visited.
+    sql: |-
+      -- Creates the category only when no case-insensitive spelling of it exists yet, so "Bar"
+      -- typed past an existing "bar" reuses the catalog row instead of splitting the facet.
+      INSERT INTO categories (name)
+      SELECT TRIM(:category)
+      WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM categories WHERE name = TRIM(:category) COLLATE NOCASE);
+      INSERT INTO places (name, category_id, city, address, notes, rating, tags, link, lat, lng, visited_at)
+      VALUES (NULLIF(TRIM(:name), ''),
+              (SELECT id FROM categories WHERE name = TRIM(:category) COLLATE NOCASE ORDER BY id LIMIT 1),
+              :city, :address, :notes, :rating, :tags, :link, :lat, :lng,
+              CASE WHEN :visited THEN datetime('now') END)
+    params:
+      - name: name
+        type: text
+        source: prompt
+        inline: true
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+        hint: e.g. restaurant, bar, café — pick to reuse, type to create
+      - name: city
+        type: text
+        source: prompt
+        optional: true
+      - name: address
+        type: text
+        source: prompt
+        optional: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: rating
+        type: integer
+        source: prompt
+        optional: true
+        hint: 1-5
+      - name: tags
+        type: text
+        source: prompt
+        optional: true
+        hint: comma-separated, e.g. terrace, date night
+      - name: link
+        type: text
+        source: prompt
+        optional: true
+        hint: any URL — a maps pin or the place's site
+      - name: visited
+        type: boolean
+        source: prompt
+        optional: true
+        hint: already been there?
+      - name: lat
+        type: float
+        source: prompt
+        optional: true
+        hint: decimal degrees, e.g. 48.8584
+      - name: lng
+        type: float
+        source: prompt
+        optional: true
+        hint: decimal degrees, e.g. 2.2945
+    attached_to: places-cards
+
+  - name: edit-place
+    label: Edit place
+    description: Rewrites the selected place's fields; the category is pick-to-reuse or type-to-create, and clearing the visited date moves the place back to the wishlist.
+    sql: |-
+      -- The same case-insensitive create-guard as add-place: a new spelling lands in the catalog,
+      -- a case-variant of an existing one reuses its row.
+      INSERT INTO categories (name)
+      SELECT TRIM(:category)
+      WHERE NULLIF(TRIM(:category), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM categories WHERE name = TRIM(:category) COLLATE NOCASE);
+      UPDATE places
+      SET name = NULLIF(TRIM(:name), ''),
+          category_id = (SELECT id FROM categories WHERE name = TRIM(:category) COLLATE NOCASE
+                         ORDER BY id LIMIT 1),
+          city = :city, address = :address, notes = :notes, rating = :rating,
+          tags = :tags, link = :link, lat = :lat, lng = :lng,
+          visited_at = :visited_on
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: category
+        type: text
+        source: lookup
+        optional: true
+        lookup:
+          table: categories
+          label_column: name
+          value_column: name
+          allow_new: true
+        hint: e.g. restaurant, bar, café — pick to reuse, type to create
+      - name: city
+        type: text
+        source: prompt
+        optional: true
+      - name: address
+        type: text
+        source: prompt
+        optional: true
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: rating
+        type: integer
+        source: prompt
+        optional: true
+        hint: 1-5
+      - name: tags
+        type: text
+        source: prompt
+        optional: true
+        hint: comma-separated, e.g. terrace, date night
+      - name: link
+        type: text
+        source: prompt
+        optional: true
+        hint: any URL — a maps pin or the place's site
+      - name: lat
+        type: float
+        source: prompt
+        optional: true
+        hint: decimal degrees, e.g. 48.8584
+      - name: lng
+        type: float
+        source: prompt
+        optional: true
+        hint: decimal degrees, e.g. 2.2945
+      - name: visited_on
+        type: date
+        source: prompt
+        optional: true
+        hint: when you went — empty means wishlist
+    attached_to: places-cards
+
+  - name: delete-place
+    label: Delete place
+    description: Deletes the selected place.
+    sql: DELETE FROM places WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: places-cards
+
+  - name: mark-visited
+    label: Toggle visited
+    description: Flips the selected place between wishlist and visited — a mistaken flip is one more run to revert.
+    sql: |-
+      UPDATE places
+      SET visited_at = CASE WHEN visited_at IS NULL THEN datetime('now') ELSE NULL END
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: places-cards
+
+skills:
+  - name: places-orientation
+    description: How the wishlist/visited split, on-the-fly categories, map links, and coordinates fit together.
+    body: |
+      This bdb is a personal place book: `places` rows split into wishlist (`visited_at IS NULL`)
+      and visited (`visited_at IS NOT NULL`).
+
+      **Categories.** `categories` is a small catalog created on the fly: in both `add-place` and
+      `edit-place` the category is pick-to-reuse, type-to-create (existing names surface as
+      suggestions; a new spelling is inserted, with a case-insensitive match reusing the existing
+      row). Prefer existing spellings (lowercase, singular — "restaurant", not "Restaurants") over
+      inventing near-duplicates.
+
+      **Map links.** `link` is whatever URL the user wants the place to open with — a Google/Apple
+      Maps pin, the place's website. When it's empty, views fall back to a Google Maps search URL
+      built from `lat`/`lng` when set, else from name + city. A link that doesn't look like a maps
+      URL (no "map" in it) renders as "Open link" alongside the computed Maps search, so a website
+      never costs the map. When the user mentions a well-known
+      place, fill `lat`/`lng` (decimal degrees) — you likely know or can look up its coordinates;
+      leave them empty rather than guessing for obscure addresses. Exact coordinates make the
+      fallback link land on the right pin.
+
+      **Wishlist flow.** New places land as wishlist (`visited_at IS NULL`) unless added with
+      `visited` set. In the app the Places bar is the fast capture: typing a name alone saves a
+      wishlist row — enrich such rows (category, city, coordinates…) when the user mentions them
+      again. The `status` filter narrows to one side of the split, and a row's `⋯` menu runs
+      `mark-visited`, which FLIPS `visited_at` (set ↔ NULL) — a mistaken flip is one more run to
+      revert. The toggle stamps "now"; the real visit date is editable in `edit-place`
+      (`visited_on`, seeded from the row) — set it to when you actually went, or clear it to move
+      the place back to the wishlist.
+
+      **Ratings and tags.** `rating` is 1-5 (shown as stars). `tags` is free text, comma-separated,
+      lowercase ("terrace, date night") — filter with LIKE, reuse existing tags when possible.

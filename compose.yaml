@@ -1,0 +1,117 @@
+# The development stack: Postgres, Hydra, and the monolith rebuilt by Air on every file change.
+#
+# Usage:
+#   docker compose up --build
+services:
+  baguettedb:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${BAGUETTEDB_PORT:-8080}:${BAGUETTEDB_PORT:-8080}"
+    environment:
+      - BAGUETTEDB_PORT=${BAGUETTEDB_PORT:-8080}
+      - BAGUETTEDB_AUTH_DATABASE_DSN=postgres://${AUTH_DB_USER:-baguette_auth}:${AUTH_DB_PASSWORD:-dev}@postgres:5432/baguettedb_auth?sslmode=disable
+      - BAGUETTEDB_BDBS_DATABASE_DSN=postgres://${BDBS_DB_USER:-baguette_bdbs}:${BDBS_DB_PASSWORD:-dev}@postgres:5432/baguettedb_bdbs?sslmode=disable
+      - BAGUETTEDB_DATABASES_DATABASE_DSN=postgres://${DATABASES_DB_USER:-baguette_databases}:${DATABASES_DB_PASSWORD:-dev}@postgres:5432/baguettedb_databases?sslmode=disable
+      - BAGUETTEDB_DATABASES_DATA_DIR=/var/lib/baguettedb/databases
+      - BAGUETTEDB_DATABASES_KEK_FILE=/var/lib/baguettedb/kek
+      - BAGUETTEDB_DATABASES_KEK_AUTOGENERATE=true
+      - BAGUETTEDB_HYDRA_PUBLIC_URL=http://hydra:4444
+      - BAGUETTEDB_HYDRA_ADMIN_URL=http://hydra:4445
+      - BAGUETTEDB_HYDRA_ISSUER_URL=${BAGUETTEDB_DEV_ORIGIN:-http://localhost:8080}
+      - BAGUETTEDB_PUBLIC_URL=${BAGUETTEDB_DEV_ORIGIN:-http://localhost:8080}
+      - BAGUETTEDB_ADMIN_EMAIL=${BAGUETTEDB_ADMIN_EMAIL:-}
+      - BAGUETTEDB_ADMIN_PASSWORD=${BAGUETTEDB_ADMIN_PASSWORD:-}
+      - BAGUETTEDB_QUOTA_MAX_BDBS=${BAGUETTEDB_QUOTA_MAX_BDBS:-3}
+      - BAGUETTEDB_QUOTA_MAX_DB_SIZE_BYTES=${BAGUETTEDB_QUOTA_MAX_DB_SIZE_BYTES:-10485760}
+      - BAGUETTEDB_QUOTA_MAX_TOTAL_DB_SIZE_BYTES=${BAGUETTEDB_QUOTA_MAX_TOTAL_DB_SIZE_BYTES:-0}
+      - BAGUETTEDB_QUOTA_MAX_MEMBERS_PER_BDB=${BAGUETTEDB_QUOTA_MAX_MEMBERS_PER_BDB:-5}
+      - BAGUETTEDB_MAX_REQUEST_BODY_SIZE=${BAGUETTEDB_MAX_REQUEST_BODY_SIZE:-1048576}
+      - BAGUETTEDB_WEB_CLIENT_ID=${BAGUETTEDB_WEB_CLIENT_ID:-}
+      # Origin the web frontend is reached at: the Vite dev server by default, or this container's own port when
+      # testing the embedded frontend (make build-ui + make webui-sync).
+      - BAGUETTEDB_APP_BASE_URL=${BAGUETTEDB_APP_BASE_URL:-http://localhost:5173}
+      - AIR_BUILD_TARGET=monolith
+    volumes:
+      # One data directory: databases/ (per-bdb SQLCipher files) and kek (generated on the first start).
+      - ./local-data:/var/lib/baguettedb
+      - .:/src
+      - go-mod-cache:/root/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hydra:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-baguettedb}
+      - POSTGRES_USER=${POSTGRES_USER:-baguettedb}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev}
+      - HYDRA_DB_USER=${HYDRA_DB_USER:-hydra}
+      - HYDRA_DB_PASSWORD=${HYDRA_DB_PASSWORD:-dev}
+      - AUTH_DB_USER=${AUTH_DB_USER:-baguette_auth}
+      - AUTH_DB_PASSWORD=${AUTH_DB_PASSWORD:-dev}
+      - BDBS_DB_USER=${BDBS_DB_USER:-baguette_bdbs}
+      - BDBS_DB_PASSWORD=${BDBS_DB_PASSWORD:-dev}
+      - DATABASES_DB_USER=${DATABASES_DB_USER:-baguette_databases}
+      - DATABASES_DB_PASSWORD=${DATABASES_DB_PASSWORD:-dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./scripts/init-postgres.sh:/docker-entrypoint-initdb.d/init-postgres.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-baguettedb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    command: migrate sql --yes "postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:-dev}@postgres:5432/hydra?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    command: serve all --dev
+    # Exposes Hydra's admin port for local development only (e.g. to register an OAuth2 client by hand); a deployment
+    # never exposes it.
+    ports:
+      - "${HYDRA_ADMIN_PORT:-4445}:4445"
+    environment:
+      - DSN=postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:-dev}@postgres:5432/hydra?sslmode=disable
+      # BAGUETTEDB_DEV_ORIGIN overrides the public origin for the OAuth issuer + login/consent redirects.
+      # Set it to an HTTPS tunnel URL to complete login from another device; defaults to localhost.
+      - URLS_SELF_ISSUER=${BAGUETTEDB_DEV_ORIGIN:-http://localhost:8080}
+      - URLS_LOGIN=${BAGUETTEDB_DEV_ORIGIN:-http://localhost:8080}/login
+      - URLS_CONSENT=${BAGUETTEDB_DEV_ORIGIN:-http://localhost:8080}/consent
+      # Hydra's --dev cookies are non-Secure, but SameSite=None requires Secure, so the CSRF cookie is
+      # rejected over a real HTTPS origin (e.g. a tunnel). Lax needs no Secure and works for the
+      # same-site login flow. (localhost dev tolerates None via its secure-context exception.)
+      - SERVE_COOKIES_SAME_SITE_MODE=Lax
+      - SECRETS_SYSTEM=${HYDRA_SECRETS_SYSTEM:-a-very-insecure-secret-for-local-dev-only}
+      - STRATEGIES_ACCESS_TOKEN=jwt
+      - OIDC_DYNAMIC_CLIENT_REGISTRATION_ENABLED=true
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4444/health/alive || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+
+volumes:
+  # Named so Postgres data survives `make dev-down` / `dev-up`. Without it the data dir lands in a
+  # throwaway anonymous volume that is recreated empty on every `up`, wiping bdbs and users.
+  postgres_data:
+  go-mod-cache:
+  go-build-cache:

@@ -1,0 +1,80 @@
+.container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-image: radial-gradient(50rem 34rem at 50% 28%, var(--color-entrance-glow), transparent 70%);
+}
+
+.card {
+  text-align: center;
+  max-width: 360px;
+  padding: var(--space-8);
+  animation: cardRise 300ms ease-out;
+}
+
+@keyframes cardRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--text-base);
+  margin-bottom: var(--space-8);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Calls to action size to their content instead of stretching to the card width. */
+.actions > * {
+  min-width: 11rem;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.footerLink {
+  margin-left: var(--space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.footerLink:hover {
+  text-decoration: underline;
+}
+
+/* Placeholder roughly the sign-in card's size, shown while the session check runs. */
+.loadingCard {
+  width: min(320px, 80vw);
+  height: 220px;
+  border-radius: var(--radius-lg);
+}

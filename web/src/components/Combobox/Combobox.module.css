@@ -1,0 +1,90 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.control {
+  position: relative;
+  display: flex;
+}
+
+.input {
+  width: 100%;
+  height: 36px;
+  /* The right padding clears the chevron: typeable, but announced as a picker like the Select. */
+  padding: 0 var(--space-8) 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.chevron {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--color-text-secondary);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}
+
+.inputError {
+  border-color: var(--color-destructive);
+}
+
+/* Positioned at viewport coordinates by showAnchoredPopover; inset/margin/padding reset the
+   [popover] UA defaults. z-index only matters for the no-Popover-API fallback. */
+.list {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: var(--space-1);
+  z-index: 10;
+  max-height: 260px;
+  overflow-y: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.option {
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.highlighted {
+  background-color: var(--color-surface-hover);
+}
+
+.selected {
+  font-weight: var(--weight-medium);
+}
+
+.note {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.errorText {
+  font-size: var(--text-xs);
+  color: var(--color-destructive);
+}

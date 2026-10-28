@@ -1,0 +1,21 @@
+FROM golang:1.26-alpine
+
+# build-base + openssl-dev + pkgconf are required by the cgo binding in
+# pkg/databases/adapters/sqlitelocal/ (vendored SQLCipher amalgamation linked
+# against system OpenSSL). golang:alpine ships without gcc, so cgo builds
+# fail without build-base.
+RUN apk add --no-cache build-base openssl-dev pkgconf
+
+RUN go install github.com/air-verse/air@latest
+
+WORKDIR /src
+
+# Pre-downloads Go module dependencies (cached unless go.mod/go.sum change).
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Fallback copy; in practice, source is volume-mounted over /src at runtime.
+COPY . .
+
+ENV CGO_ENABLED=1
+CMD ["air", "-c", ".air.toml"]

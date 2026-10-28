@@ -1,0 +1,310 @@
+version: "2"
+
+run:
+  # Integration-tagged tests are code too: without the tag, lint never builds them.
+  build-tags:
+    - integration
+
+linters:
+  default: standard
+  enable:
+    - canonicalheader
+    - copyloopvar
+    - depguard
+    - errorlint
+    - gocritic
+    - lll
+    - misspell
+    - perfsprint
+    - revive
+  settings:
+    depguard:
+      rules:
+        # Apps meet only in their adapters and in composition (setup.go, store.go, cmd, pkg/instance): an app's
+        # domain, service, api and mcp import no other app. pkg/common is shared by every app.
+        auth-layers:
+          list-mode: lax
+          files:
+            - "**/pkg/auth/domain/**"
+            - "**/pkg/auth/service/**"
+            - "**/pkg/auth/api/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/instance
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/mcpgateway
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/webui
+              desc: an app's layers import no other app; compose apps in adapters or setup
+        bdbs-layers:
+          list-mode: lax
+          files:
+            - "**/pkg/bdbs/domain/**"
+            - "**/pkg/bdbs/service/**"
+            - "**/pkg/bdbs/api/**"
+            - "**/pkg/bdbs/mcp/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/instance
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/mcpgateway
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/webui
+              desc: an app's layers import no other app; compose apps in adapters or setup
+        cli-layers:
+          list-mode: lax
+          files:
+            - "**/pkg/cli/domain/**"
+            - "**/pkg/cli/service/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/instance
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/mcpgateway
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/webui
+              desc: an app's layers import no other app; compose apps in adapters or setup
+        databases-layers:
+          list-mode: lax
+          files:
+            - "**/pkg/databases/domain/**"
+            - "**/pkg/databases/service/**"
+            - "**/pkg/databases/api/**"
+            - "**/pkg/databases/mcp/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/instance
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/mcpgateway
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/webui
+              desc: an app's layers import no other app; compose apps in adapters or setup
+        starters-layers:
+          list-mode: lax
+          files:
+            - "**/pkg/starters/domain/**"
+            - "**/pkg/starters/service/**"
+            - "**/pkg/starters/api/**"
+            - "**/pkg/starters/mcp/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/instance
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/mcpgateway
+              desc: an app's layers import no other app; compose apps in adapters or setup
+            - pkg: github.com/alexandremgo/baguettedb/pkg/webui
+              desc: an app's layers import no other app; compose apps in adapters or setup
+        # A domain holds rules only: no transport, storage or observability. Its own app's outer layers all import it,
+        # so the compiler already refuses those as import cycles.
+        domain-infra:
+          list-mode: lax
+          files:
+            - "**/pkg/*/domain/**"
+          deny:
+            - pkg: net/http
+              desc: a domain uses no transport
+            - pkg: github.com/go-chi
+              desc: a domain uses no transport
+            - pkg: github.com/mark3labs/mcp-go
+              desc: a domain uses no transport
+            - pkg: database/sql
+              desc: a domain uses no storage
+            - pkg: github.com/jackc/pgx
+              desc: a domain uses no storage
+            - pkg: github.com/lib/pq
+              desc: a domain uses no storage
+            - pkg: modernc.org/sqlite
+              desc: a domain uses no storage
+            - pkg: github.com/aws
+              desc: a domain uses no storage
+            - pkg: github.com/golang-migrate
+              desc: a domain uses no storage
+            - pkg: github.com/rs/zerolog
+              desc: a domain uses no observability
+            - pkg: go.opentelemetry.io
+              desc: a domain uses no observability
+        # A service reaches the network and storage only through its ports; it may log and trace.
+        service-infra:
+          list-mode: lax
+          files:
+            - "**/pkg/*/service/**"
+          deny:
+            - pkg: net/http
+              desc: a service reaches transport through its ports
+            - pkg: github.com/go-chi
+              desc: a service reaches transport through its ports
+            - pkg: github.com/mark3labs/mcp-go
+              desc: a service reaches transport through its ports
+            - pkg: database/sql
+              desc: a service reaches storage through its ports
+            - pkg: github.com/jackc/pgx
+              desc: a service reaches storage through its ports
+            - pkg: github.com/lib/pq
+              desc: a service reaches storage through its ports
+            - pkg: modernc.org/sqlite
+              desc: a service reaches storage through its ports
+            - pkg: github.com/aws
+              desc: a service reaches storage through its ports
+            - pkg: github.com/golang-migrate
+              desc: a service reaches storage through its ports
+        # A service imports its own domain and pkg/common only, none of its app's adapters, transports or wiring.
+        auth-service:
+          list-mode: lax
+          files:
+            - "**/pkg/auth/service/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth/adapters
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth/api
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth/mcp
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth/runner
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth/appconv
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/auth/migrations
+              desc: a service imports its own domain and pkg/common only
+        bdbs-service:
+          list-mode: lax
+          files:
+            - "**/pkg/bdbs/service/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs/adapters
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs/api
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs/mcp
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs/runner
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs/appconv
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/bdbs/migrations
+              desc: a service imports its own domain and pkg/common only
+        cli-service:
+          list-mode: lax
+          files:
+            - "**/pkg/cli/service/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli/adapters
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli/api
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli/mcp
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli/runner
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli/appconv
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/cli/migrations
+              desc: a service imports its own domain and pkg/common only
+        # databases/service imports databases/migrations: the embedded platform schema it keeps current in
+        # every bdb, data the service owns along with CurrentPlatformSchemaVersion rather than a layer.
+        databases-service:
+          list-mode: lax
+          files:
+            - "**/pkg/databases/service/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases/adapters
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases/api
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases/mcp
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases/runner
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/databases/appconv
+              desc: a service imports its own domain and pkg/common only
+        starters-service:
+          list-mode: lax
+          files:
+            - "**/pkg/starters/service/**"
+          deny:
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters/adapters
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters/api
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters/mcp
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters/runner
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters/appconv
+              desc: a service imports its own domain and pkg/common only
+            - pkg: github.com/alexandremgo/baguettedb/pkg/starters/migrations
+              desc: a service imports its own domain and pkg/common only
+    lll:
+      line-length: 120
+      tab-width: 4
+  exclusions:
+    # npm packages may ship Go files; web/node_modules is installed, never committed.
+    paths:
+      - web/node_modules
+    rules:
+      # MCP tool registrations + the gateway server-instructions contain
+      # large prompt-string literals (137–680 chars) that can't be wrapped
+      # without semantic changes.
+      - path: pkg/bdbs/mcp/bdb\.go
+        linters:
+          - lll
+      - path: pkg/mcpgateway/gateway\.go
+        linters:
+          - lll
+      # dupSubExpr reports the Go that cgo generates for C.* calls: the flagged source lines hold no ==.
+      - path: pkg/databases/adapters/sqlitelocal/binding\.go
+        linters:
+          - gocritic
+        text: "dupSubExpr"
+
+formatters:
+  enable:
+    - gci
+  settings:
+    gci:
+      # The standard library, third-party modules, then this module's own packages, each group apart.
+      sections:
+        - standard
+        - default
+        - prefix(github.com/alexandremgo/baguettedb)
+  exclusions:
+    paths:
+      - web/node_modules
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

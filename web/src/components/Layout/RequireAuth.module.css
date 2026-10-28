@@ -1,0 +1,5 @@
+.loading {
+  max-width: 640px;
+  margin: var(--space-8) auto;
+  padding: 0 var(--space-4);
+}

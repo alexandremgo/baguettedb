@@ -1,0 +1,205 @@
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-surface-secondary);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-4);
+}
+
+.logo {
+  margin-bottom: var(--space-6);
+}
+
+.logoLink {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-base);
+}
+
+.navArea {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.sectionLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-tertiary);
+}
+
+.reorderToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  /* Padding widens the tap target without adding height to the label row; negative margin keeps the
+     button from pushing the header taller than the label it sits beside. */
+  padding: var(--space-2);
+  margin: calc(-1 * var(--space-2));
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.reorderToggle:hover,
+.reorderToggle[aria-pressed="true"] {
+  color: var(--color-text);
+}
+
+.sortableRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-secondary);
+}
+
+.sortableRowDragging {
+  background-color: var(--color-surface-hover);
+  box-shadow: var(--shadow-md);
+  /* Lifts the row above its siblings while it travels. */
+  position: relative;
+  z-index: 1;
+}
+
+.sortableName {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* 44px keeps the touch target at the platform minimum while the grip glyph stays 16px. Negative
+     margin absorbs the extra height so reorder rows line up with the nav links they replace. */
+  width: 44px;
+  height: 44px;
+  margin: -13px calc(-1 * var(--space-1)) -13px 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: grab;
+  /* Required, and scoped to the handle only: it tells the browser to hand this element's touch
+     gestures to the drag instead of scrolling. On the row it would stop the sidebar scrolling. */
+  touch-action: none;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:hover {
+  color: var(--color-text);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  transition: background-color var(--duration-fast),
+    color var(--duration-fast);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.navItemName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navItemBadge {
+  flex-shrink: 0;
+}
+
+.navItem:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.navItemActive {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+}
+
+/* Mirrors .navItem so an action button sits flush with the nav links. */
+.navButton {
+  display: block;
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  transition: background-color var(--duration-fast),
+    color var(--duration-fast);
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.navButton:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.extSection {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.actions {
+  margin-top: var(--space-4);
+}
+
+.createButton {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 20;
+    transform: translateX(-100%);
+    transition: transform var(--duration-normal) ease;
+    box-shadow: none;
+  }
+
+  .sidebarOpen {
+    transform: translateX(0);
+    box-shadow: var(--shadow-lg);
+  }
+}

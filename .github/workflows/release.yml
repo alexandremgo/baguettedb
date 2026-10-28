@@ -1,0 +1,124 @@
+# Attaches the bdb command line to the GitHub release when a version tag is pushed: one archive per platform, built on
+# a runner of that platform, with a checksums file. A manual run builds the archives as workflow artifacts only.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  binaries:
+    name: "bdb CLI: build ${{ matrix.os }}/${{ matrix.arch }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          # The last Intel macOS image, supported until about August 2027.
+          - os: darwin
+            arch: amd64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'edge' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The macOS build runs on the runner itself; the Linux one in a container that brings its own Go.
+      - uses: actions/setup-go@v6
+        if: matrix.os == 'darwin'
+        with:
+          go-version-file: go.mod
+
+      - name: Build the web app into pkg/webui
+        run: |
+          npm ci --prefix web
+          make web-build webui-sync
+
+      - name: Build bdb
+        run: scripts/build-cli-release.sh "$VERSION"
+
+      # bdb and a baguettedb link to it, the same command under either name, with the license notices.
+      - name: Package the archive
+        id: archive
+        run: |
+          name="bdb_${VERSION}_${{ matrix.os }}_${{ matrix.arch }}"
+          mkdir -p "dist/${name}"
+          cp dist/bdb THIRD_PARTY_LICENSES "dist/${name}/"
+          if [ -f LICENSE ]; then cp LICENSE "dist/${name}/"; fi
+          ln -s bdb "dist/${name}/baguettedb"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          echo "file=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      # Runs both names from the archive, and has the binary create, write and read a bdb in a fresh data directory.
+      - name: Smoke-test the archive
+        run: |
+          check="$(mktemp -d)"
+          tar -C "$check" -xzf "${{ steps.archive.outputs.file }}"
+          cd "$check"/bdb_*
+          ./bdb version
+          ./baguettedb version
+          ./bdb --data-dir "$check/data" bdbs create --starter kanban
+          ./bdb --data-dir "$check/data" sql data Kanban "INSERT INTO tasks (name, position) VALUES ('smoke', 1)"
+          ./bdb --data-dir "$check/data" sql query Kanban "SELECT name FROM tasks" | grep -q smoke
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: bdb-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ steps.archive.outputs.file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-binaries:
+    name: "bdb CLI: attach to the release"
+    needs: binaries
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: bdb-*
+          merge-multiple: true
+
+      - name: Write the checksums
+        working-directory: dist
+        run: sha256sum -- *.tar.gz > checksums.txt
+
+      # The release may already exist, written by hand before the tag was pushed; it is created otherwise, as a
+      # pre-release for a tag with a pre-release part (v1.2.3-rc1).
+      - name: Attach to the release
+        working-directory: dist
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            prerelease=()
+            if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
+            gh release create "$TAG" --verify-tag --generate-notes "${prerelease[@]}"
+          fi
+          gh release upload "$TAG" ./*.tar.gz checksums.txt --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}

@@ -1,0 +1,44 @@
+# Dispatches an upstream-pushed event to the downstream distribution repo on every push to main, so it can open (or
+# update) a PR that pins go.mod to this commit. The downstream repo rebuilds its images when that PR is merged,
+# ensuring every deployed image corresponds to a real commit in the downstream repo.
+#
+# The target repository (owner/name) and a token allowed to dispatch to it are the DOWNSTREAM_REPO and
+# DOWNSTREAM_DISPATCH_TOKEN secrets. Without them, as in a fork, the job does nothing.
+name: "Downstream: pin this commit"
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.claude/**'
+      - '*.md'
+  workflow_dispatch:
+
+jobs:
+  dispatch-downstream:
+    name: "Downstream: pin this commit"
+    runs-on: ubuntu-latest
+    env:
+      DOWNSTREAM_REPO: ${{ secrets.DOWNSTREAM_REPO }}
+
+    steps:
+      - name: Get short SHA
+        id: sha
+        if: env.DOWNSTREAM_REPO != ''
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "short=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch upstream-pushed
+        if: env.DOWNSTREAM_REPO != ''
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.DOWNSTREAM_DISPATCH_TOKEN }}
+          repository: ${{ env.DOWNSTREAM_REPO }}
+          event-type: upstream-pushed
+          client-payload: |
+            {
+              "sha": "${{ github.sha }}",
+              "short_sha": "${{ steps.sha.outputs.short }}",
+              "branch": "${{ github.ref_name }}"
+            }

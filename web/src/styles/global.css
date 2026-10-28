@@ -1,0 +1,52 @@
+@import "./reset.css";
+@import "./primitives.css";
+@import "./semantic.css";
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background-color: var(--color-surface-sunken);
+}
+
+/* Thin, token-colored scrollbars on every scroll surface — the native track reads as a bright
+   strip against the dark surfaces. Browsers without scrollbar-color keep their native ones. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+::selection {
+  background-color: hsl(var(--color-caramel-200));
+  color: hsl(var(--color-caramel-900));
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* When the user has reduced motion enabled, collapses every animation and transition to a single frame. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

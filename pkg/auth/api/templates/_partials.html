@@ -1,0 +1,319 @@
+{{/* auth-style inlines a subset of the web app's design tokens because Go
+html/template cannot import CSS from the React bundle. Keep the values below in
+sync with: - web/src/styles/primitives.css (raw HSL channels, spacing, radius,
+shadows) - web/src/styles/semantic.css (--color-primary, --color-text, --ring,
+etc.) */}} {{define "auth-style"}}
+<style>
+    @font-face {
+        font-family: "Schibsted Grotesk";
+        font-style: normal;
+        font-weight: 400 900;
+        font-display: swap;
+        src: url("/static/fonts/schibsted-grotesk.woff2") format("woff2");
+    }
+    :root {
+        --color-primary: hsl(30 75% 45%);
+        --color-primary-hover: hsl(30 75% 36%);
+        --color-primary-active: hsl(30 75% 28%);
+        --color-surface: hsl(0 0% 100%);
+        --color-surface-secondary: hsl(30 8% 96%);
+        --color-surface-hover: hsl(30 8% 96%);
+        --color-surface-sunken: hsl(30 8% 98%);
+        --color-border: hsl(30 7% 90%);
+        --color-border-strong: hsl(30 6% 83%);
+        --color-text: hsl(30 9% 9%);
+        --color-text-secondary: hsl(30 6% 32%);
+        --color-text-tertiary: hsl(30 5% 45%);
+        --color-text-on-primary: hsl(0 0% 100%);
+        --color-destructive: hsl(0 72% 51%);
+        --color-destructive-subtle: hsl(0 86% 97%);
+        --color-destructive-border: hsl(0 72% 85%);
+        --color-entrance-glow: hsl(30 70% 90% / 0.55);
+        --ring: 0 0 0 3px hsl(30 70% 56% / 0.4);
+        --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.08);
+        --radius-md: 6px;
+        --radius-lg: 8px;
+        --font-sans:
+            -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+        --font-display: "Schibsted Grotesk", var(--font-sans);
+    }
+    /* No theme toggle on these pages — the system preference decides. */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --color-primary: hsl(30 60% 68%);
+            --color-primary-hover: hsl(30 65% 80%);
+            --color-primary-active: hsl(30 70% 90%);
+            --color-surface: hsl(30 9% 9%);
+            --color-surface-secondary: hsl(30 8% 15%);
+            --color-surface-hover: hsl(30 7% 25%);
+            --color-surface-sunken: hsl(30 10% 6%);
+            --color-border: hsl(30 7% 25%);
+            --color-border-strong: hsl(30 6% 32%);
+            --color-text: hsl(30 8% 98%);
+            --color-text-secondary: hsl(30 6% 83%);
+            --color-text-tertiary: hsl(30 5% 45%);
+            --color-text-on-primary: hsl(30 9% 9%);
+            --color-destructive: hsl(0 72% 60%);
+            --color-destructive-subtle: hsl(0 50% 15%);
+            --color-destructive-border: hsl(0 45% 30%);
+            --color-entrance-glow: hsl(30 75% 28% / 0.16);
+            --ring: 0 0 0 3px hsl(30 70% 56% / 0.3);
+            --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.4);
+        }
+    }
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+    body {
+        font-family: var(--font-sans);
+        background-color: var(--color-surface-sunken);
+        background-image: radial-gradient(
+            50rem 34rem at 50% 28%,
+            var(--color-entrance-glow),
+            transparent 70%
+        );
+        color: var(--color-text);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 1rem;
+    }
+    .card {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-md);
+        padding: 2rem;
+        width: 100%;
+        max-width: 440px;
+        animation: card-rise 300ms ease-out;
+    }
+    @keyframes card-rise {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .card {
+            animation: none;
+        }
+    }
+    .brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+    }
+    .brand-logo {
+        display: block;
+    }
+    .brand-name {
+        font-family: var(--font-display);
+        font-size: 1rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--color-text);
+    }
+    h1 {
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        color: var(--color-text);
+    }
+    .subtitle {
+        font-size: 0.9rem;
+        color: var(--color-text-secondary);
+        text-align: center;
+        margin-top: -1rem;
+        margin-bottom: 1.75rem;
+        line-height: 1.5;
+    }
+    .field {
+        margin-bottom: 1rem;
+    }
+    label {
+        display: block;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        margin-bottom: 0.375rem;
+        color: var(--color-text-secondary);
+    }
+    input[type="email"],
+    input[type="password"] {
+        width: 100%;
+        padding: 0.625rem 0.75rem;
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-md);
+        font-size: 1rem;
+        font-family: inherit;
+        color: var(--color-text);
+        background: var(--color-surface);
+    }
+    input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: var(--ring);
+    }
+    .btn {
+        padding: 0.625rem 1rem;
+        border: none;
+        border-radius: var(--radius-md);
+        font-size: 1rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background-color 150ms ease;
+    }
+    .btn-primary {
+        background: var(--color-primary);
+        color: var(--color-text-on-primary);
+    }
+    .btn-primary:hover {
+        background: var(--color-primary-hover);
+    }
+    .btn-primary:active {
+        background: var(--color-primary-active);
+    }
+    .btn-secondary {
+        background: var(--color-surface);
+        color: var(--color-text);
+        border: 1px solid var(--color-border-strong);
+    }
+    .btn-secondary:hover {
+        background: var(--color-surface-hover);
+    }
+    .btn-block {
+        width: 100%;
+    }
+    .oidc-divider {
+        position: relative;
+        text-align: center;
+        margin: 1.5rem 0;
+        font-size: 0.85rem;
+        color: var(--color-text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .oidc-divider::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        border-top: 1px solid var(--color-border);
+    }
+    .oidc-divider span {
+        position: relative;
+        background: var(--color-surface);
+        padding: 0 0.75rem;
+    }
+    .oidc-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .scopes {
+        list-style: none;
+        margin: 0 0 1.75rem;
+        padding: 0;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+    }
+    .scope-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        font-size: 0.9rem;
+    }
+    .scope-item:last-child {
+        border-bottom: none;
+    }
+    .scope-item input[type="checkbox"] {
+        margin-top: 0.15rem;
+        accent-color: var(--color-primary);
+    }
+    .scope-label {
+        color: var(--color-text);
+    }
+    .scope-raw {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--color-text-tertiary);
+        font-family: "SF Mono", "Fira Code", Menlo, monospace;
+        margin-top: 0.125rem;
+    }
+    .actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+    .actions .btn {
+        flex: 1;
+    }
+    .error {
+        background: var(--color-destructive-subtle);
+        color: var(--color-destructive);
+        border: 1px solid var(--color-destructive-border);
+        border-radius: var(--radius-md);
+        padding: 0.625rem 0.75rem;
+        font-size: 0.875rem;
+        margin-bottom: 1rem;
+        text-align: center;
+    }
+    .error-heading {
+        color: var(--color-destructive);
+        margin-bottom: 0.75rem;
+    }
+    .error-message {
+        color: var(--color-text-secondary);
+        text-align: center;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+    .page-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 1rem;
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--color-text-tertiary);
+    }
+    .page-footer-link {
+        margin-left: 0.5rem;
+        color: inherit;
+        text-decoration: none;
+    }
+    .page-footer-link:hover {
+        text-decoration: underline;
+    }
+</style>
+{{end}} {{define "auth-favicon"}}
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/favicon-180x180.png" />
+{{end}} {{define "auth-brand"}}
+<div class="brand">
+    <img class="brand-logo" src="/favicon-48x48.png" width="40" height="40" alt="" />
+    <span class="brand-name">BaguetteDB</span>
+</div>
+{{end}} {{define "auth-footer"}}
+<footer class="page-footer">
+    <span>© {{currentYear}} BaguetteDB. All rights reserved.</span>
+    {{range footerLinks}}<a class="page-footer-link" href="{{.URL}}">{{.Label}}</a>
+    {{end}}
+</footer>
+{{end}}

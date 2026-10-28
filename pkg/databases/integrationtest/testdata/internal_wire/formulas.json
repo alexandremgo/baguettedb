@@ -1,0 +1,16 @@
+[
+  {
+    "id": "<formula-1>",
+    "name": "recent-books",
+    "label": "Recent books",
+    "description": "Newest first",
+    "kind": "view",
+    "hidden": true
+  },
+  {
+    "id": "<formula-2>",
+    "name": "add-anonymous-author",
+    "description": "Adds a placeholder author",
+    "kind": "action"
+  }
+]

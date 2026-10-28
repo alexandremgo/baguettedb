@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - BaguetteDB</title>
+    {{template "auth-favicon"}}
+    {{template "auth-style"}}
+</head>
+<body>
+    <main class="card">
+        {{template "auth-brand"}}
+        <h1 class="error-heading">Sign-in issue</h1>
+        <p class="error-message">{{.Message}}</p>
+    </main>
+    {{template "auth-footer"}}
+</body>
+</html>

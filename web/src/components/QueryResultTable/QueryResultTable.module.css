@@ -1,0 +1,38 @@
+/* The same bordered surface the styled modes (checklist/cards/board) sit in, so a table-mode
+   result reads as part of the family instead of floating on the page. */
+.surface {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+/* Values are truncated at ~50 chars, so single-line cells stay bounded and a squeezed layout
+   keeps short cells (dates) on one line. */
+.surface td {
+  white-space: nowrap;
+}
+
+.null {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.checkbox {
+  cursor: pointer;
+}
+
+.selectCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  margin: calc(var(--space-2) * -1);
+  cursor: pointer;
+}
+
+.menuCell {
+  display: inline-flex;
+  align-items: center;
+}

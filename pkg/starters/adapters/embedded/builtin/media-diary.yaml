@@ -1,0 +1,844 @@
+# Media Diary — a personal log of films, TV shows, and books. A catalog of titles + a dated diary of
+# viewings/reads (one entry per sitting, so rewatches/rereads are repeat entries), half-star ratings,
+# reviews, a to-watch/to-read shelf, and curated lists. Text-first: no cover images.
+key: media-diary
+version: 1
+name: Media Diary
+description: Log the films, shows, and books you watch and read — rate them in half-stars, jot reviews, keep a to-watch/to-read shelf, and build lists.
+icon: "🎬📚"
+tags:
+  - culture
+  - lifestyle
+
+schema:
+  - |-
+    -- One work: a film, TV show/season, or book. Rows are created on the fly by logging or shelving
+    -- from a free-text title, deduped by (title, kind, year) so a rewatch reuses the same row. kind
+    -- drives the kind-aware views (verb, emoji, filter). A work is on the to-watch / to-read shelf
+    -- while shelved_at IS NOT NULL AND checked_at IS NULL — shelved_at records when it was added and
+    -- is never cleared by the checkbox, so a just-checked title can linger on the shelf, struck
+    -- through, long enough to be tapped back. link is any URL (its page on a film/book site).
+    -- creator is the director / author.
+    CREATE TABLE titles (
+        id               INTEGER PRIMARY KEY,
+        kind             TEXT NOT NULL DEFAULT 'film' CHECK (kind IN ('film', 'tv', 'book')),
+        title            TEXT NOT NULL,
+        year             INTEGER,
+        creator          TEXT,                           -- director / author
+        tags             TEXT,                           -- free text, comma-separated, lowercase
+        link             TEXT,
+        -- A favourite: affection rather than quality, so it is independent of the rating (a guilty
+        -- pleasure is ♥ at ★★½). It marks the work, not one viewing of it, so a rewatch inherits it.
+        liked            INTEGER NOT NULL DEFAULT 0,
+        shelved_at       TEXT,                           -- when it was added to the shelf
+        checked_at       TEXT,                           -- when it was checked off; NULL = still to watch / read
+        -- The diary entry the shelf checkbox created, so un-checking removes that exact row. Deleting
+        -- the entry from the diary drops the link, and a later un-check then correctly removes nothing.
+        checked_entry_id INTEGER REFERENCES entries(id) ON DELETE SET NULL,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - |-
+    -- One diary entry: a single viewing or read of a title. rating is stored 1-10 (half-stars: 10 =
+    -- ★★★★★, 1 = ½); the dialogs take 0.5-5 and store rating*2. is_repeat marks a rewatch/reread
+    -- (a prior entry for the same title already existed). logged_on is the date watched/read.
+    CREATE TABLE entries (
+        id         INTEGER PRIMARY KEY,
+        title_id   INTEGER NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+        logged_on  TEXT NOT NULL DEFAULT (date('now')),
+        rating     INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
+        review     TEXT,                                 -- markdown
+        is_repeat  INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - |-
+    -- A curated collection spanning any kind (e.g. "Best of 2026", "Comfort rewatches").
+    CREATE TABLE lists (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL UNIQUE,
+        description TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - |-
+    -- Membership of a title in a list, ordered by position.
+    CREATE TABLE list_items (
+        id       INTEGER PRIMARY KEY,
+        list_id  INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        title_id INTEGER NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL DEFAULT 1
+    )
+  - CREATE INDEX idx_entries_title ON entries(title_id)
+  - CREATE INDEX idx_entries_logged ON entries(logged_on)
+  - CREATE INDEX idx_titles_shelf ON titles(shelved_at) WHERE checked_at IS NULL
+  - CREATE INDEX idx_list_items_list ON list_items(list_id)
+
+formulas:
+  # Three visible surfaces — the diary feed, the shelf checklist, and lists — plus their attached
+  # detail/action formulas, which the slot pass hides from the tab bar.
+
+  - name: diary
+    label: Diary
+    description: Your viewings and reads, newest first — filter by kind, text, or favourites; click one for its full record.
+    sql: |-
+      SELECT e.id AS rowid,
+             t.title || COALESCE(' (' || t.year || ')', '') AS heading,
+             LTRIM(
+                  CASE WHEN e.rating IS NULL THEN '☆ unrated'
+                       ELSE substr('★★★★★', 1, e.rating / 2)
+                            || CASE WHEN e.rating % 2 = 1 THEN '½' ELSE '' END END
+               || CASE WHEN t.liked = 1 THEN '   ♥' ELSE '' END
+               || CASE WHEN e.is_repeat = 1 THEN '   ↺' ELSE '' END
+               || COALESCE(char(10) || char(10) || '_' || NULLIF(t.tags, '') || '_', '')
+               || COALESCE(char(10) || char(10) || NULLIF(e.review, ''), '')
+               || char(10) || char(10)
+               || CASE t.kind WHEN 'book' THEN '📚 read' WHEN 'tv' THEN '📺 watched' ELSE '🎬 watched' END
+               || ' ' || e.logged_on
+               || COALESCE('  ·  [↗](' || NULLIF(t.link, '') || ')', '')
+             , char(10)) AS body,
+             t.kind, t.title, t.year, t.creator, t.tags, t.link, t.liked,
+             e.rating / 2.0 AS rating, e.review, e.logged_on
+      FROM entries e
+      JOIN titles t ON t.id = e.title_id
+      WHERE (:search IS NULL
+             OR t.title LIKE '%' || :search || '%'
+             OR COALESCE(t.creator, '') LIKE '%' || :search || '%'
+             OR COALESCE(t.tags, '') LIKE '%' || :search || '%')
+        AND (:kind IS NULL OR t.kind = :kind)
+        AND (COALESCE(:liked, 0) = 0 OR t.liked = 1)
+      ORDER BY e.logged_on DESC, e.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches title, creator, tags
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: film, label: Film }
+          - { value: tv, label: TV }
+          - { value: book, label: Book }
+        hint: all when empty
+      - name: liked
+        type: boolean
+        source: prompt
+        optional: true
+        hint: only ♥ favourites
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: log-title
+        edit: edit-entry
+        delete: delete-entry
+        detail: entry-detail
+        row_actions:
+          - edit-title
+
+  - name: shelf
+    label: Shelf
+    description: Your to-watch / to-read shelf, as a checklist — jot a title to add one, check it off once you've watched or read it and it lands in your diary as an unrated log.
+    sql: |-
+      SELECT t.id AS rowid,
+             CASE t.kind WHEN 'book' THEN '📚 ' WHEN 'tv' THEN '📺 ' ELSE '🎬 ' END
+               || t.title
+               || COALESCE(' (' || t.year || ')', '')
+               || COALESCE(' — ' || t.creator, '')
+               || CASE WHEN t.liked = 1 THEN '  ♥' ELSE '' END AS line,
+             CASE WHEN t.checked_at IS NULL THEN 0 ELSE 1 END AS done,
+             t.title, t.kind, t.year, t.creator
+      FROM titles t
+      -- Just-checked titles linger, struck through, for 10 minutes so a mistaken tap can be tapped
+      -- back. Ordering on shelved_at keeps such a row in place instead of jumping it to the top.
+      WHERE t.shelved_at IS NOT NULL
+        AND (t.checked_at IS NULL OR t.checked_at >= datetime('now', '-10 minutes'))
+        AND (:search IS NULL
+             OR t.title LIKE '%' || :search || '%'
+             OR COALESCE(t.creator, '') LIKE '%' || :search || '%')
+        AND (:kind IS NULL OR t.kind = :kind)
+      ORDER BY t.shelved_at DESC, t.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches title or creator
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: film, label: Film }
+          - { value: tv, label: TV }
+          - { value: book, label: Book }
+        hint: all when empty
+    display:
+      mode: checklist
+      columns:
+        - {column: line, role: title}
+        - {column: done, role: check}
+      slots:
+        add: shelve-title
+        edit: edit-shelf-title
+        toggle: mark-logged
+        # No delete slot: nothing on the shelf is worth destroying a title and its diary history for.
+        row_actions:
+          - remove-from-shelf
+
+  - name: lists
+    label: Lists
+    description: Your curated lists — each shows how many titles it holds; click one to see and edit its titles.
+    sql: |-
+      SELECT l.id AS rowid,
+             l.name AS heading,
+             COALESCE(l.description || char(10) || char(10), '')
+               || (SELECT COUNT(*) FROM list_items WHERE list_id = l.id) || ' titles' AS body,
+             l.name, l.description
+      FROM lists l
+      WHERE :search IS NULL
+         OR l.name LIKE '%' || :search || '%'
+         OR COALESCE(l.description, '') LIKE '%' || :search || '%'
+      ORDER BY l.created_at DESC, l.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name or description
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: create-list
+        edit: edit-list
+        delete: delete-list
+        detail: list-detail
+
+  - name: entry-detail
+    label: Entry
+    description: One diary entry's full record — the title, your rating and full review, and how many times you've logged it.
+    sql: |-
+      SELECT t.title AS title,
+             t.year, t.creator,
+             CASE t.kind WHEN 'book' THEN 'book' WHEN 'tv' THEN 'TV' ELSE 'film' END AS kind,
+             CASE WHEN e.rating IS NULL THEN '☆ unrated'
+                  ELSE substr('★★★★★', 1, e.rating / 2)
+                       || CASE WHEN e.rating % 2 = 1 THEN '½' ELSE '' END END AS rating,
+             CASE WHEN t.liked = 1 THEN '♥ favourite' ELSE '—' END AS liked,
+             e.logged_on,
+             CASE WHEN e.is_repeat = 1 THEN 'rewatch / reread' ELSE 'first time' END AS visit,
+             (SELECT COUNT(*) FROM entries WHERE title_id = t.id) AS times_logged,
+             e.review,
+             COALESCE(t.link, '') AS link
+      FROM entries e
+      JOIN titles t ON t.id = e.title_id
+      WHERE e.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: review, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: diary
+
+  - name: list-detail
+    label: List
+    description: The titles in the selected list, each with where you stand on it — add or remove titles, log or shelve one, click one for its full record.
+    sql: |-
+      SELECT li.id AS rowid,
+             CASE t.kind WHEN 'book' THEN '📚 ' WHEN 'tv' THEN '📺 ' ELSE '🎬 ' END
+               || t.title || COALESCE(' (' || t.year || ')', '')
+               || CASE WHEN t.liked = 1 THEN '  ♥' ELSE '' END AS heading,
+             -- The second body line is where you stand on the item: last rating + times logged once
+             -- it has diary entries, otherwise its shelf state.
+             COALESCE('_' || t.creator || '_' || char(10) || char(10), '')
+               || CASE
+                    WHEN NOT EXISTS (SELECT 1 FROM entries WHERE title_id = t.id) THEN
+                      CASE WHEN t.shelved_at IS NOT NULL AND t.checked_at IS NULL THEN 'on the shelf'
+                           WHEN t.kind = 'book' THEN 'not read yet' ELSE 'not seen yet' END
+                    ELSE
+                      (SELECT CASE WHEN e.rating IS NULL THEN '☆ unrated'
+                                   ELSE substr('★★★★★', 1, e.rating / 2)
+                                        || CASE WHEN e.rating % 2 = 1 THEN '½' ELSE '' END END
+                       FROM entries e WHERE e.title_id = t.id
+                       ORDER BY e.logged_on DESC, e.id DESC LIMIT 1)
+                      || ' · '
+                      || (SELECT CASE WHEN COUNT(*) = 1 THEN
+                                   CASE t.kind WHEN 'book' THEN 'read once' ELSE 'watched once' END
+                                 ELSE CASE t.kind WHEN 'book' THEN 'read ' ELSE 'watched ' END
+                                      || COUNT(*) || ' times' END
+                          FROM entries WHERE title_id = t.id)
+                  END AS body,
+             li.list_id
+      FROM list_items li
+      JOIN titles t ON t.id = li.title_id
+      WHERE li.list_id = :rowid
+      ORDER BY li.position, li.id
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: add-to-list
+        delete: remove-from-list
+        detail: title-detail
+        reorder: reorder-list-items
+        row_actions:
+          - log-from-list
+          - shelve-from-list
+    attached_to: lists
+
+  - name: log-title
+    label: Log title
+    description: Logs a viewing or read, creating the title if new (reused on a rewatch/reread); leaves the shelf once logged.
+    sql: |-
+      INSERT INTO titles (kind, title, year, creator, tags, link)
+      SELECT :kind, TRIM(:title), :year, :creator, :tags, :link
+      WHERE NULLIF(TRIM(:title), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM titles
+                        WHERE title = TRIM(:title)
+                          AND kind = :kind
+                          AND IFNULL(year, -1) = IFNULL(:year, -1));
+      -- A like belongs to the work, so ticking the box while logging a rewatch marks the title
+      -- itself. Set-only on purpose: the box starts unticked on every log, so treating an unticked
+      -- one as "unlike" would quietly drop a favourite the next time it is watched.
+      UPDATE titles SET liked = 1
+      WHERE COALESCE(:liked, 0) = 1
+        AND title = TRIM(:title)
+        AND kind = :kind
+        AND IFNULL(year, -1) = IFNULL(:year, -1);
+      -- The date param arrives canonical YYYY-MM-DD or not at all, so omission is the only fallback
+      -- case: today. The rating is clamped into the 0.5-5 the dialog advertises: the stored value is
+      -- doubled, so an unclamped 6 would trip the 1-10 CHECK and fail the whole log with a message
+      -- about a scale the user never saw.
+      INSERT INTO entries (title_id, logged_on, rating, review, is_repeat)
+      SELECT t.id,
+             COALESCE(:logged_on, date('now')),
+             CASE WHEN :rating IS NULL THEN NULL
+                  ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+             :review,
+             CASE WHEN EXISTS (SELECT 1 FROM entries WHERE title_id = t.id) THEN 1 ELSE 0 END
+      FROM titles t
+      WHERE t.title = TRIM(:title)
+        AND t.kind = :kind
+        AND IFNULL(t.year, -1) = IFNULL(:year, -1)
+      ORDER BY t.id LIMIT 1;
+      -- Takes the title off the shelf if it was on it. checked_entry_id stays NULL: the entry above
+      -- was logged deliberately, with a rating and a review, so the shelf checkbox must never be
+      -- able to remove it. Matched through a LIMIT 1 subquery so that duplicate rows for one work
+      -- lose a single shelf slot rather than all of them at once.
+      UPDATE titles SET checked_at = datetime('now')
+      WHERE id = (SELECT id FROM titles
+                  WHERE title = TRIM(:title)
+                    AND kind = :kind
+                    AND IFNULL(year, -1) = IFNULL(:year, -1)
+                    AND shelved_at IS NOT NULL AND checked_at IS NULL
+                  ORDER BY id LIMIT 1)
+    params:
+      - name: title
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: film, label: Film }
+          - { value: tv, label: TV }
+          - { value: book, label: Book }
+        default: film
+        hint: film if empty
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+      - name: creator
+        type: text
+        source: prompt
+        optional: true
+        hint: director / author
+      - name: tags
+        type: text
+        source: prompt
+        optional: true
+        hint: comma-separated, lowercase (e.g. sci-fi, comfort)
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps (e.g. 4.5)
+      - name: review
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: liked
+        type: boolean
+        source: prompt
+        optional: true
+        hint: a favourite?
+      - name: logged_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+      - name: link
+        type: text
+        source: prompt
+        optional: true
+        hint: any URL — its page on a film/book site
+    attached_to: diary
+
+  - name: edit-entry
+    label: Edit entry
+    description: Corrects the selected diary entry's rating, review, and date.
+    sql: |-
+      -- Rating clamped as in log-title; an omitted date keeps the entry's current one.
+      UPDATE entries
+      SET rating = CASE WHEN :rating IS NULL THEN NULL
+                        ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+          review = :review,
+          logged_on = COALESCE(:logged_on, logged_on)
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps
+      - name: review
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: logged_on
+        type: date
+        source: prompt
+        optional: true
+        hint: unchanged if empty
+    attached_to: diary
+
+  - name: edit-title
+    label: Edit title
+    description: Corrects the work behind the selected entry — its kind, title, year, creator, tags, link, and whether it's a favourite.
+    sql: |-
+      -- liked assigns straight from the box rather than set-only: this dialog is seeded from the
+      -- current row, so an unticked box here is a deliberate unlike.
+      UPDATE titles
+      SET kind = COALESCE(:kind, kind),
+          title = COALESCE(NULLIF(TRIM(:title), ''), title),
+          year = :year, creator = :creator, tags = :tags, link = :link,
+          liked = COALESCE(:liked, 0)
+      WHERE id = (SELECT title_id FROM entries WHERE id = :rowid)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: title
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: film, label: Film }
+          - { value: tv, label: TV }
+          - { value: book, label: Book }
+        hint: unchanged if empty
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+      - name: creator
+        type: text
+        source: prompt
+        optional: true
+        hint: director / author
+      - name: tags
+        type: text
+        source: prompt
+        optional: true
+        hint: comma-separated, lowercase
+      - name: link
+        type: text
+        source: prompt
+        optional: true
+      - name: liked
+        type: boolean
+        source: prompt
+        optional: true
+        hint: a favourite?
+    attached_to: diary
+
+  - name: delete-entry
+    label: Delete entry
+    description: Deletes the selected diary entry (the title stays in your catalog).
+    sql: DELETE FROM entries WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: diary
+
+  - name: shelve-title
+    label: Add to shelf
+    description: Adds a title to the to-watch / to-read shelf by name — details and rating come when you log it.
+    sql: |-
+      INSERT INTO titles (kind, title, year, creator, shelved_at)
+      SELECT :kind, TRIM(:title), :year, :creator, datetime('now')
+      WHERE NULLIF(TRIM(:title), '') IS NOT NULL
+    params:
+      - name: title
+        type: text
+        source: prompt
+        inline: true
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: film, label: Film }
+          - { value: tv, label: TV }
+          - { value: book, label: Book }
+        default: film
+        hint: film if empty
+        inline: true
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+      - name: creator
+        type: text
+        source: prompt
+        optional: true
+        hint: director / author
+    attached_to: shelf
+
+  - name: edit-shelf-title
+    label: Edit shelf title
+    description: Corrects a shelved title before it's logged — its name, kind, year, or creator.
+    sql: |-
+      UPDATE titles
+      SET title = COALESCE(NULLIF(TRIM(:title), ''), title),
+          kind = COALESCE(:kind, kind),
+          year = :year, creator = :creator
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: title
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: film, label: Film }
+          - { value: tv, label: TV }
+          - { value: book, label: Book }
+        hint: unchanged if empty
+      - name: year
+        type: integer
+        source: prompt
+        optional: true
+      - name: creator
+        type: text
+        source: prompt
+        optional: true
+        hint: director / author
+    attached_to: shelf
+
+  - name: mark-logged
+    label: Mark logged
+    description: Checks a title off the shelf once watched or read, logging it in your diary as an unrated entry — tap again within 10 minutes to undo both.
+    sql: |-
+      -- Flips the check. Everything below branches on the resulting checked_at, so the two
+      -- directions never need a parameter to tell them apart.
+      UPDATE titles
+      SET checked_at = CASE WHEN checked_at IS NULL THEN datetime('now') ELSE NULL END
+      WHERE id = :rowid;
+      -- Un-check: removes exactly the entry this checkbox created, by its stored id — an entry
+      -- logged by hand from the diary is never touched. If it has since been rated or reviewed it
+      -- stays: the un-tap gives back the shelf slot without discarding written-down work.
+      DELETE FROM entries
+      WHERE id = (SELECT checked_entry_id FROM titles WHERE id = :rowid AND checked_at IS NULL)
+        AND rating IS NULL AND review IS NULL;
+      -- Check: records the viewing or read as an unrated entry — rate or review it from the diary.
+      INSERT INTO entries (title_id, logged_on, is_repeat)
+      SELECT t.id, date('now'),
+             CASE WHEN EXISTS (SELECT 1 FROM entries WHERE title_id = t.id) THEN 1 ELSE 0 END
+      FROM titles t
+      WHERE t.id = :rowid AND t.checked_at IS NOT NULL;
+      -- Remembers which entry the check created so an un-check removes that exact row, and forgets
+      -- it on the way back out. The EXISTS guard keeps a stale last_insert_rowid() from being
+      -- stored if the insert above matched nothing.
+      UPDATE titles
+      SET checked_entry_id = CASE WHEN checked_at IS NULL THEN NULL ELSE last_insert_rowid() END
+      WHERE id = :rowid
+        AND (checked_at IS NULL
+             OR EXISTS (SELECT 1 FROM entries WHERE id = last_insert_rowid() AND title_id = :rowid))
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: shelf
+
+  - name: remove-from-shelf
+    label: Remove from shelf
+    description: Takes the selected title off the shelf — for things no longer worth watching or reading. It stays in your catalog, with any diary entries it already has.
+    sql: |-
+      -- Un-shelves rather than deletes: entries cascade from titles, so removing the row would take
+      -- the diary history of a title watched before it was re-shelved with it.
+      UPDATE titles SET shelved_at = NULL, checked_at = NULL, checked_entry_id = NULL
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: shelf
+
+  - name: create-list
+    label: New list
+    description: Creates a new list.
+    sql: |-
+      INSERT INTO lists (name, description)
+      VALUES (NULLIF(TRIM(:name), ''), :description)
+    params:
+      - name: name
+        type: text
+        source: prompt
+      - name: description
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+    attached_to: lists
+
+  - name: edit-list
+    label: Edit list
+    description: Renames the selected list or updates its description.
+    sql: UPDATE lists SET name = NULLIF(TRIM(:name), ''), description = :description WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: description
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+    attached_to: lists
+
+  - name: delete-list
+    label: Delete list
+    description: Deletes the selected list (its titles stay in your catalog).
+    sql: DELETE FROM lists WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: lists
+
+  - name: add-to-list
+    label: Add to list
+    description: Adds a title from your catalog to the open list.
+    sql: |-
+      INSERT INTO list_items (list_id, title_id, position)
+      VALUES (:parent_rowid, :title_id,
+              COALESCE((SELECT MAX(position) + 1 FROM list_items WHERE list_id = :parent_rowid), 1))
+    params:
+      - name: parent_rowid
+        type: integer
+        source: selection-single
+      - name: title_id
+        type: integer
+        source: lookup
+        lookup:
+          table: titles
+          label_column: title
+          value_column: id
+    attached_to: list-detail
+
+  - name: remove-from-list
+    label: Remove from list
+    description: Removes the selected title from the open list.
+    sql: DELETE FROM list_items WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: list-detail
+
+  - name: reorder-list-items
+    label: Reorder list
+    description: Renumbers the open list's positions from the dropped order.
+    sql: |-
+      UPDATE list_items SET position = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                                        WHERE je.value = list_items.id)
+      WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+    params:
+      - name: ordered_rowids
+        type: integer
+        source: reorder
+    attached_to: list-detail
+
+  - name: title-detail
+    label: Title
+    description: The selected list item's full record — the work plus your history with it (times logged, last rating, shelf state).
+    sql: |-
+      SELECT t.title, t.year, t.creator,
+             CASE t.kind WHEN 'book' THEN 'book' WHEN 'tv' THEN 'TV' ELSE 'film' END AS kind,
+             CASE WHEN t.liked = 1 THEN '♥ favourite' ELSE '—' END AS liked,
+             t.tags,
+             (SELECT COUNT(*) FROM entries WHERE title_id = t.id) AS times_logged,
+             (SELECT MAX(logged_on) FROM entries WHERE title_id = t.id) AS last_logged,
+             CASE WHEN NOT EXISTS (SELECT 1 FROM entries WHERE title_id = t.id) THEN '—'
+                  ELSE (SELECT CASE WHEN e.rating IS NULL THEN '☆ unrated'
+                                    ELSE substr('★★★★★', 1, e.rating / 2)
+                                         || CASE WHEN e.rating % 2 = 1 THEN '½' ELSE '' END END
+                        FROM entries e WHERE e.title_id = t.id
+                        ORDER BY e.logged_on DESC, e.id DESC LIMIT 1) END AS last_rating,
+             CASE WHEN t.shelved_at IS NOT NULL AND t.checked_at IS NULL THEN 'on the shelf'
+                  ELSE '—' END AS shelf,
+             COALESCE(t.link, '') AS link
+      FROM list_items li
+      JOIN titles t ON t.id = li.title_id
+      WHERE li.id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: list-detail
+
+  - name: log-from-list
+    label: Log now
+    description: Records a viewing or read of the selected list item straight from the list — rating, review, and date optional, like the diary's log.
+    sql: |-
+      INSERT INTO entries (title_id, logged_on, rating, review, is_repeat)
+      SELECT li.title_id,
+             COALESCE(:logged_on, date('now')),
+             CASE WHEN :rating IS NULL THEN NULL
+                  ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+             :review,
+             CASE WHEN EXISTS (SELECT 1 FROM entries WHERE title_id = li.title_id) THEN 1 ELSE 0 END
+      FROM list_items li
+      WHERE li.id = :rowid;
+      -- Takes the title off the shelf if it was on it. checked_entry_id stays NULL: this entry was
+      -- logged deliberately, so the shelf checkbox must never be able to remove it.
+      UPDATE titles SET checked_at = datetime('now')
+      WHERE id = (SELECT title_id FROM list_items WHERE id = :rowid)
+        AND shelved_at IS NOT NULL AND checked_at IS NULL
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps (e.g. 4.5)
+      - name: review
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: logged_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+    attached_to: list-detail
+
+  - name: shelve-from-list
+    label: Add to shelf
+    description: Puts the selected list item on the to-watch / to-read shelf; does nothing if it's already there.
+    sql: |-
+      -- Re-shelving something already actively on the shelf would only bump its position, so the
+      -- guard skips it; a title checked off long ago re-shelves fresh, unchecked.
+      UPDATE titles SET shelved_at = datetime('now'), checked_at = NULL, checked_entry_id = NULL
+      WHERE id = (SELECT title_id FROM list_items WHERE id = :rowid)
+        AND (shelved_at IS NULL OR checked_at IS NOT NULL)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: list-detail
+
+skills:
+  - name: media-diary-orientation
+    description: How the catalog, the diary of viewings/reads, half-star ratings, the shelf, and lists fit together.
+    body: |
+      This bdb is a personal media log — films, TV, and books in one place.
+
+      **Two core tables.** `titles` is the catalog (one row per work); `entries` is the diary — one row
+      per viewing or read. Logging the same work twice makes two entries, so **rewatches and rereads are
+      just repeat entries** (`is_repeat = 1` on the later ones). `log-title` dedupes the catalog by
+      `(title, kind, year)`: logging a work you've seen before reuses its `titles` row instead of making
+      a duplicate.
+
+      **kind.** Every title is a `film`, `tv`, or `book`. The diary and shelf show a per-kind emoji and
+      verb (📚 read / 🎬📺 watched), and the diary's `kind` filter narrows to one medium — so the same
+      bdb reads as a film log, a reading log, or everything at once. For TV, log a show or a season as a
+      single title (coarse — no per-episode tracking).
+
+      **Ratings.** Half-stars from 0.5 to 5, on the **entry** — each viewing is rated on its own. The
+      dialogs take `0.5`–`5` and store it doubled as an integer 1–10 (`rating * 2`), rendered `★★★★½`.
+      Leave it empty for an unrated log.
+
+      **Favourites.** `titles.liked` is affection rather than quality, so it is independent of the
+      rating — a guilty pleasure is ♥ at ★★½. It marks the **work**, not one viewing, so every entry
+      for a favourite renders ♥ and the diary's `liked` filter returns works you love rather than
+      individual watches. Ticking the box while logging only ever *sets* it (the box starts unticked
+      on each log, so an untouched one must not quietly unlike a favourite); `edit-title` is where a
+      like is removed, since that dialog is seeded from the current value.
+
+      **Shelf.** A title is on the to-watch / to-read shelf while `shelved_at IS NOT NULL AND
+      checked_at IS NULL` — `shelved_at` records when it was added and is never cleared by the
+      checkbox. `shelve-title` adds one by name.
+
+      Checking it off (`mark-logged`) stamps `checked_at` **and writes an unrated `entries` row**, so
+      the shelf is a real way to log a viewing — rate or review it afterwards from the diary. The row
+      stays on the shelf, struck through, for 10 minutes; tapping it again inside that window clears
+      the check and removes the entry the checkbox made, tracked by `titles.checked_entry_id` rather
+      than guessed at. An entry that has since been rated or reviewed survives the un-tap.
+
+      To log with a rating in one go, use the diary's `log-title` instead: it reuses the shelved title
+      (dedupe by title + kind + year) and stamps `checked_at` for you, leaving `checked_entry_id` NULL
+      so the checkbox can never remove it.
+
+      `remove-from-shelf` (the shelf's `⋯` menu) un-shelves a title you're no longer interested in —
+      it does **not** delete the row, because `entries` cascades from `titles` and deleting would take
+      the diary history with it. Deleting a title outright is deliberately not offered on the shelf.
+
+      **Lists.** `lists` + `list_items` are curated collections spanning any kind (e.g. "Best of 2026").
+      Open a list to add titles from the catalog or remove them. Each item shows where you stand on it
+      (last rating and times logged, or its shelf state); clicking one opens its full record
+      (`title-detail`), and from an item's `⋯` menu you can log a viewing or read on the spot
+      (`log-from-list`, rating/review/date optional — takes it off the shelf like `log-title`) or put
+      it on the shelf (`shelve-from-list`, a no-op if it's already there). Items keep a manual order
+      (`list_items.position`): dragging one in the app runs `reorder-list-items`; over MCP pass the
+      list's item ids in their new order, e.g. `ordered_rowids: [5, 3, 8]`.
+
+      **Tags.** `titles.tags` is free text, comma-separated, lowercase ("sci-fi, comfort") — filter with
+      the diary search box, reuse existing tags when possible.

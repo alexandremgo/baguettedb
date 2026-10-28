@@ -1,0 +1,1233 @@
+# Drinks — a tasting log for wine, beer, coffee, cocktails, and spirits. A catalog of drinks + a dated
+# diary of tastings (each attempt rated on its own, so a coffee dial-in is many tastings of one drink),
+# a per-batch cellar doubling as a wishlist, a best-of face aggregated from the ratings, and a recipe
+# book generic enough for a cocktail spec or a dialled-in brew.
+key: drinks
+version: 1
+name: Drinks
+description: Log the drinks you taste — wine, beer, coffee, cocktails — rate them in half-stars, keep a cellar with a wishlist, and save the recipes you converge on.
+icon: "🍷☕"
+tags:
+  - lifestyle
+  - tasting
+
+schema:
+  - |-
+    -- One drink: the catalog. Rows are created on the fly by logging, the cellar, or a recipe log,
+    -- deduped by (name, kind) with the name matched case-insensitively — vintages that matter belong
+    -- in the name ("Chinon 2019"), so the same label re-tasted reuses its row and its stats. non_alcoholic is orthogonal to kind (an NA beer is
+    -- still a beer for filters and stats). The per-kind columns describe the work and stay NULL for
+    -- the other kinds; maker is the producer / roaster / brewery / distillery / bar.
+    CREATE TABLE drinks (
+        id            INTEGER PRIMARY KEY,
+        kind          TEXT NOT NULL DEFAULT 'wine'
+                      CHECK (kind IN ('wine', 'beer', 'coffee', 'cocktail', 'spirit')),
+        name          TEXT NOT NULL,
+        maker         TEXT,
+        non_alcoholic INTEGER NOT NULL DEFAULT 0,
+        grape         TEXT,                            -- wine
+        vintage       INTEGER,                         -- wine
+        roast         TEXT,                            -- coffee
+        origin        TEXT,                            -- coffee
+        base_spirit   TEXT,                            -- cocktail
+        style         TEXT,                            -- beer
+        tags          TEXT,                            -- free text, comma-separated, lowercase
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - |-
+    -- One tasting: a dated try of a drink, rated on its own. rating is stored 1-10 (half-stars: 10 =
+    -- ★★★★★); the dialogs take 0.5-5 and store rating*2. The brew columns hold coffee brewing
+    -- parameters per attempt — the keeper graduates to a recipe — and stay NULL for other kinds.
+    CREATE TABLE tastings (
+        id         INTEGER PRIMARY KEY,
+        drink_id   INTEGER NOT NULL REFERENCES drinks(id) ON DELETE CASCADE,
+        tasted_on  TEXT NOT NULL DEFAULT (date('now')),
+        rating     INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
+        notes      TEXT,                               -- markdown
+        dose_g     REAL,                               -- coffee: grams of beans
+        grind      TEXT,                               -- coffee: grinder setting
+        method     TEXT,                               -- coffee: V60 / espresso / aeropress...
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - |-
+    -- One cellar row: an owned batch (bottles, a bag of beans) or an open wish for (more of) a drink.
+    -- Per-batch on purpose: two bags of the same beans bought apart keep their own dates and expiry,
+    -- and an owned batch and a wishlist row may coexist for one drink ("have 2, want more"). A
+    -- finished batch keeps its row; the view hides it.
+    CREATE TABLE cellar (
+        id          INTEGER PRIMARY KEY,
+        drink_id    INTEGER NOT NULL REFERENCES drinks(id) ON DELETE CASCADE,
+        status      TEXT NOT NULL DEFAULT 'owned' CHECK (status IN ('owned', 'wishlist')),
+        quantity    REAL NOT NULL DEFAULT 1,
+        unit        TEXT,                              -- bottles / g / cans — a plain count when NULL
+        added_on    TEXT NOT NULL DEFAULT (date('now')),
+        expires_on  TEXT,
+        finished_at TEXT
+    )
+  - |-
+    -- A way of preparing a drink: a cocktail spec or a dialled-in coffee brew — both are ingredients
+    -- plus a method.
+    CREATE TABLE recipes (
+        id         INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL UNIQUE,
+        kind       TEXT NOT NULL DEFAULT 'cocktail'
+                   CHECK (kind IN ('wine', 'beer', 'coffee', 'cocktail', 'spirit')),
+        method     TEXT,                               -- markdown
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - |-
+    -- One ingredient line of a recipe, ordered by position. amount is free text ('50 ml', '18 g').
+    CREATE TABLE recipe_ingredients (
+        id        INTEGER PRIMARY KEY,
+        recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+        amount    TEXT,
+        item      TEXT NOT NULL,
+        position  INTEGER NOT NULL DEFAULT 1
+    )
+  - CREATE INDEX idx_tastings_drink ON tastings(drink_id)
+  - CREATE INDEX idx_tastings_tasted ON tastings(tasted_on)
+  - CREATE INDEX idx_cellar_drink ON cellar(drink_id)
+  - CREATE INDEX idx_cellar_open ON cellar(status) WHERE finished_at IS NULL
+  - CREATE INDEX idx_recipe_ingredients_recipe ON recipe_ingredients(recipe_id)
+
+formulas:
+  # Four visible surfaces — the tastings feed, the cellar, the top-rated catalog face, and the recipe
+  # book — plus their attached detail/action formulas, which the slot pass hides from the tab bar.
+
+  - name: tastings
+    label: Tastings
+    description: Your tastings, newest first — every attempt with its rating, and a coffee's brew parameters; filter by kind or text, click one for its full record.
+    sql: |-
+      SELECT ta.id AS rowid,
+             CASE d.kind WHEN 'wine' THEN '🍷 ' WHEN 'beer' THEN '🍺 ' WHEN 'coffee' THEN '☕ '
+                         WHEN 'cocktail' THEN '🍸 ' ELSE '🥃 ' END
+               || d.name
+               || CASE WHEN d.non_alcoholic = 1 THEN ' · 0.0%' ELSE '' END AS heading,
+             LTRIM(
+                  CASE WHEN ta.rating IS NULL THEN '☆ unrated'
+                       ELSE substr('★★★★★', 1, ta.rating / 2)
+                            || CASE WHEN ta.rating % 2 = 1 THEN '½' ELSE '' END END
+               || COALESCE(char(10) || char(10) || '_' || NULLIF(d.maker, '') || '_', '')
+               || COALESCE(char(10) || char(10) || NULLIF(ta.notes, ''), '')
+               -- The brew line: each part optional, joined on ' · ' with the leading joint stripped.
+               || COALESCE(char(10) || char(10) || '⚙️ ' || NULLIF(SUBSTR(
+                    COALESCE(CASE WHEN ta.dose_g IS NOT NULL THEN ' · '
+                             || RTRIM(RTRIM(printf('%f', ta.dose_g), '0'), '.') || ' g' END, '')
+                    || COALESCE(' · grind ' || ta.grind, '')
+                    || COALESCE(' · ' || ta.method, ''), 4), ''), '')
+               || char(10) || char(10) || 'tasted ' || ta.tasted_on
+             , char(10)) AS body,
+             d.kind, d.name, d.maker, d.tags,
+             ta.rating / 2.0 AS rating, ta.notes, ta.tasted_on, ta.dose_g, ta.grind, ta.method
+      FROM tastings ta
+      JOIN drinks d ON d.id = ta.drink_id
+      WHERE (:search IS NULL
+             OR d.name LIKE '%' || :search || '%'
+             OR COALESCE(d.maker, '') LIKE '%' || :search || '%'
+             OR COALESCE(d.tags, '') LIKE '%' || :search || '%'
+             OR COALESCE(ta.notes, '') LIKE '%' || :search || '%')
+        AND (:kind IS NULL OR d.kind = :kind)
+      ORDER BY ta.tasted_on DESC, ta.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name, maker, tags, notes
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: coffee, label: Coffee }
+          - { value: cocktail, label: Cocktail }
+          - { value: spirit, label: Spirit }
+        hint: all when empty
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: log-tasting
+        edit: edit-tasting
+        delete: delete-tasting
+        detail: tasting-detail
+        row_actions:
+          - want-again
+
+  - name: cellar
+    label: Cellar
+    description: What you own and what you want — per-batch with quantities and expiry warnings, wishes below; got it, log a tasting, or mark a batch finished from a row's menu.
+    sql: |-
+      SELECT c.id AS rowid,
+             CASE d.kind WHEN 'wine' THEN '🍷 ' WHEN 'beer' THEN '🍺 ' WHEN 'coffee' THEN '☕ '
+                         WHEN 'cocktail' THEN '🍸 ' ELSE '🥃 ' END
+               || d.name
+               || CASE WHEN d.non_alcoholic = 1 THEN ' · 0.0%' ELSE '' END AS heading,
+             CASE WHEN c.status = 'owned'
+                  THEN '📦 ' || RTRIM(RTRIM(printf('%f', c.quantity), '0'), '.')
+                       || COALESCE(' ' || c.unit, '')
+                       || ' · bought ' || c.added_on
+                       || COALESCE(CASE WHEN c.expires_on < date('now') THEN ' · ⚠️ expired '
+                                        ELSE ' · ⏰ expires ' END || c.expires_on, '')
+                  ELSE '🛒 wanted since ' || c.added_on
+                       -- A wish for a drink with stock still open reads as a restock, not a duplicate.
+                       || CASE WHEN EXISTS (SELECT 1 FROM cellar c2
+                                            WHERE c2.drink_id = c.drink_id AND c2.status = 'owned'
+                                              AND c2.finished_at IS NULL)
+                               THEN char(10) || char(10) || '📦 also in the cellar' ELSE '' END
+             END
+               || COALESCE(char(10) || char(10)
+                    || (SELECT CASE WHEN ta.rating IS NULL THEN '☆ unrated'
+                                    ELSE substr('★★★★★', 1, ta.rating / 2)
+                                         || CASE WHEN ta.rating % 2 = 1 THEN '½' ELSE '' END END
+                               || ' last time'
+                        FROM tastings ta WHERE ta.drink_id = c.drink_id
+                        ORDER BY ta.tasted_on DESC, ta.id DESC LIMIT 1), '') AS body,
+             d.kind, d.name, d.maker,
+             c.status, c.quantity, c.unit, c.added_on, c.expires_on
+      FROM cellar c
+      JOIN drinks d ON d.id = c.drink_id
+      WHERE c.finished_at IS NULL
+        AND (:status IS NULL OR c.status = :status)
+        AND (:search IS NULL
+             OR d.name LIKE '%' || :search || '%'
+             OR COALESCE(d.maker, '') LIKE '%' || :search || '%')
+      ORDER BY CASE c.status WHEN 'owned' THEN 0 ELSE 1 END,
+               CASE WHEN c.expires_on IS NULL THEN 1 ELSE 0 END, c.expires_on,
+               c.added_on DESC, c.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name or maker
+      - name: status
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: owned, label: Owned }
+          - { value: wishlist, label: Wishlist }
+        hint: both when empty
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: add-batch
+        edit: edit-batch
+        delete: remove-batch
+        row_actions:
+          - got-it
+          - log-from-cellar
+          - finish-batch
+
+  - name: top-rated
+    label: Top rated
+    description: Every drink you've tasted, best first — average rating and tasting count per drink; the place to answer "which one do we get again".
+    sql: |-
+      SELECT d.id AS rowid,
+             CASE d.kind WHEN 'wine' THEN '🍷 ' WHEN 'beer' THEN '🍺 ' WHEN 'coffee' THEN '☕ '
+                         WHEN 'cocktail' THEN '🍸 ' ELSE '🥃 ' END
+               || d.name
+               || CASE WHEN d.non_alcoholic = 1 THEN ' · 0.0%' ELSE '' END AS heading,
+             LTRIM(
+                  CASE WHEN AVG(ta.rating) IS NULL THEN '☆ unrated'
+                       ELSE substr('★★★★★', 1, CAST(ROUND(AVG(ta.rating)) AS INTEGER) / 2)
+                            || CASE WHEN CAST(ROUND(AVG(ta.rating)) AS INTEGER) % 2 = 1
+                                    THEN '½' ELSE '' END
+                            || ' ' || printf('%.1f', AVG(ta.rating) / 2.0) END
+               || CASE WHEN COUNT(*) = 1 THEN ' · tasted once'
+                       ELSE ' · tasted ' || COUNT(*) || ' times' END
+               || COALESCE(char(10) || char(10) || '_' || NULLIF(d.maker, '') || '_', '')
+               -- The characteristics line: whichever per-kind facts are filled, joined on ' · '.
+               || COALESCE(char(10) || char(10) || NULLIF(SUBSTR(
+                    COALESCE(' · ' || d.grape, '') || COALESCE(' · ' || d.vintage, '')
+                    || COALESCE(' · ' || d.roast || ' roast', '') || COALESCE(' · ' || d.origin, '')
+                    || COALESCE(' · ' || d.base_spirit, '') || COALESCE(' · ' || d.style, ''), 4), ''), '')
+               || char(10) || char(10) || 'last tasted ' || MAX(ta.tasted_on)
+             , char(10)) AS body,
+             d.kind, d.name, d.maker, d.non_alcoholic,
+             d.grape, d.vintage, d.roast, d.origin, d.base_spirit, d.style, d.tags
+      FROM drinks d
+      JOIN tastings ta ON ta.drink_id = d.id
+      WHERE (:search IS NULL
+             OR d.name LIKE '%' || :search || '%'
+             OR COALESCE(d.maker, '') LIKE '%' || :search || '%'
+             OR COALESCE(d.tags, '') LIKE '%' || :search || '%')
+        AND (:kind IS NULL OR d.kind = :kind)
+      GROUP BY d.id
+      HAVING :min_rating IS NULL OR AVG(ta.rating) >= :min_rating * 2
+      ORDER BY AVG(ta.rating) DESC, COUNT(*) DESC, d.name COLLATE NOCASE
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name, maker, tags
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: coffee, label: Coffee }
+          - { value: cocktail, label: Cocktail }
+          - { value: spirit, label: Spirit }
+        hint: all when empty
+      - name: min_rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5 — only drinks rated at least this
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        edit: edit-drink
+        detail: drink-detail
+        # No add slot on purpose: the catalog only grows through real activity — a tasting, a cellar
+        # batch, a recipe log — so it cannot fill with never-tasted ghosts.
+        row_actions:
+          - log-again
+          - want-more
+
+  - name: recipe-book
+    label: Recipes
+    description: The preparations you've converged on — a cocktail spec or a dialled-in brew, ingredients plus method; open one to edit and reorder its ingredients.
+    sql: |-
+      SELECT r.id AS rowid,
+             CASE r.kind WHEN 'wine' THEN '🍷 ' WHEN 'beer' THEN '🍺 ' WHEN 'coffee' THEN '☕ '
+                         WHEN 'cocktail' THEN '🍸 ' ELSE '🥃 ' END || r.name AS heading,
+             LTRIM(
+                  COALESCE(char(10) || char(10)
+                    || (SELECT GROUP_CONCAT(COALESCE(NULLIF(ri.amount, '') || ' ', '') || ri.item,
+                                            ' · ' ORDER BY ri.position, ri.id)
+                        FROM recipe_ingredients ri WHERE ri.recipe_id = r.id), '')
+               || COALESCE(char(10) || char(10) || NULLIF(r.method, ''), '')
+             , char(10)) AS body,
+             r.name, r.kind, r.method
+      FROM recipes r
+      WHERE :search IS NULL
+         OR r.name LIKE '%' || :search || '%'
+         OR r.method LIKE '%' || :search || '%'
+      ORDER BY r.name COLLATE NOCASE
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name or method
+    display:
+      mode: cards
+      columns:
+        - {column: heading, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        add: add-recipe
+        edit: edit-recipe
+        delete: delete-recipe
+        detail: recipe-detail
+        row_actions:
+          - log-from-recipe
+
+  - name: log-tasting
+    label: Log tasting
+    description: Logs a tasting, creating the drink if new (reused on a re-tasting) — per-kind fields appear for the kind picked, brew parameters for coffee.
+    sql: |-
+      INSERT INTO drinks (kind, name, maker, non_alcoholic, grape, vintage, roast, origin,
+                          base_spirit, style, tags)
+      SELECT :kind, TRIM(:name), :maker, COALESCE(:non_alcoholic, 0), :grape, :vintage, :roast,
+             :origin, :base_spirit, :style, :tags
+      WHERE NULLIF(TRIM(:name), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM drinks WHERE name = TRIM(:name) COLLATE NOCASE AND kind = :kind);
+      -- A repeat tasting may carry facts the first log left empty: fill blanks, never overwrite.
+      -- non_alcoholic is set-only for the same reason a favourite is elsewhere: the box starts
+      -- unticked on every log, so an untouched one must not quietly flip a known-NA drink back.
+      UPDATE drinks
+      SET maker = COALESCE(maker, :maker),
+          non_alcoholic = MAX(non_alcoholic, COALESCE(:non_alcoholic, 0)),
+          grape = COALESCE(grape, :grape), vintage = COALESCE(vintage, :vintage),
+          roast = COALESCE(roast, :roast), origin = COALESCE(origin, :origin),
+          base_spirit = COALESCE(base_spirit, :base_spirit), style = COALESCE(style, :style),
+          tags = COALESCE(tags, :tags)
+      WHERE name = TRIM(:name) COLLATE NOCASE AND kind = :kind;
+      -- The rating is clamped into the 0.5-5 the dialog advertises: the stored value is doubled, so
+      -- an unclamped 6 would trip the 1-10 CHECK and fail the whole log with a message about a scale
+      -- the user never saw.
+      INSERT INTO tastings (drink_id, tasted_on, rating, notes, dose_g, grind, method)
+      SELECT d.id, COALESCE(:tasted_on, date('now')),
+             CASE WHEN :rating IS NULL THEN NULL
+                  ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+             :notes, :dose_g, :grind, :method
+      FROM drinks d
+      WHERE d.name = TRIM(:name) COLLATE NOCASE AND d.kind = :kind
+      ORDER BY d.id LIMIT 1
+    params:
+      - name: name
+        type: text
+        source: lookup
+        lookup:
+          table: drinks
+          label_column: name
+          value_column: name
+          allow_new: true
+          scope: {kind: kind}
+          # A re-tasting of a known drink fills its maker from the catalog, so the dialog shows what is
+          # on file instead of asking for it again; the SQL keeps the stored maker either way.
+          fill: {maker: maker}
+        inline: true
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: coffee, label: Coffee }
+          - { value: cocktail, label: Cocktail }
+          - { value: spirit, label: Spirit }
+        default: wine
+        hint: wine if empty
+        inline: true
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps (e.g. 4.5)
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: tasted_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+      - name: maker
+        type: text
+        source: prompt
+        optional: true
+        hint: producer / roaster / brewery / bar
+      - name: non_alcoholic
+        type: boolean
+        source: prompt
+        optional: true
+        hint: 0.0%?
+      - name: grape
+        type: text
+        source: prompt
+        optional: true
+        when: {param: kind, value: wine}
+      - name: vintage
+        type: integer
+        source: prompt
+        optional: true
+        hint: also worth keeping in the name if it defines the wine
+        when: {param: kind, value: wine}
+      - name: roast
+        type: text
+        source: prompt
+        optional: true
+        hint: light / medium / dark
+        when: {param: kind, value: coffee}
+      - name: origin
+        type: text
+        source: prompt
+        optional: true
+        hint: country or farm
+        when: {param: kind, value: coffee}
+      - name: dose_g
+        type: float
+        source: prompt
+        optional: true
+        hint: grams of beans in this brew
+        when: {param: kind, value: coffee}
+      - name: grind
+        type: text
+        source: prompt
+        optional: true
+        hint: grinder setting
+        when: {param: kind, value: coffee}
+      - name: method
+        type: text
+        source: prompt
+        optional: true
+        hint: V60 / espresso / aeropress...
+        when: {param: kind, value: coffee}
+      - name: base_spirit
+        type: text
+        source: prompt
+        optional: true
+        hint: gin / rum / whisky...
+        when: {param: kind, value: cocktail}
+      - name: style
+        type: text
+        source: prompt
+        optional: true
+        hint: IPA / lager / stout...
+        when: {param: kind, value: beer}
+      - name: tags
+        type: text
+        source: prompt
+        optional: true
+        hint: comma-separated, lowercase (e.g. natural, gift)
+    attached_to: tastings
+
+  - name: edit-tasting
+    label: Edit tasting
+    description: Corrects the selected tasting — rating, notes, date, and a coffee's brew parameters.
+    sql: |-
+      -- Rating clamped as in log-tasting; an omitted date keeps the tasting's current one.
+      UPDATE tastings
+      SET rating = CASE WHEN :rating IS NULL THEN NULL
+                        ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+          notes = :notes,
+          tasted_on = COALESCE(:tasted_on, tasted_on),
+          dose_g = :dose_g, grind = :grind, method = :method
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: tasted_on
+        type: date
+        source: prompt
+        optional: true
+        hint: unchanged if empty
+      - name: dose_g
+        type: float
+        source: prompt
+        optional: true
+        hint: coffee only — grams of beans
+      - name: grind
+        type: text
+        source: prompt
+        optional: true
+        hint: coffee only — grinder setting
+      - name: method
+        type: text
+        source: prompt
+        optional: true
+        hint: coffee only — V60 / espresso...
+    attached_to: tastings
+
+  - name: delete-tasting
+    label: Delete tasting
+    description: Deletes the selected tasting (the drink stays in your catalog).
+    sql: DELETE FROM tastings WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: tastings
+
+  - name: tasting-detail
+    label: Tasting
+    description: One tasting's full record — the drink, its characteristics, your rating and notes, and your history with it.
+    sql: |-
+      SELECT d.name, d.maker,
+             CASE d.kind WHEN 'wine' THEN 'wine' WHEN 'beer' THEN 'beer' WHEN 'coffee' THEN 'coffee'
+                         WHEN 'cocktail' THEN 'cocktail' ELSE 'spirit' END
+               || CASE WHEN d.non_alcoholic = 1 THEN ' · 0.0%' ELSE '' END AS kind,
+             NULLIF(SUBSTR(
+               COALESCE(' · ' || d.grape, '') || COALESCE(' · ' || d.vintage, '')
+               || COALESCE(' · ' || d.roast || ' roast', '') || COALESCE(' · ' || d.origin, '')
+               || COALESCE(' · ' || d.base_spirit, '') || COALESCE(' · ' || d.style, ''), 4), '')
+               AS characteristics,
+             CASE WHEN ta.rating IS NULL THEN '☆ unrated'
+                  ELSE substr('★★★★★', 1, ta.rating / 2)
+                       || CASE WHEN ta.rating % 2 = 1 THEN '½' ELSE '' END END AS rating,
+             ta.tasted_on,
+             NULLIF(SUBSTR(
+               COALESCE(CASE WHEN ta.dose_g IS NOT NULL THEN ' · '
+                        || RTRIM(RTRIM(printf('%f', ta.dose_g), '0'), '.') || ' g' END, '')
+               || COALESCE(' · grind ' || ta.grind, '')
+               || COALESCE(' · ' || ta.method, ''), 4), '') AS brew,
+             ta.notes,
+             (SELECT COUNT(*) FROM tastings WHERE drink_id = d.id) AS times_tasted,
+             d.tags
+      FROM tastings ta
+      JOIN drinks d ON d.id = ta.drink_id
+      WHERE ta.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: notes, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: tastings
+
+  - name: want-again
+    label: Want it again
+    description: Adds the tasted drink to the cellar's wishlist in one tap.
+    sql: |-
+      INSERT INTO cellar (drink_id, status)
+      SELECT drink_id, 'wishlist' FROM tastings WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: tastings
+
+  - name: add-batch
+    label: Add to cellar
+    description: Adds a batch you own — or a wish — creating the drink if new; pick an existing name to reuse its record.
+    sql: |-
+      INSERT INTO drinks (kind, name)
+      SELECT :kind, TRIM(:name)
+      WHERE NULLIF(TRIM(:name), '') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM drinks WHERE name = TRIM(:name) COLLATE NOCASE AND kind = :kind);
+      INSERT INTO cellar (drink_id, status, quantity, unit, added_on, expires_on)
+      SELECT d.id, COALESCE(:status, 'owned'), COALESCE(:quantity, 1), :unit,
+             COALESCE(:added_on, date('now')), :expires_on
+      FROM drinks d
+      WHERE d.name = TRIM(:name) COLLATE NOCASE AND d.kind = :kind
+      ORDER BY d.id LIMIT 1
+    params:
+      - name: name
+        type: text
+        source: lookup
+        lookup:
+          table: drinks
+          label_column: name
+          value_column: name
+          allow_new: true
+          scope: {kind: kind}
+        inline: true
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: coffee, label: Coffee }
+          - { value: cocktail, label: Cocktail }
+          - { value: spirit, label: Spirit }
+        default: wine
+        hint: wine if empty
+        inline: true
+      - name: status
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: owned, label: Owned }
+          - { value: wishlist, label: Wishlist }
+        default: owned
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+        default: "1"
+        when: {param: status, value: owned}
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+        hint: bottles / g / cans — a plain count when empty
+        when: {param: status, value: owned}
+      - name: added_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+      - name: expires_on
+        type: date
+        source: prompt
+        optional: true
+        when: {param: status, value: owned}
+    attached_to: cellar
+
+  - name: edit-batch
+    label: Edit batch
+    description: Corrects the selected cellar row — status, quantity, unit, and its dates.
+    sql: |-
+      UPDATE cellar
+      SET status = COALESCE(:status, status),
+          quantity = COALESCE(:quantity, quantity),
+          unit = :unit,
+          added_on = COALESCE(:added_on, added_on),
+          expires_on = :expires_on
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: status
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: owned, label: Owned }
+          - { value: wishlist, label: Wishlist }
+        hint: unchanged if empty
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+        hint: unchanged if empty
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+        hint: bottles / g / cans — a plain count when empty
+      - name: added_on
+        type: date
+        source: prompt
+        optional: true
+        hint: unchanged if empty
+      - name: expires_on
+        type: date
+        source: prompt
+        optional: true
+        hint: empty clears the warning
+    attached_to: cellar
+
+  - name: remove-batch
+    label: Remove
+    description: Removes the selected cellar row — a batch or wish added by mistake (tastings are untouched).
+    sql: DELETE FROM cellar WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: cellar
+
+  - name: got-it
+    label: Got it
+    description: Turns the selected wish into an owned batch — quantity, unit, and expiry become its batch facts, dated today.
+    sql: |-
+      UPDATE cellar
+      SET status = 'owned', quantity = COALESCE(:quantity, 1), unit = :unit,
+          added_on = date('now'), expires_on = :expires_on
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: quantity
+        type: float
+        source: prompt
+        optional: true
+        hint: 1 if empty
+      - name: unit
+        type: text
+        source: prompt
+        optional: true
+        hint: bottles / g / cans — a plain count when empty
+      - name: expires_on
+        type: date
+        source: prompt
+        optional: true
+    attached_to: cellar
+
+  - name: log-from-cellar
+    label: Log a tasting
+    description: Logs a tasting of the selected batch's drink — rate it, jot notes; the batch's quantity is yours to adjust separately.
+    sql: |-
+      INSERT INTO tastings (drink_id, tasted_on, rating, notes)
+      SELECT drink_id, COALESCE(:tasted_on, date('now')),
+             CASE WHEN :rating IS NULL THEN NULL
+                  ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+             :notes
+      FROM cellar WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: tasted_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+    attached_to: cellar
+
+  - name: finish-batch
+    label: Finished
+    description: Marks the selected batch finished in one tap — it leaves the cellar; undo brings it back.
+    sql: UPDATE cellar SET finished_at = datetime('now') WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: cellar
+
+  - name: edit-drink
+    label: Edit drink
+    description: Corrects the selected drink's record — name, kind, maker, characteristics, tags, and whether it's non-alcoholic.
+    sql: |-
+      -- non_alcoholic assigns straight from the box rather than set-only: this dialog is seeded from
+      -- the current row, so an unticked box here is a deliberate correction.
+      UPDATE drinks
+      SET name = COALESCE(NULLIF(TRIM(:name), ''), name),
+          kind = COALESCE(:kind, kind),
+          maker = :maker,
+          non_alcoholic = COALESCE(:non_alcoholic, 0),
+          grape = :grape, vintage = :vintage, roast = :roast, origin = :origin,
+          base_spirit = :base_spirit, style = :style,
+          tags = :tags
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: coffee, label: Coffee }
+          - { value: cocktail, label: Cocktail }
+          - { value: spirit, label: Spirit }
+        hint: unchanged if empty
+      - name: maker
+        type: text
+        source: prompt
+        optional: true
+        hint: producer / roaster / brewery / bar
+      - name: non_alcoholic
+        type: boolean
+        source: prompt
+        optional: true
+        hint: 0.0%?
+      - name: grape
+        type: text
+        source: prompt
+        optional: true
+        when: {param: kind, value: wine}
+      - name: vintage
+        type: integer
+        source: prompt
+        optional: true
+        when: {param: kind, value: wine}
+      - name: roast
+        type: text
+        source: prompt
+        optional: true
+        hint: light / medium / dark
+        when: {param: kind, value: coffee}
+      - name: origin
+        type: text
+        source: prompt
+        optional: true
+        hint: country or farm
+        when: {param: kind, value: coffee}
+      - name: base_spirit
+        type: text
+        source: prompt
+        optional: true
+        hint: gin / rum / whisky...
+        when: {param: kind, value: cocktail}
+      - name: style
+        type: text
+        source: prompt
+        optional: true
+        hint: IPA / lager / stout...
+        when: {param: kind, value: beer}
+      - name: tags
+        type: text
+        source: prompt
+        optional: true
+        hint: comma-separated, lowercase
+    attached_to: top-rated
+
+  - name: drink-detail
+    label: Drink
+    description: One drink's full record — its characteristics and your history with it.
+    sql: |-
+      SELECT d.name, d.maker,
+             CASE d.kind WHEN 'wine' THEN 'wine' WHEN 'beer' THEN 'beer' WHEN 'coffee' THEN 'coffee'
+                         WHEN 'cocktail' THEN 'cocktail' ELSE 'spirit' END
+               || CASE WHEN d.non_alcoholic = 1 THEN ' · 0.0%' ELSE '' END AS kind,
+             NULLIF(SUBSTR(
+               COALESCE(' · ' || d.grape, '') || COALESCE(' · ' || d.vintage, '')
+               || COALESCE(' · ' || d.roast || ' roast', '') || COALESCE(' · ' || d.origin, '')
+               || COALESCE(' · ' || d.base_spirit, '') || COALESCE(' · ' || d.style, ''), 4), '')
+               AS characteristics,
+             (SELECT CASE WHEN AVG(rating) IS NULL THEN '☆ unrated'
+                          ELSE substr('★★★★★', 1, CAST(ROUND(AVG(rating)) AS INTEGER) / 2)
+                               || CASE WHEN CAST(ROUND(AVG(rating)) AS INTEGER) % 2 = 1
+                                       THEN '½' ELSE '' END
+                               || ' ' || printf('%.1f', AVG(rating) / 2.0) END
+              FROM tastings WHERE drink_id = d.id) AS average,
+             (SELECT COUNT(*) FROM tastings WHERE drink_id = d.id) AS times_tasted,
+             (SELECT MAX(tasted_on) FROM tastings WHERE drink_id = d.id) AS last_tasted,
+             (SELECT COUNT(*) FROM cellar
+              WHERE drink_id = d.id AND status = 'owned' AND finished_at IS NULL) AS batches_in_cellar,
+             d.tags
+      FROM drinks d
+      WHERE d.id = :rowid
+    display:
+      mode: table
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: top-rated
+
+  - name: log-again
+    label: Log tasting
+    description: Logs another tasting of the selected drink — rate this one on its own; brew parameters apply to coffee.
+    sql: |-
+      INSERT INTO tastings (drink_id, tasted_on, rating, notes, dose_g, grind, method)
+      VALUES (:rowid, COALESCE(:tasted_on, date('now')),
+              CASE WHEN :rating IS NULL THEN NULL
+                   ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+              :notes, :dose_g, :grind, :method)
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: tasted_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+      - name: dose_g
+        type: float
+        source: prompt
+        optional: true
+        hint: coffee only — grams of beans
+      - name: grind
+        type: text
+        source: prompt
+        optional: true
+        hint: coffee only — grinder setting
+      - name: method
+        type: text
+        source: prompt
+        optional: true
+        hint: coffee only — V60 / espresso...
+    attached_to: top-rated
+
+  - name: want-more
+    label: Want more
+    description: Adds the selected drink to the cellar's wishlist in one tap.
+    sql: INSERT INTO cellar (drink_id, status) VALUES (:rowid, 'wishlist')
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: top-rated
+
+  - name: add-recipe
+    label: Add recipe
+    description: Saves a preparation — name it, pick its kind, list the ingredients in order, and describe the method.
+    sql: |-
+      INSERT INTO recipes (name, kind, method)
+      SELECT TRIM(:name), :kind, :method
+      WHERE NULLIF(TRIM(:name), '') IS NOT NULL;
+      INSERT INTO recipe_ingredients (recipe_id, amount, item, position)
+      SELECT (SELECT MAX(id) FROM recipes),
+             json_extract(je.value, '$.amount'), json_extract(je.value, '$.item'), je.key + 1
+      FROM json_each(:ingredients) je
+      WHERE NULLIF(TRIM(:name), '') IS NOT NULL
+    params:
+      - name: name
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: cocktail, label: Cocktail }
+          - { value: coffee, label: Coffee }
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: spirit, label: Spirit }
+        default: cocktail
+        hint: cocktail if empty
+      - name: ingredients
+        type: group
+        source: prompt
+        optional: true
+        fields:
+          - name: amount
+            type: text
+            source: prompt
+            optional: true
+            hint: 50 ml / 18 g
+          - name: item
+            type: text
+            source: prompt
+      - name: method
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+    attached_to: recipe-book
+
+  - name: edit-recipe
+    label: Edit recipe
+    description: Corrects the selected recipe's name, kind, and method — its ingredient lines are edited from the recipe itself.
+    sql: |-
+      UPDATE recipes
+      SET name = COALESCE(NULLIF(TRIM(:name), ''), name),
+          kind = COALESCE(:kind, kind),
+          method = :method
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: kind
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: cocktail, label: Cocktail }
+          - { value: coffee, label: Coffee }
+          - { value: wine, label: Wine }
+          - { value: beer, label: Beer }
+          - { value: spirit, label: Spirit }
+        hint: unchanged if empty
+      - name: method
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+    attached_to: recipe-book
+
+  - name: delete-recipe
+    label: Delete recipe
+    description: Deletes the selected recipe and its ingredient lines.
+    sql: DELETE FROM recipes WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: recipe-book
+
+  - name: recipe-detail
+    label: Recipe
+    description: The selected recipe's ingredient lines, in order — add, correct, remove, or drag them into place.
+    sql: |-
+      SELECT ri.id AS rowid,
+             COALESCE(NULLIF(ri.amount, '') || ' — ', '') || ri.item AS line,
+             ri.amount, ri.item, ri.recipe_id
+      FROM recipe_ingredients ri
+      WHERE ri.recipe_id = :rowid
+      ORDER BY ri.position, ri.id
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    display:
+      mode: cards
+      columns:
+        - {column: line, role: title}
+      slots:
+        add: add-ingredient
+        edit: edit-ingredient
+        delete: remove-ingredient
+        reorder: reorder-ingredients
+    attached_to: recipe-book
+
+  - name: add-ingredient
+    label: Add ingredient
+    description: Appends an ingredient line to the open recipe.
+    sql: |-
+      INSERT INTO recipe_ingredients (recipe_id, amount, item, position)
+      SELECT :parent_rowid, :amount, TRIM(:item),
+             COALESCE((SELECT MAX(position) FROM recipe_ingredients
+                       WHERE recipe_id = :parent_rowid), 0) + 1
+      WHERE NULLIF(TRIM(:item), '') IS NOT NULL
+    params:
+      - name: parent_rowid
+        type: integer
+        source: selection-single
+      - name: item
+        type: text
+        source: prompt
+        inline: true
+      - name: amount
+        type: text
+        source: prompt
+        optional: true
+        hint: 50 ml / 18 g
+        inline: true
+    attached_to: recipe-detail
+
+  - name: edit-ingredient
+    label: Edit ingredient
+    description: Corrects the selected ingredient line's amount and item.
+    sql: |-
+      UPDATE recipe_ingredients
+      SET amount = :amount, item = COALESCE(NULLIF(TRIM(:item), ''), item)
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: item
+        type: text
+        source: prompt
+      - name: amount
+        type: text
+        source: prompt
+        optional: true
+        hint: 50 ml / 18 g
+    attached_to: recipe-detail
+
+  - name: remove-ingredient
+    label: Remove ingredient
+    description: Removes the selected ingredient line.
+    sql: DELETE FROM recipe_ingredients WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: recipe-detail
+
+  - name: reorder-ingredients
+    label: Reorder ingredients
+    description: Renumbers the open recipe's ingredient positions from the dropped order.
+    sql: |-
+      UPDATE recipe_ingredients
+      SET position = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                      WHERE je.value = recipe_ingredients.id)
+      WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+    params:
+      - name: ordered_rowids
+        type: integer
+        source: reorder
+    attached_to: recipe-detail
+
+  - name: log-from-recipe
+    label: Log tasting
+    description: Logs a tasting of the selected recipe's drink — made it, now rate it; the drink is created in the catalog on first log.
+    sql: |-
+      INSERT INTO drinks (kind, name)
+      SELECT r.kind, r.name FROM recipes r
+      WHERE r.id = :rowid
+        AND NOT EXISTS (SELECT 1 FROM drinks WHERE name = r.name COLLATE NOCASE AND kind = r.kind);
+      INSERT INTO tastings (drink_id, tasted_on, rating, notes)
+      SELECT d.id, COALESCE(:tasted_on, date('now')),
+             CASE WHEN :rating IS NULL THEN NULL
+                  ELSE CAST(ROUND(MIN(MAX(:rating, 0.5), 5) * 2) AS INTEGER) END,
+             :notes
+      FROM recipes r
+      JOIN drinks d ON d.name = r.name COLLATE NOCASE AND d.kind = r.kind
+      WHERE r.id = :rowid
+      ORDER BY d.id LIMIT 1
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: rating
+        type: float
+        source: prompt
+        optional: true
+        hint: 0.5 to 5, half-steps
+      - name: notes
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: tasted_on
+        type: date
+        source: prompt
+        optional: true
+        hint: today if empty
+    attached_to: recipe-book
+
+skills:
+  - name: drinks-orientation
+    description: How the catalog, the tastings diary, per-kind fields, the per-batch cellar with its wishlist, and the recipe book fit together.
+    body: |
+      This bdb is a tasting log — wine, beer, coffee, cocktails, and spirits in one place.
+
+      **Two core tables.** `drinks` is the catalog (one row per drink); `tastings` is the diary — one
+      row per try, each rated on its own, so dialling in a coffee is many tastings of one drink.
+      Logging dedupes the catalog by `(name, kind)`, matching the name case-insensitively and keeping
+      the stored spelling: pick an existing name from the log dialog's picker to reuse the drink's row
+      (typing past the options creates), and a re-tasting feeds its stats. The picker only lists
+      drinks of the currently selected kind — flip the kind first to re-taste a drink of another
+      kind; over MCP, pass the drink's existing kind. A vintage that defines the
+      wine belongs in the name ("Chinon 2019"); the `vintage` field is a descriptive fact, not
+      identity.
+
+      **Kinds and per-kind fields.** Every drink is a `wine`, `beer`, `coffee`, `cocktail`, or
+      `spirit`; `non_alcoholic` is a separate flag (an NA beer stays a beer for filters and stats, and
+      cards mark it `0.0%`). The log dialog shows per-kind fields for the kind picked: grape and
+      vintage for wine, roast and origin for coffee, base spirit for cocktails, style for beer. Facts
+      land on the drink fill-blank-only; correcting one is `edit-drink` on the Top rated view. Coffee
+      also takes per-attempt brew parameters (`dose_g`, `grind`, `method`) stored on the **tasting** —
+      each attempt records how it was brewed, and the keeper graduates to a recipe.
+
+      **Ratings.** Half-stars from 0.5 to 5, on the tasting. The dialogs take `0.5`–`5` and store it
+      doubled as an integer 1–10 (`rating * 2`), rendered `★★★★½`. Leave it empty for an unrated log.
+      Top rated aggregates the average per drink; a drink with only unrated tastings shows `☆ unrated`.
+
+      **The cellar is per-batch.** One `cellar` row per acquisition: two bags of the same beans bought
+      apart keep their own `added_on` and `expires_on`. `status` is `owned` or `wishlist` — the same
+      drink may carry both ("have 2, want more"; such a wish card shows "also in the cellar", so check
+      for an existing open wish before adding another). An expired batch flips its `⏰` to `⚠️` — the
+      SQL reads the clock, nothing sweeps. `got-it` turns a wish into an owned batch dated today;
+      `finish-batch` stamps `finished_at` and the row leaves the view (undo brings it back). Logging a
+      tasting never touches quantities — adjust a batch through `edit-batch` when some of it is gone.
+
+      **Recipes.** A recipe is any preparation you've converged on — a cocktail spec or a dialled-in
+      brew: ordered ingredient lines plus a method. Ingredient lines are edited from the recipe's own
+      card (add, correct, drag to reorder — over MCP run `reorder-ingredients` with the line ids in
+      their new order, e.g. `ordered_rowids: [5, 3, 8]`); `edit-recipe` covers name, kind, and method.
+      "Log tasting" on a recipe creates its drink in the catalog on first use, so a house cocktail
+      accumulates ratings like any bottle.
+
+      **Top rated** lists only drinks with at least one tasting — the catalog grows through real
+      activity (a tasting, a cellar batch, a recipe log), never a bare add.
+
+      **Tags.** `drinks.tags` is free text, comma-separated, lowercase ("natural, gift") — filter with
+      the views' search boxes, reuse existing tags when possible.

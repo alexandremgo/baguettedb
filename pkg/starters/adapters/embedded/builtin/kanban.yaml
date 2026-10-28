@@ -1,0 +1,328 @@
+# Kanban — one project per bdb, tasks flowing across a board. Two terminal statuses feed a derived
+# archive: done lingers on the board for a 2-day window, won't-do leaves immediately; nothing sweeps —
+# the views' SQL reads the clock.
+key: kanban
+version: 1
+name: Kanban
+description: Track a project's tasks on a kanban board — drag between To do, In progress, and Done, with priorities, due dates, and a self-cleaning archive.
+icon: "📋"
+tags:
+  - productivity
+  - project
+
+schema:
+  - |-
+    -- One task. status holds the board column (todo / doing / done) or the terminal 'wontdo', which
+    -- never renders as a column. status_changed_at is when the task ENTERED its current status —
+    -- writers stamp it only on real transitions, so it drives both the per-column aging shown on
+    -- cards and the archive window. position orders tasks within their column.
+    CREATE TABLE tasks (
+        id                INTEGER PRIMARY KEY,
+        name              TEXT NOT NULL,
+        description       TEXT,                             -- markdown
+        status            TEXT NOT NULL DEFAULT 'todo',
+        priority          TEXT,                             -- low / medium / high; NULL = unset
+        due               TEXT,                             -- YYYY-MM-DD
+        position          INTEGER NOT NULL DEFAULT 0,
+        status_changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  - CREATE INDEX idx_tasks_status ON tasks(status)
+
+formulas:
+  # Views first: attached formulas further down resolve their parents by name. Two visible surfaces:
+  # the board (the workflow) and the archive (the history); everything else is slot plumbing.
+  - name: task-board
+    label: Board
+    description: The project's open tasks in kanban columns — drag across columns to move, within one to reorder; done tasks linger two days, then derive into the Archive.
+    sql: |-
+      SELECT t.id AS rowid,
+             CASE t.priority WHEN 'high' THEN '🔴 ' WHEN 'low' THEN '🔵 ' ELSE '' END || t.name AS card,
+             CASE WHEN t.status = 'done'
+                  -- The countdown to the derived archive: the window is 2 days from entering Done.
+                  THEN '🗄 archives in ' ||
+                       (2 - CAST(julianday('now') - julianday(t.status_changed_at) AS INTEGER)) || 'd'
+                  ELSE CASE WHEN julianday('now') - julianday(t.status_changed_at) < 1 THEN '⏱ <1d'
+                            ELSE '⏱ ' ||
+                                 CAST(julianday('now') - julianday(t.status_changed_at) AS INTEGER) || 'd' END
+                    || COALESCE(CASE WHEN t.due < date('now') THEN ' · ⚠️ ' ELSE ' · ⏰ ' END || t.due, '')
+             END
+               || COALESCE(char(10) || char(10) || t.description, '') AS body,
+             t.status,
+             t.name, t.description, t.due, t.priority
+      FROM tasks t
+      WHERE t.status <> 'wontdo'
+        AND NOT (t.status = 'done' AND t.status_changed_at <= datetime('now', '-2 days'))
+        AND (:search IS NULL
+             OR t.name LIKE '%' || :search || '%'
+             OR COALESCE(t.description, '') LIKE '%' || :search || '%')
+      ORDER BY t.position, t.id
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name and description
+    display:
+      mode: board
+      columns:
+        - {column: card, role: title}
+        - {column: body, role: body, format: markdown}
+        - {column: status, role: group}
+      slots:
+        add: add-task
+        move: move-task
+        reorder: reorder-tasks
+        edit: edit-task
+        detail: task-detail
+        row_actions:
+          - wontdo-task
+
+  - name: task-archive
+    label: Archive
+    description: Finished and abandoned tasks — done tasks arrive on their own two days after completion, won't-do ones immediately; restore sends a task back to To do.
+    sql: |-
+      SELECT t.id AS rowid, t.name,
+             CASE WHEN t.status = 'wontdo' THEN '🚫 won''t do' ELSE '✅ done' END
+               || ' · ' || CASE WHEN julianday('now') - julianday(t.status_changed_at) < 1 THEN 'today'
+                                ELSE CAST(julianday('now') - julianday(t.status_changed_at) AS INTEGER)
+                                     || 'd ago' END
+               || COALESCE(char(10) || char(10) || t.description, '') AS body,
+             t.status
+      FROM tasks t
+      WHERE (t.status = 'wontdo' OR (t.status = 'done' AND t.status_changed_at <= datetime('now', '-2 days')))
+        AND (:search IS NULL
+             OR t.name LIKE '%' || :search || '%'
+             OR COALESCE(t.description, '') LIKE '%' || :search || '%')
+      ORDER BY t.status_changed_at DESC, t.id DESC
+    params:
+      - name: search
+        type: text
+        source: prompt
+        optional: true
+        hint: matches name and description
+    display:
+      mode: cards
+      columns:
+        - {column: name, role: title}
+        - {column: body, role: body, format: markdown}
+      slots:
+        delete: purge-task
+        detail: archive-task-detail
+        row_actions:
+          - restore-task
+
+  - name: task-detail
+    label: Task
+    description: One open task's full record.
+    sql: |-
+      SELECT t.name, t.description, t.status, t.priority, t.due, t.status_changed_at, t.created_at
+      FROM tasks t WHERE t.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: description, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: task-board
+
+  - name: add-task
+    label: Add task
+    description: Captures a new task at the bottom of the To do column.
+    sql: |-
+      INSERT INTO tasks (name, description, due, priority, position)
+      VALUES (TRIM(:name), :description, :due, NULLIF(:priority, ''),
+              COALESCE((SELECT MAX(position) FROM tasks WHERE status = 'todo'), 0) + 1)
+    params:
+      - name: name
+        type: text
+        source: prompt
+        inline: true
+      - name: description
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: due
+        type: date
+        source: prompt
+        optional: true
+      - name: priority
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+    attached_to: task-board
+
+  - name: move-task
+    label: Move task
+    description: Re-homes a task in another column, stamping when it entered it; a drop also places the task where it landed.
+    sql: |-
+      UPDATE tasks SET status = :status, status_changed_at = datetime('now') WHERE id = :rowid;
+      UPDATE tasks SET position = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                                   WHERE je.value = tasks.id)
+      WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: status
+        type: text
+        source: prompt
+        options:
+          - { value: todo, label: To do }
+          - { value: doing, label: In progress }
+          - { value: done, label: Done }
+      - name: ordered_rowids
+        type: integer
+        source: reorder
+        optional: true
+    attached_to: task-board
+
+  - name: reorder-tasks
+    label: Reorder tasks
+    description: Renumbers one column's positions from the dropped order.
+    sql: |-
+      UPDATE tasks SET position = (SELECT je.key + 1 FROM json_each(:ordered_rowids) je
+                                   WHERE je.value = tasks.id)
+      WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
+    params:
+      - name: ordered_rowids
+        type: integer
+        source: reorder
+    attached_to: task-board
+
+  - name: edit-task
+    label: Edit task
+    description: Rewrites the selected task's fields; the aging stamp refreshes only when the status actually changes.
+    sql: |-
+      UPDATE tasks
+      SET name = TRIM(:name), description = :description, due = :due, priority = NULLIF(:priority, ''),
+          status_changed_at = CASE WHEN :status = status THEN status_changed_at ELSE datetime('now') END,
+          status = :status
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+      - name: name
+        type: text
+        source: prompt
+      - name: description
+        type: text
+        source: prompt
+        optional: true
+        multiline: true
+      - name: due
+        type: date
+        source: prompt
+        optional: true
+      - name: priority
+        type: text
+        source: prompt
+        optional: true
+        options:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+      - name: status
+        type: text
+        source: prompt
+        options:
+          - { value: todo, label: To do }
+          - { value: doing, label: In progress }
+          - { value: done, label: Done }
+          - { value: wontdo, label: Won't do }
+    attached_to: task-board
+
+  - name: wontdo-task
+    label: Won't do
+    description: Closes the selected task as not planned — it leaves the board for the Archive immediately; restoring it from there is one tap.
+    sql: |-
+      UPDATE tasks SET status = 'wontdo', status_changed_at = datetime('now') WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: task-board
+
+  - name: archive-task-detail
+    label: Task
+    description: One archived task's full record.
+    sql: |-
+      SELECT t.name, t.description, t.status, t.priority, t.due, t.status_changed_at, t.created_at
+      FROM tasks t WHERE t.id = :rowid
+    display:
+      mode: table
+      columns:
+        - {column: description, format: markdown}
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: task-archive
+
+  - name: restore-task
+    label: Restore to board
+    description: Sends an archived task back to the bottom of the To do column.
+    sql: |-
+      UPDATE tasks
+      SET status = 'todo', status_changed_at = datetime('now'),
+          position = COALESCE((SELECT MAX(position) FROM tasks WHERE status = 'todo'), 0) + 1
+      WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: task-archive
+
+  - name: purge-task
+    label: Delete forever
+    description: Permanently deletes the selected archived task.
+    sql: DELETE FROM tasks WHERE id = :rowid
+    params:
+      - name: rowid
+        type: integer
+        source: selection-single
+    attached_to: task-archive
+
+skills:
+  - name: kanban-orientation
+    description: How the board columns, the two terminal statuses, per-column aging, and the derived archive fit together.
+    body: |
+      This bdb tracks ONE project (a new project deserves its own bdb). `tasks` rows flow across the
+      Board's columns via `status`: `todo` → `doing` → `done`, plus the terminal `wontdo`, which is
+      never a column — it goes straight to the Archive.
+
+      **The board.** Columns come from `move-task`'s `status` options. Dragging a card across
+      columns runs `move-task` (over MCP: pass `rowid` + `status`, and optionally `ordered_rowids` —
+      the destination column's ids in their final order — to also place the card); dragging within a
+      column runs `reorder-tasks`. The quick bar captures a name-only task at the bottom of To do;
+      enrich it (description, due, priority) when the user says more.
+
+      **Aging.** `status_changed_at` is when a task ENTERED its current status — every real
+      transition stamps it, and `edit-task` deliberately preserves it when the status is unchanged.
+      Cards show it as `⏱ Nd` (time in the column); a stale `doing` card is the classic signal that
+      something is stuck.
+
+      **The archive is derived, not stored.** Nothing ever sweeps rows into it: the Board's SQL
+      hides `done` tasks once `status_changed_at` is 2+ days old (cards show `🗄 archives in Nd`
+      until then) and hides `wontdo` immediately; the Archive's SQL shows exactly that complement.
+      To change the window, edit the `datetime('now', '-2 days')` in BOTH views (and the countdown
+      in `task-board`) via `update_formula`. `restore-task` sends a task back to To do; deleting
+      forever lives only in the Archive — the board deliberately has no delete, `wontdo-task` is
+      its way out.
+
+      **Extending the columns.** To add a column (e.g. Review between In progress and Done): add the
+      option to `move-task`'s and `edit-task`'s `status` params via `update_formula` (order defines
+      the board order), and mention it here. Keep `wontdo` out of `move-task` — dragging into a
+      column that instantly vanishes the card would feel broken.
+
+      **Priorities and due dates.** `priority` is low/medium/high — high shows 🔴 and low 🔵 on the
+      card, medium and unset stay unmarked. `due` is a date; overdue cards flip their `⏰` to `⚠️`.
+      Neither drives any automation — they are glanceable signals, not rules.

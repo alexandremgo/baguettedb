@@ -1,0 +1,30 @@
+bin/
+tmp/
+
+# Compiled binaries in repo root (use `make build-*` to output to bin/).
+/auth
+/bdbs
+/databases
+/mcp-gateway
+/monolith
+/mcp-reference
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+.env
+.mcp.json
+
+# Local dev data dir: per-bdb SQLCipher files and the KEK generated on the first start.
+/local-data/
+
+# Built web frontend synced in by `make webui-sync` for embedding; only the placeholder is tracked.
+/pkg/webui/dist/*
+!/pkg/webui/dist/.gitkeep
+
+# Release builds of the command line (scripts/build-cli-release.sh).
+/dist/

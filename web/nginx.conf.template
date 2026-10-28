@@ -1,0 +1,40 @@
+# Rendered by the nginx image's entrypoint at container start (envsubst over /etc/nginx/templates). The CSP_*
+# variables extend the Content-Security-Policy source lists and default to empty, so a deployment that needs an
+# extra origin sets them on the container instead of editing this file. 
+# An image serving it should set NGINX_ENVSUBST_FILTER=^CSP_ so every other `$name` — the `$uri` of try_files —
+# stays untouched.
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Security headers, set once here and inherited by every location below. No location adds its own
+    # add_header: nginx would then drop the inherited set, so caching uses `expires`, which sets Cache-Control
+    # without add_header. `always` keeps them on error responses too.
+    #
+    # The policy is strict by default: scripts, styles, workers and the manifest only from this origin (the theme
+    # bootstrap is a file, not an inline script); images may also be data: URIs; API calls go to this origin, any
+    # https origin (the hosted API lives on its own host, read from /config.json at runtime), or a local http
+    # origin for development and self-hosted setups; nothing may embed this app in a frame. The CSP_*_EXTRA
+    # variables append deployment-specific origins to the script, image and connect source lists.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' ${CSP_SCRIPT_SRC_EXTRA}; style-src 'self'; img-src 'self' data: ${CSP_IMG_SRC_EXTRA}; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:* ${CSP_CONNECT_SRC_EXTRA}; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    # SPA routing — serve index.html for all non-file requests.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Long cache for hashed assets (Vite output).
+    location /assets/ {
+        expires 1y;
+    }
+
+    # index.html must be revalidated on every load so a deploy is picked up.
+    location = /index.html {
+        expires -1;
+    }
+}

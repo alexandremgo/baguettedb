@@ -1,0 +1,127 @@
+/* The server-rendered auth pages mirror these values in pkg/auth/api/templates/_partials.html — keep them in sync. */
+:root {
+  /* =============================
+     Primary — caramel
+     ============================= */
+  --color-primary: hsl(var(--color-caramel-500));
+  --color-primary-hover: hsl(var(--color-caramel-600));
+  --color-primary-active: hsl(var(--color-caramel-700));
+  --color-primary-subtle: hsl(var(--color-caramel-50));
+  --color-primary-subtle-hover: hsl(var(--color-caramel-100));
+  /* Text and icons on a *-subtle background (active items, badges); one per functional color below too. */
+  --color-primary-text: hsl(var(--color-caramel-700));
+
+  /* =============================
+     Surfaces
+     ============================= */
+  --color-surface: hsl(var(--color-white));
+  --color-surface-secondary: hsl(var(--color-gray-50));
+  --color-surface-hover: hsl(var(--color-gray-100));
+  --color-surface-active: hsl(var(--color-gray-200));
+  /* Page background, one step below cards/panels so raised surfaces actually read as raised. */
+  --color-surface-sunken: hsl(var(--color-gray-50));
+  /* Inset containers that hold cards (a board's lanes): a step below the page, so cards read as raised
+     inside them and the container itself still shows against the page. */
+  --color-surface-well: hsl(var(--color-gray-150));
+
+  /* =============================
+     Borders
+     ============================= */
+  --color-border: hsl(var(--color-gray-200));
+  --color-border-strong: hsl(var(--color-gray-300));
+
+  /* =============================
+     Text
+     ============================= */
+  --color-text: hsl(var(--color-gray-900));
+  --color-text-secondary: hsl(var(--color-gray-600));
+  --color-text-tertiary: hsl(var(--color-gray-400));
+  --color-text-on-primary: hsl(var(--color-white));
+
+  /* =============================
+     Functional
+     ============================= */
+  --color-destructive: hsl(var(--color-red-500));
+  --color-destructive-hover: hsl(var(--color-red-600));
+  --color-destructive-subtle: hsl(var(--color-red-50));
+  --color-destructive-text: hsl(var(--color-red-600));
+
+  --color-success: hsl(var(--color-green-500));
+  --color-success-hover: hsl(var(--color-green-600));
+  --color-success-subtle: hsl(var(--color-green-50));
+  --color-success-text: hsl(var(--color-green-600));
+
+  --color-info: hsl(var(--color-blue-500));
+  --color-info-hover: hsl(var(--color-blue-600));
+  --color-info-subtle: hsl(var(--color-blue-50));
+  --color-info-text: hsl(var(--color-blue-600));
+
+  --color-warning: hsl(var(--color-yellow-500));
+  --color-warning-subtle: hsl(var(--color-yellow-50));
+
+  /* =============================
+     Focus ring
+     ============================= */
+  --ring-color: hsl(var(--color-caramel-400) / 0.4);
+  --ring: 0 0 0 3px var(--ring-color);
+  /* Focus ring of a field in error. */
+  --ring-destructive-color: hsl(var(--color-red-500) / 0.2);
+  --ring-destructive: 0 0 0 3px var(--ring-destructive-color);
+
+  /* Soft caramel halo behind the sign-in surfaces. */
+  --color-entrance-glow: hsl(var(--color-caramel-100) / 0.55);
+}
+
+/* =============================
+   Dark theme
+   ============================= */
+[data-theme="dark"] {
+  --color-primary: hsl(var(--color-caramel-300));
+  --color-primary-hover: hsl(var(--color-caramel-200));
+  --color-primary-active: hsl(var(--color-caramel-100));
+  --color-primary-subtle: hsl(var(--color-caramel-900));
+  --color-primary-subtle-hover: hsl(var(--color-caramel-800));
+  --color-primary-text: hsl(var(--color-caramel-200));
+
+  --color-surface: hsl(var(--color-gray-900));
+  --color-surface-secondary: hsl(var(--color-gray-800));
+  --color-surface-hover: hsl(var(--color-gray-700));
+  --color-surface-active: hsl(var(--color-gray-600));
+  --color-surface-sunken: hsl(var(--color-gray-950));
+  --color-surface-well: hsl(var(--color-gray-800));
+
+  --color-border: hsl(var(--color-gray-700));
+  --color-border-strong: hsl(var(--color-gray-600));
+
+  --color-text: hsl(var(--color-gray-50));
+  --color-text-secondary: hsl(var(--color-gray-300));
+  --color-text-tertiary: hsl(var(--color-gray-500));
+  --color-text-on-primary: hsl(var(--color-gray-900));
+
+  --color-destructive: hsl(0 72% 60%);
+  --color-destructive-hover: hsl(0 72% 65%);
+  --color-destructive-subtle: hsl(0 50% 15%);
+  --color-destructive-text: hsl(0 72% 72%);
+
+  --color-success: hsl(142 71% 55%);
+  --color-success-hover: hsl(142 71% 60%);
+  --color-success-subtle: hsl(142 50% 15%);
+  --color-success-text: hsl(142 71% 65%);
+
+  --color-info: hsl(217 91% 65%);
+  --color-info-hover: hsl(217 91% 70%);
+  --color-info-subtle: hsl(217 50% 15%);
+  --color-info-text: hsl(217 91% 75%);
+
+  --color-warning: hsl(45 93% 55%);
+  --color-warning-subtle: hsl(45 50% 15%);
+
+  --ring-color: hsl(var(--color-caramel-400) / 0.3);
+  --ring-destructive-color: hsl(0 72% 60% / 0.3);
+
+  --color-entrance-glow: hsl(var(--color-caramel-700) / 0.16);
+
+  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
+  --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.4);
+  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.5);
+}

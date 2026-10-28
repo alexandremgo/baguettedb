@@ -1,0 +1,112 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.addBar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  transition: background-color var(--duration-fast);
+}
+
+.card:hover {
+  background: var(--color-surface-hover);
+}
+
+.cardMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  padding-right: var(--space-8);
+  min-width: 0;
+  text-align: left;
+}
+
+button.cardMain {
+  cursor: pointer;
+}
+
+.cardTitle {
+  font-weight: var(--font-medium, 500);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.cardBody {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  /* Newlines in the body column render as lines: note bodies and group_concat'd child rows both
+     read as lists, Keep-style. */
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* A markdown body sizes to its content, capped in height; block layout replaces the plain
+   body's pre-line + line-clamp, which markdown handles itself. */
+.cardBodyMarkdown {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.cardDragging {
+  z-index: 10;
+  box-shadow: var(--shadow-lg);
+  opacity: 0.95;
+}
+
+/* Only a reorderable grid claims the touch gestures: a finger lifts a card by press-and-hold, so
+   the selection/callout suppressions stop iOS from turning the hold into text selection; plain
+   grids keep their text selectable. */
+.cardsReorderable .card {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.cardMenu {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+}
+
+.empty {
+  padding: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-destructive-subtle);
+  color: var(--color-destructive);
+  font-size: var(--text-sm);
+}

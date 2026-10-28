@@ -1,0 +1,11 @@
+[
+  {
+    "id": "<skill-id>",
+    "name": "cataloguing",
+    "description": "How to file books",
+    "body": "# Cataloguing\nOne row per edition.",
+    "target_tables": [
+      "books"
+    ]
+  }
+]

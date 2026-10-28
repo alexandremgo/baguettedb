@@ -1,0 +1,392 @@
+.softDeleteBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.softDeleteBannerText {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+/* Pushes the Delete button to the right edge while keeping title + badge naturally left-aligned. */
+.headerActions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+.ownerAttribution {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.description {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-6);
+}
+
+.addDescription {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  font-style: italic;
+  cursor: pointer;
+  margin-bottom: var(--space-6);
+}
+
+.addDescription:hover {
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
+.tabBar {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: var(--space-6);
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-text-primary);
+}
+
+.tabActive {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-3);
+}
+
+/* Database layout */
+
+.dbLayout {
+  display: flex;
+  gap: var(--space-4);
+  min-height: 300px;
+}
+
+.tableList {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.tableItem {
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: background-color var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.tableItem:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.tableItemActive {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+}
+
+.tableContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.selectHint {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  padding: var(--space-8) 0;
+  text-align: center;
+}
+
+/* Schema */
+
+.tableTitle {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-3);
+}
+
+.schemaSection {
+  margin-bottom: var(--space-6);
+}
+
+/* Data */
+
+.dataSection {
+  margin-top: var(--space-2);
+}
+
+.dataHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.rowFilterWrap {
+  position: relative;
+  flex: 1;
+}
+
+.rowFilter {
+  width: 100%;
+  height: 30px;
+  padding: 0 var(--space-8) 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}
+
+/* The native search-clear button clashes with the theme; the drawn clear button stands in for it. */
+.rowFilter::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.rowFilterClear {
+  position: absolute;
+  right: var(--space-1);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.rowFilterClear:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.rowFilter::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.rowFilter:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}
+
+.loadMoreBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.loadMoreHint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.dataLabel {
+  /* Reserved width: the count text changes as the filter narrows, and a flexing label would make
+     the input beside it jump. */
+  flex: 0 0 11rem;
+  text-align: right;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.nullValue {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* Caps the data grid so long tables scroll under their own sticky header instead of the page. */
+.dataTable {
+  max-height: 65vh;
+  overflow: auto;
+}
+
+/* Member column */
+
+.memberName {
+  display: block;
+  font-weight: var(--weight-medium);
+  font-size: var(--text-sm);
+}
+
+.memberEmail {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.userId {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+/* Section header with action button */
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.sectionHeader .sectionTitle {
+  margin-bottom: 0;
+}
+
+/* Role select in members table */
+
+.roleSelect {
+  min-width: 100px;
+}
+
+/* Invite form dialog */
+
+.inviteForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.inviteResult {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.inviteResultLabel {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.inviteLinkRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.inviteLinkInput {
+  flex: 1;
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* Invites table — overflow visible so TruncatedCell popovers are not clipped */
+
+.invitesTable {
+  overflow: visible;
+}
+
+/* Invites table */
+
+.inviteLink {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.expiration {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.emptyTables {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* Placeholder mirroring the page title while the bdb loads. */
+.skeletonTitle {
+  height: 28px;
+  width: 14rem;
+  margin-bottom: var(--space-5);
+}
+
+.error {
+  color: var(--color-destructive);
+}
+
+@media (max-width: 768px) {
+  .dbLayout {
+    flex-direction: column;
+  }
+
+  .tableList {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+}

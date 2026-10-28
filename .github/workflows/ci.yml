@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.claude/**'
+      - '*.md'
+  pull_request:
+    paths-ignore:
+      - '.claude/**'
+      - '*.md'
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Caches Go's compiled-object cache (~/.cache/go-build) across CI runs.
+      # Biggest win: the SQLCipher amalgamation (~150K LoC of C in
+      # pkg/databases/adapters/sqlitelocal/csrc/sqlite3.c) only recompiles
+      # when SQLCIPHER_VERSION changes. Stdlib + third-party + our own
+      # packages also stay cached when their inputs are unchanged.
+      # Key includes go.mod (Go toolchain version) + go.sum (deps) +
+      # SQLCIPHER_VERSION (vendored C source).
+      - name: Cache Go build cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-gobuild-${{ hashFiles('go.mod', 'go.sum', 'pkg/databases/adapters/sqlitelocal/csrc/SQLCIPHER_VERSION') }}
+          restore-keys: ${{ runner.os }}-gobuild-
+
+      # libssl-dev + pkg-config are required because golangci-lint and
+      # `go list` invoke the cgo toolchain to typecheck the sqlitelocal
+      # binding (pkg/databases/adapters/sqlitelocal/), which links against
+      # system OpenSSL via pkg-config.
+      - name: Install C build deps (libssl + pkg-config)
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # Pinned so a new release can't turn CI red on unchanged code; bump it together with the local install.
+          version: v2.15.0
+
+      # docs/reference/ is generated from the MCP tool registrations, the embedded manuals and the gateway
+      # instructions; a change to any of them must ship with the regenerated files.
+      - name: Check generated reference docs
+        run: |
+          make docs-reference
+          if [ -n "$(git status --porcelain -- docs/reference)" ]; then
+            echo "docs/reference is stale: run 'make docs-reference' and commit the result"
+            git --no-pager diff -- docs/reference
+            git status --porcelain -- docs/reference
+            exit 1
+          fi
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # See lint job for cache rationale.
+      - name: Cache Go build cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-gobuild-${{ hashFiles('go.mod', 'go.sum', 'pkg/databases/adapters/sqlitelocal/csrc/SQLCIPHER_VERSION') }}
+          restore-keys: ${{ runner.os }}-gobuild-
+
+      - name: Install C build deps (libssl + pkg-config)
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Run tests
+        run: go test ./...
+
+  vulncheck:
+    name: Vulnerability Scan (runtime deps)
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # See lint job for cache rationale.
+      - name: Cache Go build cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-gobuild-${{ hashFiles('go.mod', 'go.sum', 'pkg/databases/adapters/sqlitelocal/csrc/SQLCIPHER_VERSION') }}
+          restore-keys: ${{ runner.os }}-gobuild-
+
+      - name: Install C build deps (libssl + pkg-config)
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # Fails the workflow when a vulnerability is reachable from the shipping binaries. Scoped to ./cmd/..., their
+      # runtime dependencies.
+      - name: Run govulncheck
+        run: govulncheck ./cmd/...
+
+  web:
+    name: Web Lint & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  notices:
+    name: Third-Party Notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      # THIRD_PARTY_LICENSES is generated from the Go modules bdb links and the packages bundled into the web app, and
+      # the generator fails on a license outside its allowlist; a dependency change must ship with the regenerated file.
+      - name: Check third-party notices
+        run: |
+          make notices
+          if [ -n "$(git status --porcelain -- THIRD_PARTY_LICENSES)" ]; then
+            echo "THIRD_PARTY_LICENSES is stale: run 'make notices' and commit the result"
+            git --no-pager diff -- THIRD_PARTY_LICENSES
+            exit 1
+          fi
