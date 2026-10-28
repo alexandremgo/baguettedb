@@ -62,8 +62,7 @@ jobs:
         run: |
           name="bdb_${VERSION}_${{ matrix.os }}_${{ matrix.arch }}"
           mkdir -p "dist/${name}"
-          cp dist/bdb THIRD_PARTY_LICENSES "dist/${name}/"
-          if [ -f LICENSE ]; then cp LICENSE "dist/${name}/"; fi
+          cp dist/bdb LICENSE.md THIRD_PARTY_LICENSES "dist/${name}/"
           ln -s bdb "dist/${name}/baguettedb"
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
           echo "file=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
