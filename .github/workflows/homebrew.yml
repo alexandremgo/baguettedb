@@ -1,0 +1,61 @@
+# Updates the Homebrew formula in alexandremgo/homebrew-tap when a release is published, from the release's
+# checksums.txt, so `brew upgrade` gets the new version. A pre-release is skipped: brew only installs final versions.
+# A manual run writes the formula for the given release, to retry an update or to check the token.
+#
+# A token allowed to write to the tap is the HOMEBREW_TAP_TOKEN secret. Without it, as in a fork, the job does nothing.
+name: Homebrew
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to write the formula for, such as v1.2.3"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    name: "Homebrew: update the formula"
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v6
+        if: env.HOMEBREW_TAP_TOKEN != ''
+
+      - name: Check out the tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        uses: actions/checkout@v6
+        with:
+          repository: alexandremgo/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Write the formula
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir "$RUNNER_TEMP"
+          scripts/homebrew-formula.sh "$TAG" "$RUNNER_TEMP/checksums.txt" > tap/Formula/baguettedb.rb
+
+      - name: Push it to the tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        working-directory: tap
+        run: |
+          git add Formula/baguettedb.rb
+          if git diff --cached --quiet; then
+            echo "The formula already installs ${TAG}."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "feat: baguettedb ${TAG}"
+          git push -q

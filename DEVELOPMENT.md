@@ -208,7 +208,8 @@ A release goes out in three steps, so the archives people download are the ones 
    maintainers see and that has no tag yet. Running it again for the same version rebuilds the draft from `main`.
 2. Test: `gh release download v1.2.3` fetches the draft's archives as they will be published.
 3. Publish: `gh release edit v1.2.3 --draft=false`, or Publish on the draft's page. GitHub then creates the `v1.2.3`
-   tag on the commit the archives were built from.
+   tag on the commit the archives were built from, and the Homebrew workflow writes the new formula to
+   `alexandremgo/homebrew-tap` (`scripts/homebrew-formula.sh`; a pre-release leaves it alone).
 
 ```bash
 gh workflow run release.yml -f version=v1.2.3

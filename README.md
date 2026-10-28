@@ -37,10 +37,16 @@ and no Docker. Your bdbs live in `~/.baguettedb`.
 
 ### Install
 
-BaguetteDB runs on Linux and macOS; Windows is not supported yet. Download the archive for your platform from the
-[releases](https://github.com/alexandremgo/baguettedb/releases): `bdb_<version>_darwin_arm64.tar.gz` for a Mac with
-Apple Silicon, `darwin_amd64` for an Intel Mac, `linux_amd64` or `linux_arm64` for Linux (any distribution). The
-release's `checksums.txt` lists their SHA-256. Then:
+BaguetteDB runs on Linux and macOS; Windows is not supported yet. With [Homebrew](https://brew.sh):
+
+```bash
+brew install alexandremgo/tap/baguettedb
+bdb init          # your email, name and password
+```
+
+Or download the archive for your platform from the [releases](https://github.com/alexandremgo/baguettedb/releases):
+`bdb_<version>_darwin_arm64.tar.gz` for a Mac with Apple Silicon, `darwin_amd64` for an Intel Mac, `linux_amd64` or
+`linux_arm64` for Linux (any distribution). The release's `checksums.txt` lists their SHA-256. Then:
 
 ```bash
 tar -xzf bdb_*.tar.gz
