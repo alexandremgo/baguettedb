@@ -1,18 +1,43 @@
-# Attaches the bdb command line to the GitHub release when a version tag is pushed: one archive per platform, built on
-# a runner of that platform, with a checksums file. A manual run builds the archives as workflow artifacts only.
+# Builds the bdb command line for the given version and attaches it to a draft release: one archive per platform,
+# built on a runner of that platform, with a checksums file. A draft is visible to maintainers only and has no tag yet,
+# so its archives can be tested as users will download them; publishing it creates the tag on the commit they were
+# built from, and the published archives are the tested ones.
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to release, such as v1.2.3 or v1.2.3-rc1"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  version:
+    name: "Check the version"
+    runs-on: ubuntu-latest
+    steps:
+      # A published release owns its tag, so a version whose tag exists is taken; a draft of it may be rebuilt.
+      - name: Check the format and that the tag is free
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "the version must look like v1.2.3 or v1.2.3-rc1, not ${VERSION}" >&2
+            exit 1
+          fi
+          existing="$(git ls-remote --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${VERSION}")"
+          if [ -n "$existing" ]; then
+            echo "the tag ${VERSION} already exists" >&2
+            exit 1
+          fi
+
   binaries:
     name: "bdb CLI: build ${{ matrix.os }}/${{ matrix.arch }}"
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -32,7 +57,7 @@ jobs:
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     env:
-      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'edge' }}
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v6
 
@@ -87,10 +112,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish-binaries:
-    name: "bdb CLI: attach to the release"
+  draft-release:
+    name: "bdb CLI: attach to the draft release"
     needs: binaries
-    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,18 +130,22 @@ jobs:
         working-directory: dist
         run: sha256sum -- *.tar.gz > checksums.txt
 
-      # The release may already exist, written by hand before the tag was pushed; it is created otherwise, as a
-      # pre-release for a tag with a pre-release part (v1.2.3-rc1).
-      - name: Attach to the release
+      # The first run for a version creates the draft, as a pre-release for a version with a pre-release part
+      # (v1.2.3-rc1). A later run keeps the draft and its notes, which may have been edited by hand, and points it at
+      # the commit it built before replacing the archives.
+      - name: Attach to the draft release
         working-directory: dist
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" --target "$GITHUB_SHA"
+          else
             prerelease=()
-            if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
-            gh release create "$TAG" --verify-tag --generate-notes "${prerelease[@]}"
+            if [[ "$VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+            gh release create "$VERSION" --draft --target "$GITHUB_SHA" --title "$VERSION" --generate-notes \
+              "${prerelease[@]}"
           fi
-          gh release upload "$TAG" ./*.tar.gz checksums.txt --clobber
+          gh release upload "$VERSION" ./*.tar.gz checksums.txt --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version }}

@@ -199,6 +199,24 @@ it never migrates or creates anything.
 The command line's integration tests (`pkg/cli/integrationtest/`) run it in-process through `cli.Run`, on its own
 SQLite instance store.
 
+### Releasing
+
+A release goes out in three steps, so the archives people download are the ones tested:
+
+1. Build: run the Release workflow on `main` with the version, `v1.2.3`, or `v1.2.3-rc1` for a pre-release. It builds
+   and smoke-tests one archive per platform and attaches them, with `checksums.txt`, to a draft release that only
+   maintainers see and that has no tag yet. Running it again for the same version rebuilds the draft from `main`.
+2. Test: `gh release download v1.2.3` fetches the draft's archives as they will be published.
+3. Publish: `gh release edit v1.2.3 --draft=false`, or Publish on the draft's page. GitHub then creates the `v1.2.3`
+   tag on the commit the archives were built from.
+
+```bash
+gh workflow run release.yml -f version=v1.2.3
+```
+
+Never push a `v*` tag by hand: the workflow refuses a version whose tag exists, and once a tag is public the Go module
+proxy keeps that version for good, so a mistake costs the version number.
+
 ## MCP server against the development stack
 
 `make dev-up` serves the MCP endpoint at `http://localhost:8080/mcp` (Streamable HTTP, protected by the local
