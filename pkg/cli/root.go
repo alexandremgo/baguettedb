@@ -64,6 +64,7 @@ func newRootCmd(name, argv0 string) *cobra.Command {
 	root.AddCommand(
 		newVersionCmd(), newInfoCmd(flags), mcpCmd, newBdbsCmd(flags, openLocal), newStartersCmd(flags, openLocal),
 		newSQLCmd(flags, openLocal), newChangesCmd(flags, openLocal), newFormulasCmd(flags, openLocal),
+		newSkillsCmd(flags, openLocal),
 		newUsersCmd(flags, openLocal), newTokensCmd(flags, openLocal), newServeCmd(flags, openLocal),
 		newInitCmd(flags, openLocal),
 		newSQLRunCmd("q", "Run a read query and print its rows (short for sql query)", domain.IntentQuery, flags,

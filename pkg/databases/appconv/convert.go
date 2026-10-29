@@ -52,20 +52,25 @@ func TableSchemas(schemas []domain.TableSchema) []apptypes.TableSchema {
 	return out
 }
 
-// Skills maps skills with their bodies. Target tables are copied into a non-nil slice, so a skill without
-// targets encodes as [] rather than null.
+// Skills maps skills with their bodies, each as Skill does.
 func Skills(skills []*domain.Skill) []apptypes.Skill {
 	out := make([]apptypes.Skill, len(skills))
 	for i, s := range skills {
-		out[i] = apptypes.Skill{
-			ID:           s.ID.String(),
-			Name:         s.Name,
-			Description:  s.Description,
-			Body:         s.Body,
-			TargetTables: append([]string{}, s.TargetTables...),
-		}
+		out[i] = Skill(s)
 	}
 	return out
+}
+
+// Skill maps one skill with its body. Target tables are copied into a non-nil slice, so a skill without targets
+// encodes as [] rather than null.
+func Skill(s *domain.Skill) apptypes.Skill {
+	return apptypes.Skill{
+		ID:           s.ID.String(),
+		Name:         s.Name,
+		Description:  s.Description,
+		Body:         s.Body,
+		TargetTables: append([]string{}, s.TargetTables...),
+	}
 }
 
 // Formulas maps formulas to their lightweight orientation view.

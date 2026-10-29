@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -272,7 +270,7 @@ func newFormulasCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 			"  EOF",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			spec, err := readFormulaSpec(cmd.InOrStdin(), file)
+			spec, err := readFileFlag(cmd.InOrStdin(), file, "formula")
 			if err != nil {
 				return err
 			}
@@ -306,7 +304,7 @@ func newFormulasUpdateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 			"  EOF",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			spec, err := readFormulaSpec(cmd.InOrStdin(), file)
+			spec, err := readFileFlag(cmd.InOrStdin(), file, "formula")
 			if err != nil {
 				return err
 			}
@@ -343,28 +341,6 @@ func newFormulasDeleteCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-// readFormulaSpec returns the JSON object formulas create and update read from file, stdin when file is -. No file,
-// and a file that is only blank, are usage errors.
-func readFormulaSpec(stdin io.Reader, file string) ([]byte, error) {
-	var spec []byte
-	var err error
-	switch file {
-	case "":
-		return nil, usageError{err: errors.New("give the formula with --file, or --file - to read it from stdin")}
-	case "-":
-		spec, err = io.ReadAll(stdin)
-	default:
-		spec, err = os.ReadFile(file)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("reading the formula: %w", err)
-	}
-	if len(bytes.TrimSpace(spec)) == 0 {
-		return nil, usageError{err: errors.New("the formula is empty")}
-	}
-	return spec, nil
 }
 
 // printWrittenFormula prints the formula f a command just created or updated in the bdb b: as JSON under asJSON, or

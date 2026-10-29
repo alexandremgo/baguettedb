@@ -24,6 +24,7 @@ import (
 type DatabasesApp struct {
 	querySvc   *dbservice.QueryService
 	formulaSvc *dbservice.FormulaService
+	skillSvc   *dbservice.SkillService
 	exportSvc  *dbservice.ExportService
 	importSvc  *dbservice.ImportService
 	account    Account
@@ -31,11 +32,12 @@ type DatabasesApp struct {
 
 // NewDatabasesApp creates a DatabasesApp acting as account.
 func NewDatabasesApp(
-	querySvc *dbservice.QueryService, formulaSvc *dbservice.FormulaService, exportSvc *dbservice.ExportService,
-	importSvc *dbservice.ImportService, account Account,
+	querySvc *dbservice.QueryService, formulaSvc *dbservice.FormulaService, skillSvc *dbservice.SkillService,
+	exportSvc *dbservice.ExportService, importSvc *dbservice.ImportService, account Account,
 ) *DatabasesApp {
 	return &DatabasesApp{
-		querySvc: querySvc, formulaSvc: formulaSvc, exportSvc: exportSvc, importSvc: importSvc, account: account,
+		querySvc: querySvc, formulaSvc: formulaSvc, skillSvc: skillSvc, exportSvc: exportSvc, importSvc: importSvc,
+		account: account,
 	}
 }
 
@@ -344,6 +346,61 @@ func (a *DatabasesApp) DeleteFormula(ctx context.Context, bdbID uuid.UUID, ref s
 		return fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
 	}
 	return err
+}
+
+// ListSkills returns every skill of the bdb bdbID, with its body.
+func (a *DatabasesApp) ListSkills(ctx context.Context, bdbID uuid.UUID) ([]apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	skills, err := a.skillSvc.ListSkills(ctx, a.account.ID, bdbID)
+	if err != nil {
+		return nil, err
+	}
+	return appconv.Skills(skills), nil
+}
+
+// GetSkill returns the skill ref (a name or an ID) of the bdb bdbID.
+func (a *DatabasesApp) GetSkill(ctx context.Context, bdbID uuid.UUID, ref string) (apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	s, err := a.skillSvc.GetSkill(ctx, a.account.ID, bdbID, ref)
+	if errors.Is(err, dbdomain.ErrSkillNotFound) {
+		return apptypes.Skill{}, fmt.Errorf("%w named %q", domain.ErrSkillNotFound, ref)
+	}
+	if err != nil {
+		return apptypes.Skill{}, err
+	}
+	return appconv.Skill(s), nil
+}
+
+// CreateSkill creates a skill in the bdb bdbID targeting tables, a bdb-level skill when tables is empty, and returns
+// it.
+func (a *DatabasesApp) CreateSkill(
+	ctx context.Context, bdbID uuid.UUID, name, description, body string, tables []string,
+) (apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	s, err := a.skillSvc.CreateSkill(ctx, a.account.ID, bdbID, dbservice.SkillInput{
+		Name: name, Description: description, Body: body, TargetTables: tables,
+	})
+	if err != nil {
+		return apptypes.Skill{}, err
+	}
+	return appconv.Skill(s), nil
+}
+
+// UpdateSkill applies change to the skill ref (a name or an ID) of the bdb bdbID and returns it.
+func (a *DatabasesApp) UpdateSkill(
+	ctx context.Context, bdbID uuid.UUID, ref string, change domain.SkillChange,
+) (apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	s, err := a.skillSvc.UpdateSkill(ctx, a.account.ID, bdbID, ref, dbservice.SkillPatch{
+		Name: change.Name, Description: change.Description, Body: change.Body, TargetTables: change.Tables,
+	})
+	if errors.Is(err, dbdomain.ErrSkillNotFound) {
+		return apptypes.Skill{}, fmt.Errorf("%w named %q", domain.ErrSkillNotFound, ref)
+	}
+	if err != nil {
+		return apptypes.Skill{}, err
+	}
+	return appconv.Skill(s), nil
 }
 
 // decodeSpec decodes spec, a single JSON object, into v, refusing a key v does not declare and anything after the
