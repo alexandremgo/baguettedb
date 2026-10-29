@@ -237,7 +237,7 @@ func openLocal(ctx context.Context, dataDir, as string, logger zerolog.Logger) (
 		starters: service.NewStarterService(starters),
 		sql:      service.NewSQLService(bdbs, databases),
 		changes:  service.NewChangeService(bdbs, databases),
-		formulas: service.NewFormulaService(bdbs, databases, databases, databases),
+		formulas: service.NewFormulaService(bdbs, databases, databases, databases, databases),
 		exports:  service.NewExportService(bdbs, databases),
 		imports:  service.NewImportService(bdbsApp, databases),
 		users:    service.NewUserService(auth),

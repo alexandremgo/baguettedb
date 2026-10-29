@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,11 +14,12 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 )
 
-// newFormulasCmd builds the formulas command group, whose commands list, show and run a bdb's formulas; bare, it lists
-// them.
+// newFormulasCmd builds the formulas command group, whose commands list, show, run, create, update and delete a bdb's
+// formulas; bare, it lists them.
 func newFormulasCmd(flags *globalFlags, open localOpener) *cobra.Command {
-	return newListGroup("formulas", "List, show and run a bdb's formulas",
-		newFormulasListCmd(flags, open), newFormulasShowCmd(flags, open), newFormulasRunCmd(flags, open))
+	return newListGroup("formulas", "List, show, run, create, update and delete a bdb's formulas",
+		newFormulasListCmd(flags, open), newFormulasShowCmd(flags, open), newFormulasRunCmd(flags, open),
+		newFormulasCreateCmd(flags, open), newFormulasUpdateCmd(flags, open), newFormulasDeleteCmd(flags, open))
 }
 
 // newFormulasListCmd builds the formulas list command, which prints a bdb's formulas, hidden ones included.
@@ -109,10 +112,7 @@ func formulaError(cmd *cobra.Command, b domain.Bdb, formula string, err error) e
 // SQL.
 func printFormula(w io.Writer, f domain.FormulaDetail) error {
 	var out strings.Builder
-	about := f.Kind
-	if f.Kind == domain.FormulaKindAction && f.Verb != "" {
-		about += ", " + f.Verb + "s"
-	}
+	about := formulaKind(f)
 	if f.Hidden {
 		about += ", hidden"
 	}
@@ -249,4 +249,139 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false,
 		"print a view's rows as a JSON array, or an action's result as an object")
 	return cmd
+}
+
+// formulaSpecHelp describes the JSON object formulas create and update read.
+const formulaSpecHelp = "The formula is a JSON object read from --file (- reads stdin), with the fields of the " +
+	"create_formula MCP tool: name, description and sql, and optionally label, params, display, " +
+	"attached_to_formula_id, display_order and hidden. A key it does not know is refused, so a misspelled field is " +
+	"not dropped."
+
+// newFormulasCreateCmd builds the formulas create command, which creates a formula in a bdb from a JSON object.
+func newFormulasCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	var file string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "create <bdb> --file <path>",
+		Short: "Create a formula in a bdb",
+		Long:  "create creates a formula in a bdb. " + bdbArgHelp + " " + formulaSpecHelp,
+		Example: "  bdb formulas create Kanban --file add-task.json\n" +
+			"  bdb formulas create Kanban --file - <<'EOF'\n" +
+			"  {\"name\": \"open-tasks\", \"description\": \"Tasks not done yet\", " +
+			"\"sql\": \"SELECT name FROM tasks WHERE status != 'done'\"}\n" +
+			"  EOF",
+		Args: usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spec, err := readFormulaSpec(cmd.InOrStdin(), file)
+			if err != nil {
+				return err
+			}
+			return runLocal(cmd, flags, open, func(l *local) error {
+				b, f, err := l.formulas.Create(cmd.Context(), args[0], spec)
+				if err != nil {
+					return err
+				}
+				return printWrittenFormula(cmd, "Created", b, f, asJSON)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "read the formula from this file, or from stdin with -")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the created formula as JSON")
+	return cmd
+}
+
+// newFormulasUpdateCmd builds the formulas update command, which changes a formula of a bdb from a JSON object of the
+// fields to change.
+func newFormulasUpdateCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	var file string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "update <bdb> <formula> --file <path>",
+		Short: "Change a formula of a bdb",
+		Long: "update changes a formula of a bdb, by name: only the fields the JSON object holds change, params " +
+			"replace the whole list, and \"display\": null resets the display to a table. " + bdbArgHelp + " " +
+			formulaSpecHelp,
+		Example: "  bdb formulas update Kanban open-tasks --file - <<'EOF'\n" +
+			"  {\"sql\": \"SELECT name FROM tasks WHERE status = 'todo'\"}\n" +
+			"  EOF",
+		Args: usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spec, err := readFormulaSpec(cmd.InOrStdin(), file)
+			if err != nil {
+				return err
+			}
+			return runLocal(cmd, flags, open, func(l *local) error {
+				b, f, err := l.formulas.Update(cmd.Context(), args[0], args[1], spec)
+				if err != nil {
+					return formulaError(cmd, b, args[1], err)
+				}
+				return printWrittenFormula(cmd, "Updated", b, f, asJSON)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "read the fields to change from this file, or from stdin with -")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the changed formula as JSON")
+	return cmd
+}
+
+// newFormulasDeleteCmd builds the formulas delete command, which deletes one of a bdb's formulas.
+func newFormulasDeleteCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete <bdb> <formula>",
+		Short: "Delete a formula of a bdb",
+		Long:  "delete deletes a formula of a bdb, by name. " + bdbArgHelp,
+		Args:  usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLocal(cmd, flags, open, func(l *local) error {
+				b, err := l.formulas.Delete(cmd.Context(), args[0], args[1])
+				if err != nil {
+					return formulaError(cmd, b, args[1], err)
+				}
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Deleted formula %s from %s\n", args[1], b.Name)
+				return err
+			})
+		},
+	}
+	return cmd
+}
+
+// readFormulaSpec returns the JSON object formulas create and update read from file, stdin when file is -. No file,
+// and a file that is only blank, are usage errors.
+func readFormulaSpec(stdin io.Reader, file string) ([]byte, error) {
+	var spec []byte
+	var err error
+	switch file {
+	case "":
+		return nil, usageError{err: errors.New("give the formula with --file, or --file - to read it from stdin")}
+	case "-":
+		spec, err = io.ReadAll(stdin)
+	default:
+		spec, err = os.ReadFile(file)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the formula: %w", err)
+	}
+	if len(bytes.TrimSpace(spec)) == 0 {
+		return nil, usageError{err: errors.New("the formula is empty")}
+	}
+	return spec, nil
+}
+
+// printWrittenFormula prints the formula f a command just created or updated in the bdb b: as JSON under asJSON, or
+// as one line naming it with its kind, which the SQL decides, after verb.
+func printWrittenFormula(cmd *cobra.Command, verb string, b domain.Bdb, f domain.FormulaDetail, asJSON bool) error {
+	if asJSON {
+		return writeJSON(cmd.OutOrStdout(), toFormulaDetailJSON(f))
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s formula %s in %s (%s)\n", verb, f.Name, b.Name, formulaKind(f))
+	return err
+}
+
+// formulaKind words the kind of the formula f, which its SQL decides: "view", or "action" with the change it makes
+// ("action, inserts").
+func formulaKind(f domain.FormulaDetail) string {
+	if f.Kind == domain.FormulaKindAction && f.Verb != "" {
+		return f.Kind + ", " + f.Verb + "s"
+	}
+	return f.Kind
 }

@@ -1,7 +1,9 @@
 package intraprocess
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/cli/domain"
 	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/databases/appconv"
+	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	dbdomain "github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	dbservice "github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
@@ -287,6 +290,78 @@ func (a *DatabasesApp) GetFormula(ctx context.Context, bdbID uuid.UUID, ref stri
 	if err != nil {
 		return domain.FormulaDetail{}, err
 	}
+	return toFormulaDetail(f), nil
+}
+
+// CreateFormula creates a formula in the bdb bdbID from spec, the JSON object the databases app's create-formula
+// input takes, and returns it. A key the input does not know is an error, so a misspelled field is not dropped.
+func (a *DatabasesApp) CreateFormula(ctx context.Context, bdbID uuid.UUID, spec []byte) (domain.FormulaDetail, error) {
+	var req appinput.CreateFormula
+	if err := decodeSpec(spec, &req); err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	input, err := req.Input()
+	if err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	ctx = a.account.bind(ctx)
+	f, err := a.formulaSvc.CreateFormula(ctx, a.account.ID, bdbID, input)
+	if err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	return toFormulaDetail(f), nil
+}
+
+// UpdateFormula changes the formula ref (a name or an ID) of the bdb bdbID from spec, the JSON object of the fields to
+// change the databases app's update-formula input takes, and returns it. A key the input does not know is an error.
+func (a *DatabasesApp) UpdateFormula(
+	ctx context.Context, bdbID uuid.UUID, ref string, spec []byte,
+) (domain.FormulaDetail, error) {
+	var req appinput.UpdateFormula
+	if err := decodeSpec(spec, &req); err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	patch, err := req.Patch()
+	if err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	ctx = a.account.bind(ctx)
+	f, err := a.formulaSvc.UpdateFormula(ctx, a.account.ID, bdbID, ref, patch)
+	if errors.Is(err, dbdomain.ErrFormulaNotFound) {
+		return domain.FormulaDetail{}, fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
+	}
+	if err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	return toFormulaDetail(f), nil
+}
+
+// DeleteFormula deletes the formula ref (a name or an ID) of the bdb bdbID.
+func (a *DatabasesApp) DeleteFormula(ctx context.Context, bdbID uuid.UUID, ref string) error {
+	ctx = a.account.bind(ctx)
+	err := a.formulaSvc.DeleteFormula(ctx, a.account.ID, bdbID, ref)
+	if errors.Is(err, dbdomain.ErrFormulaNotFound) {
+		return fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
+	}
+	return err
+}
+
+// decodeSpec decodes spec, a single JSON object, into v, refusing a key v does not declare and anything after the
+// object.
+func decodeSpec(spec []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(spec))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("reading the formula: %w", err)
+	}
+	if dec.More() {
+		return errors.New("reading the formula: more than one JSON value")
+	}
+	return nil
+}
+
+// toFormulaDetail converts a formula of the databases app, with its parameters and SQL.
+func toFormulaDetail(f *dbdomain.Formula) domain.FormulaDetail {
 	return domain.FormulaDetail{
 		Name:        f.Name,
 		Label:       f.Label,
@@ -296,7 +371,7 @@ func (a *DatabasesApp) GetFormula(ctx context.Context, bdbID uuid.UUID, ref stri
 		Hidden:      f.Hidden,
 		SQL:         f.SQL,
 		Params:      toFormulaParams(f.Params),
-	}, nil
+	}
 }
 
 // toFormulaParams converts the databases app's parameters of a formula, or of a group parameter's rows.
