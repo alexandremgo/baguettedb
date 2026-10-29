@@ -267,3 +267,61 @@ func TestRun_Bdbs_Update(t *testing.T) {
 		t.Errorf("bdbs update without a flag = %d, stderr %q; want a usage error", code, stderr)
 	}
 }
+
+// TestRun_Bdbs_Describe checks that bdbs describe prints a bdb's tables with their columns, its skills with their
+// bodies and its formulas; that --json carries them with describe_bdb's keys; and that a blank bdb says it has none of
+// them, with empty arrays under --json.
+func TestRun_Bdbs_Describe(t *testing.T) {
+	dataDir := newKanban(t)
+
+	code, stdout, stderr := runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "describe", "Kanban")
+	for _, want := range []string{"Kanban  (owner)\n", "\nTABLES\n", "\ntasks  (table)\n", "not null, default 'todo'",
+		"\nSKILLS\n", "\nkanban-orientation  (bdb-level)\n", "This bdb tracks ONE project", "\nFORMULAS\n",
+		"task-board"} {
+		if code != exitOK || !strings.Contains(stdout, want) {
+			t.Errorf("bdbs describe = %d, stderr %q; want %q in %q", code, stderr, want, stdout)
+		}
+	}
+
+	code, stdout, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "describe", "Kanban", "--json")
+	var d struct {
+		Name   string  `json:"name"`
+		Role   string  `json:"role"`
+		Owner  *string `json:"owner"`
+		Tables []struct {
+			Name    string `json:"name"`
+			Columns []struct {
+				Name string `json:"name"`
+			} `json:"columns"`
+		} `json:"tables"`
+		Skills []struct {
+			Name         string   `json:"name"`
+			Body         string   `json:"body"`
+			TargetTables []string `json:"target_tables"`
+		} `json:"skills"`
+		Formulas []struct {
+			Name string `json:"name"`
+			Kind string `json:"kind"`
+		} `json:"formulas"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &d); code != exitOK || err != nil || d.Name != "Kanban" ||
+		d.Role != "owner" || d.Owner != nil || len(d.Tables) != 1 || len(d.Tables[0].Columns) == 0 ||
+		len(d.Skills) != 1 || d.Skills[0].Body == "" || d.Skills[0].TargetTables == nil || len(d.Formulas) == 0 {
+		t.Errorf("bdbs describe --json = %d %q (%v), stderr %q; want the table, the skill with its body and the "+
+			"formulas, no owner for the owner", code, stdout, err, stderr)
+	}
+
+	if code, _, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "create", "Notes"); code != exitOK {
+		t.Fatalf("bdbs create Notes = %d, stderr %q", code, stderr)
+	}
+	code, stdout, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "describe", "Notes")
+	if code != exitOK || !strings.Contains(stdout, "No tables.") || !strings.Contains(stdout, "No skills.") ||
+		!strings.Contains(stdout, "No formulas.") {
+		t.Errorf("bdbs describe of a blank bdb = %d %q, stderr %q; want it to say it has none", code, stdout, stderr)
+	}
+	code, stdout, _ = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "describe", "Notes", "--json")
+	if code != exitOK || !strings.Contains(stdout, `"tables": []`) || !strings.Contains(stdout, `"skills": []`) ||
+		!strings.Contains(stdout, `"formulas": []`) {
+		t.Errorf("bdbs describe --json of a blank bdb = %d %q; want empty arrays", code, stdout)
+	}
+}

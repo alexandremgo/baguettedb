@@ -45,20 +45,25 @@ func newFormulasListCmd(flags *globalFlags, open localOpener) *cobra.Command {
 					cmd.PrintErrf("No formulas in %s.\n", b.Name)
 					return nil
 				}
-				rows := make([][]string, len(formulas))
-				for i, f := range formulas {
-					kind := f.Kind
-					if f.Hidden {
-						kind += ", hidden"
-					}
-					rows[i] = []string{f.Name, kind, f.Label, f.Description}
-				}
-				return writeTable(cmd.OutOrStdout(), []string{"NAME", "KIND", "LABEL", "DESCRIPTION"}, rows)
+				return writeFormulaList(cmd.OutOrStdout(), formulas)
 			})
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the formulas as JSON")
 	return cmd
+}
+
+// writeFormulaList writes formulas to w as a table of their names, kinds (hidden ones marked), labels and descriptions.
+func writeFormulaList(w io.Writer, formulas []apptypes.Formula) error {
+	rows := make([][]string, len(formulas))
+	for i, f := range formulas {
+		kind := f.Kind
+		if f.Hidden {
+			kind += ", hidden"
+		}
+		rows[i] = []string{f.Name, kind, f.Label, f.Description}
+	}
+	return writeTable(w, []string{"NAME", "KIND", "LABEL", "DESCRIPTION"}, rows)
 }
 
 // newFormulasShowCmd builds the formulas show command, which prints one of a bdb's formulas: what it is, the

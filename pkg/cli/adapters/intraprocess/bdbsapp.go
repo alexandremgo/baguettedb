@@ -99,6 +99,30 @@ func (a *BdbsApp) UpdateBdb(ctx context.Context, bdbID uuid.UUID, name, descript
 	return a.toBdb(b)
 }
 
+// OwnerName returns the display name of the bdb bdbID's owner, as describe_bdb shows it to a member, empty when the
+// account owns it: the owner's first and last names, the first name alone, or else the email.
+func (a *BdbsApp) OwnerName(ctx context.Context, bdbID uuid.UUID) (string, error) {
+	ctx = a.account.bind(ctx)
+	b, err := a.bdbSvc.GetBdb(ctx, a.account.ID, bdbID)
+	if err != nil {
+		return "", err
+	}
+	if owner := b.Owner(); owner == nil || owner.UserID == a.account.ID {
+		return "", nil
+	}
+	p, ok := a.bdbSvc.ResolveOwnerProfiles(ctx, []*bdbsdomain.Bdb{b})[b.ID]
+	switch {
+	case !ok:
+		return "", nil
+	case p.FirstName != "" && p.LastName != "":
+		return p.FirstName + " " + p.LastName, nil
+	case p.FirstName != "":
+		return p.FirstName, nil
+	default:
+		return p.Email, nil
+	}
+}
+
 // DeleteBdb soft-deletes the bdb bdbID, owned by the account, which can restore it during the bdbs app's grace period.
 func (a *BdbsApp) DeleteBdb(ctx context.Context, bdbID uuid.UUID) error {
 	return a.bdbSvc.DeleteBdb(a.account.bind(ctx), a.account.ID, bdbID)

@@ -51,6 +51,16 @@ func (a *DatabasesApp) ListTables(ctx context.Context, bdbID uuid.UUID) ([]appty
 	return appconv.TableInfos(infos), nil
 }
 
+// ListTableSchemas returns the user tables of the bdb bdbID with their columns and foreign keys.
+func (a *DatabasesApp) ListTableSchemas(ctx context.Context, bdbID uuid.UUID) ([]apptypes.TableSchema, error) {
+	ctx = a.account.bind(ctx)
+	schemas, err := a.querySvc.ListTablesWithSchemas(ctx, a.account.ID, bdbID)
+	if err != nil {
+		return nil, err
+	}
+	return appconv.TableSchemas(schemas), nil
+}
+
 // ListFormulas returns every formula of the bdb bdbID, hidden ones included.
 func (a *DatabasesApp) ListFormulas(ctx context.Context, bdbID uuid.UUID) ([]apptypes.Formula, error) {
 	ctx = a.account.bind(ctx)

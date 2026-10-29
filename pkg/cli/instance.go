@@ -232,7 +232,7 @@ func openLocal(ctx context.Context, dataDir, as string, logger zerolog.Logger) (
 	databases := intraprocess.NewDatabasesApp(inst.Databases.QuerySvc, inst.Databases.FormulaSvc,
 		inst.Databases.SkillSvc, inst.Databases.ExportSvc, inst.Databases.ImportSvc, acting)
 	bdbsApp := intraprocess.NewBdbsApp(inst.Bdbs.BdbSvc, acting)
-	bdbs := service.NewBdbService(bdbsApp, starters, databases, databases)
+	bdbs := service.NewBdbService(bdbsApp, starters, databases, databases, databases)
 	return &local{
 		bdbs:     bdbs,
 		starters: service.NewStarterService(starters),

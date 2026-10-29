@@ -57,6 +57,49 @@ func toBdbJSON(b domain.Bdb) bdbJSON {
 	return bdbJSON{ID: b.ID.String(), Name: b.Name, Description: b.Description, Role: b.Role}
 }
 
+// bdbDescriptionJSON is a bdb's description as --json prints it, with the keys of the describe_bdb MCP tool's result.
+type bdbDescriptionJSON struct {
+	bdbJSON
+	Owner    string             `json:"owner,omitempty"`
+	Tables   []tableDetailJSON  `json:"tables"`
+	Skills   []apptypes.Skill   `json:"skills"`
+	Formulas []apptypes.Formula `json:"formulas"`
+}
+
+// tableDetailJSON is a table in a bdb's description: its columns and foreign keys, or the error reading them.
+type tableDetailJSON struct {
+	Name          string                 `json:"name"`
+	Type          string                 `json:"type"`
+	Module        string                 `json:"module,omitempty"`
+	Columns       []apptypes.TableColumn `json:"columns,omitempty"`
+	ForeignKeys   []apptypes.ForeignKey  `json:"foreign_keys,omitempty"`
+	DescribeError string                 `json:"describe_error,omitempty"`
+}
+
+// toBdbDescriptionJSON converts d to its JSON shape, with empty arrays rather than null.
+func toBdbDescriptionJSON(d domain.BdbDescription) bdbDescriptionJSON {
+	out := bdbDescriptionJSON{
+		bdbJSON:  toBdbJSON(d.Bdb),
+		Owner:    d.Owner,
+		Tables:   make([]tableDetailJSON, len(d.Tables)),
+		Skills:   d.Skills,
+		Formulas: d.Formulas,
+	}
+	for i, t := range d.Tables {
+		out.Tables[i] = tableDetailJSON{
+			Name: t.Name, Type: t.Type, Module: t.Module, Columns: t.Schema.Columns,
+			ForeignKeys: t.Schema.ForeignKeys, DescribeError: t.DescribeError,
+		}
+	}
+	if out.Skills == nil {
+		out.Skills = []apptypes.Skill{}
+	}
+	if out.Formulas == nil {
+		out.Formulas = []apptypes.Formula{}
+	}
+	return out
+}
+
 // toBdbSummariesJSON converts summaries to their JSON shape, an empty array rather than null when there are none.
 func toBdbSummariesJSON(summaries []domain.BdbSummary) []bdbSummaryJSON {
 	out := make([]bdbSummaryJSON, len(summaries))

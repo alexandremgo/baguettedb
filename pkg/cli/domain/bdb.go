@@ -48,6 +48,17 @@ type CreatedBdb struct {
 	ContentsErr error
 }
 
+// BdbDescription is what an agent reads before working in a bdb: the bdb with the account's role, its owner's name when
+// the account is not the owner, its tables with their columns and foreign keys, its skills with their bodies, and its
+// formulas.
+type BdbDescription struct {
+	Bdb
+	Owner    string
+	Tables   []apptypes.TableSchema
+	Skills   []apptypes.Skill
+	Formulas []apptypes.Formula
+}
+
 // ErrBdbNotFound reports a bdb reference that matches no bdb.
 var ErrBdbNotFound = errors.New("no bdb")
 

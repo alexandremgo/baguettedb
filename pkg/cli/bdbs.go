@@ -13,14 +13,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alexandremgo/baguettedb/pkg/cli/domain"
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 )
 
-// newBdbsCmd builds the bdbs command group, whose commands list, create, export and import the owner's bdbs; bare, it
-// lists them.
+// newBdbsCmd builds the bdbs command group, whose commands list, describe, create, update, export and import the
+// owner's bdbs; bare, it lists them.
 func newBdbsCmd(flags *globalFlags, open localOpener) *cobra.Command {
-	return newListGroup("bdbs", "List, create, update, export and import bdbs", newBdbsListCmd(flags, open),
-		newBdbsCreateCmd(flags, open), newBdbsUpdateCmd(flags, open), newBdbsExportCmd(flags, open),
-		newBdbsImportCmd(flags, open))
+	return newListGroup("bdbs", "List, describe, create, update, export and import bdbs", newBdbsListCmd(flags, open),
+		newBdbsDescribeCmd(flags, open), newBdbsCreateCmd(flags, open), newBdbsUpdateCmd(flags, open),
+		newBdbsExportCmd(flags, open), newBdbsImportCmd(flags, open))
 }
 
 // newBdbsListCmd builds the bdbs list command, which prints the owner's bdbs with their role and table count, or
@@ -107,6 +108,107 @@ func newBdbsCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	f.StringVar(&starter, "starter", "", "the key of a starter to seed the bdb from (see starters list)")
 	f.BoolVar(&asJSON, "json", false, "print the new bdb as JSON")
 	return cmd
+}
+
+// newBdbsDescribeCmd builds the bdbs describe command, which prints what an agent reads before working in a bdb.
+func newBdbsDescribeCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "describe <bdb>",
+		Short: "Describe a bdb: its tables, skills and formulas",
+		Long: "describe prints what to read before working in a bdb: its tables with their columns and foreign keys, " +
+			"its skills in full (the bdb-level ones first), which say how the bdb is meant to be used, and its " +
+			"formulas, whose parameters and SQL formulas show prints. " + bdbArgHelp,
+		Args: usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLocal(cmd, flags, open, func(l *local) error {
+				d, err := l.bdbs.Describe(cmd.Context(), args[0])
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					return writeJSON(cmd.OutOrStdout(), toBdbDescriptionJSON(d))
+				}
+				return printDescription(cmd.OutOrStdout(), d)
+			})
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the description as JSON, with the keys of describe_bdb")
+	return cmd
+}
+
+// printDescription writes d to w: a heading with the account's role, the description and the owner, then a section
+// each for the tables with their columns and foreign keys, the skills in full, and the formulas.
+func printDescription(w io.Writer, d domain.BdbDescription) error {
+	var out strings.Builder
+	fmt.Fprintf(&out, "%s  (%s)\n", d.Name, d.Role)
+	if d.Description != "" {
+		fmt.Fprintf(&out, "Description:  %s\n", d.Description)
+	}
+	if d.Owner != "" {
+		fmt.Fprintf(&out, "Owner:        %s\n", d.Owner)
+	}
+
+	out.WriteString("\nTABLES\n")
+	if len(d.Tables) == 0 {
+		out.WriteString("No tables.\n")
+	}
+	for _, t := range d.Tables {
+		fmt.Fprintf(&out, "\n%s  (%s)\n", t.Name, t.Type)
+		if t.DescribeError != "" {
+			fmt.Fprintf(&out, "Its columns could not be read: %s\n", t.DescribeError)
+			continue
+		}
+		rows := make([][]string, len(t.Schema.Columns))
+		for i, c := range t.Schema.Columns {
+			rows[i] = []string{c.Name, c.Type, columnTraits(c)}
+		}
+		if err := writeTable(&out, []string{"COLUMN", "TYPE", "CONSTRAINTS"}, rows); err != nil {
+			return err
+		}
+		for _, fk := range t.Schema.ForeignKeys {
+			fmt.Fprintf(&out, "Foreign key: %s → %s.%s", fk.From, fk.Table, fk.To)
+			if fk.OnDelete != "" && fk.OnDelete != "NO ACTION" {
+				fmt.Fprintf(&out, ", on delete %s", strings.ToLower(fk.OnDelete))
+			}
+			out.WriteString("\n")
+		}
+	}
+
+	out.WriteString("\nSKILLS\n")
+	if len(d.Skills) == 0 {
+		out.WriteString("No skills.\n")
+	}
+	for _, s := range d.Skills {
+		out.WriteString("\n")
+		if err := printSkill(&out, s); err != nil {
+			return err
+		}
+	}
+
+	out.WriteString("\nFORMULAS\n")
+	if len(d.Formulas) == 0 {
+		out.WriteString("No formulas.\n")
+	} else if err := writeFormulaList(&out, d.Formulas); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, out.String())
+	return err
+}
+
+// columnTraits words a column's constraints: primary key, not null, and its default.
+func columnTraits(c apptypes.TableColumn) string {
+	var traits []string
+	if c.PrimaryKey {
+		traits = append(traits, "primary key")
+	}
+	if c.NotNull {
+		traits = append(traits, "not null")
+	}
+	if c.Default != "" {
+		traits = append(traits, "default "+c.Default)
+	}
+	return strings.Join(traits, ", ")
 }
 
 // newBdbsUpdateCmd builds the bdbs update command, which renames a bdb, changes its description, or both.
