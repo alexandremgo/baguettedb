@@ -1,9 +1,6 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -437,41 +434,6 @@ type formulaParamWhen struct {
 	Value string `json:"value"`
 }
 
-// formulaParamRequest is one parameter entry in a create/update formula request body.
-// Lookup is set only for source "lookup" parameters; an optional parameter may be omitted
-// at run time (it binds SQL NULL).
-type formulaParamRequest struct {
-	Name      string               `json:"name"`
-	Type      string               `json:"type"`
-	Source    string               `json:"source"`
-	Optional  bool                 `json:"optional,omitempty"`
-	Lookup    *formulaLookupConfig `json:"lookup,omitempty"`
-	Hint      string               `json:"hint,omitempty"`
-	Multiline bool                 `json:"multiline,omitempty"`
-	Inline    bool                 `json:"inline,omitempty"`
-	Multiple  bool                 `json:"multiple,omitempty"`
-	Options   []formulaParamOption `json:"options,omitempty"`
-	Default   string               `json:"default,omitempty"`
-	// Defaults is a multi-select's declared subset: strings and numbers, each read as its string form.
-	Defaults []formulaParamScalar  `json:"defaults,omitempty"`
-	When     *formulaParamWhen     `json:"when,omitempty"`
-	Fields   []formulaParamRequest `json:"fields,omitempty"`
-}
-
-// formulaParamScalar is one authored value that may arrive as a JSON string or number, kept as its
-// string form the way option values are.
-type formulaParamScalar string
-
-// UnmarshalJSON accepts a string or a number; a number reads as its literal string form.
-func (v *formulaParamScalar) UnmarshalJSON(b []byte) error {
-	s, err := optionScalar(b)
-	if err != nil {
-		return errors.New("a defaults entry must be a string or a number")
-	}
-	*v = formulaParamScalar(s)
-	return nil
-}
-
 // formulaParamOption is one closed-set entry: `value` is what a run binds (the param type's string
 // form), `label` what the app shows in its place. Responses always carry both.
 type formulaParamOption struct {
@@ -479,54 +441,8 @@ type formulaParamOption struct {
 	Label string `json:"label"`
 }
 
-// UnmarshalJSON accepts the {value, label} object form — label optional, folding to the value — or a
-// bare scalar meaning value = label, so `["film", "tv"]` and mixed lists read. A scalar (and an
-// object's value) may be a string or a number; a number reads as its literal string form.
-func (o *formulaParamOption) UnmarshalJSON(b []byte) error {
-	trimmed := bytes.TrimSpace(b)
-	if len(trimmed) > 0 && trimmed[0] == '{' {
-		var obj struct {
-			// Value stays undecoded so optionScalar can accept a string or a number below.
-			Value json.RawMessage `json:"value"`
-			Label string          `json:"label"`
-		}
-		if err := json.Unmarshal(trimmed, &obj); err != nil {
-			return err
-		}
-		value, err := optionScalar(obj.Value)
-		if err != nil {
-			return err
-		}
-		if obj.Label == "" {
-			obj.Label = value
-		}
-		*o = formulaParamOption{Value: value, Label: obj.Label}
-		return nil
-	}
-	value, err := optionScalar(trimmed)
-	if err != nil {
-		return err
-	}
-	*o = formulaParamOption{Value: value, Label: value}
-	return nil
-}
-
-// optionScalar reads a JSON string or number token as its literal string form.
-func optionScalar(b []byte) (string, error) {
-	var s string
-	if err := json.Unmarshal(b, &s); err == nil {
-		return s, nil
-	}
-	var n json.Number
-	if err := json.Unmarshal(b, &n); err == nil {
-		return n.String(), nil
-	}
-	return "", errors.New("an option must be a string, a number, or a {value, label} object")
-}
-
-// formulaDisplaySlotsDTO maps a display's interaction slots to attached-formula refs. Requests
-// may name a formula by name or UUID; responses always carry the stored UUID. Bulk and RowActions
-// are ordered lists — array order is the render order.
+// formulaDisplaySlotsDTO maps a display's interaction slots to the attached formulas' stored UUIDs. Bulk and
+// RowActions are ordered lists — array order is the render order.
 type formulaDisplaySlotsDTO struct {
 	Add        string   `json:"add,omitempty"`
 	Toggle     string   `json:"toggle,omitempty"`
@@ -564,34 +480,6 @@ type formulaDisplayColumnDTO struct {
 	Role   string `json:"role,omitempty"`
 	Format string `json:"format,omitempty"`
 	Hidden bool   `json:"hidden,omitempty"`
-}
-
-// createFormulaRequest is the JSON body for POST /formulas.
-type createFormulaRequest struct {
-	Name                string                `json:"name"`
-	Label               string                `json:"label,omitempty"`
-	Description         string                `json:"description"`
-	SQL                 string                `json:"sql"`
-	Params              []formulaParamRequest `json:"params"`
-	AttachedToFormulaID *string               `json:"attached_to_formula_id,omitempty"`
-	DisplayOrder        *int                  `json:"display_order,omitempty"`
-	Display             *formulaDisplayDTO    `json:"display,omitempty"`
-	Hidden              bool                  `json:"hidden,omitempty"`
-}
-
-// updateFormulaRequest is the JSON body for PUT /formulas/{ref}. Pointer fields
-// distinguish "not set" from "set"; a non-nil params pointer replaces the schema.
-// Display is raw to distinguish three states: absent = unchanged, JSON null = clear
-// (back to table rendering), object = replace.
-type updateFormulaRequest struct {
-	Name         *string                `json:"name,omitempty"`
-	Label        *string                `json:"label,omitempty"`
-	Description  *string                `json:"description,omitempty"`
-	SQL          *string                `json:"sql,omitempty"`
-	Params       *[]formulaParamRequest `json:"params,omitempty"`
-	DisplayOrder *int                   `json:"display_order,omitempty"`
-	Display      json.RawMessage        `json:"display,omitempty"`
-	Hidden       *bool                  `json:"hidden,omitempty"`
 }
 
 // runFormulaRequest is the JSON body for POST /formulas/{ref}/run. Params carries every declared
@@ -670,68 +558,6 @@ type formulaResponse struct {
 	UpdatedAt           time.Time              `json:"updated_at"`
 }
 
-// toParamSchema converts request params into the domain parameter schema.
-func toParamSchema(in []formulaParamRequest) domain.ParamSchema {
-	out := make(domain.ParamSchema, len(in))
-	for i, p := range in {
-		out[i] = toDomainParam(p)
-	}
-	return out
-}
-
-// toDomainParam converts one request parameter — group fields included — into its domain shape.
-func toDomainParam(p formulaParamRequest) domain.FormulaParam {
-	var lookup *domain.LookupConfig
-	if p.Lookup != nil {
-		lookup = &domain.LookupConfig{
-			Table:            p.Lookup.Table,
-			LabelColumn:      p.Lookup.LabelColumn,
-			ValueColumn:      p.Lookup.ValueColumn,
-			ExcludeSelection: p.Lookup.ExcludeSelection,
-			AllowNew:         p.Lookup.AllowNew,
-			Scope:            p.Lookup.Scope,
-			Fill:             p.Lookup.Fill,
-		}
-	}
-	var when *domain.ParamWhen
-	if p.When != nil {
-		when = &domain.ParamWhen{Param: p.When.Param, Op: p.When.Op, Value: p.When.Value}
-	}
-	fp := domain.FormulaParam{
-		Name: p.Name, Type: p.Type, Source: domain.ParamSource(p.Source), Optional: p.Optional, Lookup: lookup,
-		Hint: p.Hint, Multiline: p.Multiline, Inline: p.Inline, Multiple: p.Multiple,
-		Options: toDomainOptions(p.Options), Default: p.Default, Defaults: toDomainDefaults(p.Defaults), When: when,
-	}
-	for _, field := range p.Fields {
-		fp.Fields = append(fp.Fields, toDomainParam(field))
-	}
-	return fp
-}
-
-// toDomainDefaults converts a request's defaults list into the domain's string forms; nil when empty.
-func toDomainDefaults(values []formulaParamScalar) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := make([]string, len(values))
-	for i, v := range values {
-		out[i] = string(v)
-	}
-	return out
-}
-
-// toDomainOptions converts normalized request options into their domain entries.
-func toDomainOptions(options []formulaParamOption) []domain.FormulaOption {
-	if len(options) == 0 {
-		return nil
-	}
-	out := make([]domain.FormulaOption, len(options))
-	for i, o := range options {
-		out[i] = domain.FormulaOption{Value: o.Value, Label: o.Label}
-	}
-	return out
-}
-
 // toOptionsResponse converts a domain option set into its response entries.
 func toOptionsResponse(options []domain.FormulaOption) []formulaParamOption {
 	if len(options) == 0 {
@@ -786,40 +612,6 @@ func toLookupConfigResponse(l *domain.LookupConfig) *formulaLookupConfig {
 	}
 }
 
-// toDomainDisplay converts a display DTO into the domain config; nil stays nil (table mode).
-func toDomainDisplay(d *formulaDisplayDTO) *domain.FormulaDisplay {
-	if d == nil {
-		return nil
-	}
-	out := &domain.FormulaDisplay{Mode: domain.DisplayMode(d.Mode)}
-	for _, c := range d.Columns {
-		out.Columns = append(out.Columns, domain.FormulaDisplayColumn{
-			Column: c.Column, Role: domain.DisplayColumnRole(c.Role),
-			Format: domain.DisplayColumnFormat(c.Format), Hidden: c.Hidden,
-		})
-	}
-	if d.Slots != nil {
-		out.Slots = domain.FormulaDisplaySlots{
-			Add:        d.Slots.Add,
-			Toggle:     d.Slots.Toggle,
-			Edit:       d.Slots.Edit,
-			Delete:     d.Slots.Delete,
-			Detail:     d.Slots.Detail,
-			Reorder:    d.Slots.Reorder,
-			Move:       d.Slots.Move,
-			Bulk:       d.Slots.Bulk,
-			RowActions: d.Slots.RowActions,
-		}
-	}
-	if w := d.Window; w != nil {
-		out.Window = &domain.FormulaDisplayWindow{
-			WeekStart: domain.DisplayWeekday(w.WeekStart), WeekEnd: domain.DisplayWeekday(w.WeekEnd),
-			Start: w.Start, Days: w.Days,
-		}
-	}
-	return out
-}
-
 // toDisplayResponse converts the domain display config into its DTO; nil stays nil (table mode).
 func toDisplayResponse(d *domain.FormulaDisplay) *formulaDisplayDTO {
 	if d == nil {
@@ -850,18 +642,6 @@ func toDisplayResponse(d *domain.FormulaDisplay) *formulaDisplayDTO {
 		}
 	}
 	return out
-}
-
-// parseAttachedID parses an optional attach reference; nil/empty yields a nil pointer.
-func parseAttachedID(s *string) (*uuid.UUID, error) {
-	if s == nil || *s == "" {
-		return nil, nil
-	}
-	id, err := uuid.Parse(*s)
-	if err != nil {
-		return nil, err
-	}
-	return &id, nil
 }
 
 func toFormulaResponse(f *domain.Formula) formulaResponse {

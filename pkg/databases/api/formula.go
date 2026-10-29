@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/alexandremgo/baguettedb/pkg/common/httputil"
+	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	"github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
@@ -73,7 +74,7 @@ func (h *FormulaHandler) CreateFormula(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req createFormulaRequest
+	var req appinput.CreateFormula
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if httputil.IsMaxBytesError(err) {
 			httputil.RespondJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "request body too large"})
@@ -83,23 +84,13 @@ func (h *FormulaHandler) CreateFormula(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	attachedID, err := parseAttachedID(req.AttachedToFormulaID)
+	input, err := req.Input()
 	if err != nil {
-		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid attached_to_formula_id"})
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
 
-	formula, err := h.formulaSvc.CreateFormula(r.Context(), userID, bdbID, service.FormulaInput{
-		Name:                req.Name,
-		Label:               req.Label,
-		Description:         req.Description,
-		SQL:                 req.SQL,
-		Params:              toParamSchema(req.Params),
-		AttachedToFormulaID: attachedID,
-		DisplayOrder:        req.DisplayOrder,
-		Display:             toDomainDisplay(req.Display),
-		Hidden:              req.Hidden,
-	})
+	formula, err := h.formulaSvc.CreateFormula(r.Context(), userID, bdbID, input)
 	if err != nil {
 		h.respondError(w, userID, err)
 		return
@@ -122,7 +113,7 @@ func (h *FormulaHandler) UpdateFormula(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req updateFormulaRequest
+	var req appinput.UpdateFormula
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if httputil.IsMaxBytesError(err) {
 			httputil.RespondJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "request body too large"})
@@ -132,30 +123,10 @@ func (h *FormulaHandler) UpdateFormula(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	patch := service.FormulaPatch{
-		Name:         req.Name,
-		Label:        req.Label,
-		Description:  req.Description,
-		SQL:          req.SQL,
-		DisplayOrder: req.DisplayOrder,
-		Hidden:       req.Hidden,
-	}
-	if req.Params != nil {
-		params := toParamSchema(*req.Params)
-		patch.Params = &params
-	}
-	// Display is tri-state: absent = unchanged, JSON null = clear, object = replace.
-	if len(req.Display) > 0 {
-		if string(req.Display) == "null" {
-			patch.ClearDisplay = true
-		} else {
-			var displayDTO formulaDisplayDTO
-			if err := json.Unmarshal(req.Display, &displayDTO); err != nil {
-				httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid display config"})
-				return
-			}
-			patch.Display = toDomainDisplay(&displayDTO)
-		}
+	patch, err := req.Patch()
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
 	}
 
 	formula, err := h.formulaSvc.UpdateFormula(r.Context(), userID, bdbID, ref, patch)
