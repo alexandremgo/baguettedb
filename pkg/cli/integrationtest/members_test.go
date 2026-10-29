@@ -85,6 +85,10 @@ func TestRun_ServeMembers(t *testing.T) {
 		[]string{"Kitchen", kitchen.ID, "editor"}) {
 		t.Errorf("bdbs --as bob = %q, want Kitchen as an editor", listed)
 	}
+	if code, _, stderr := runCLI(t, "bdb", "--data-dir", dataDir, "--as", "bob@example.com", "bdbs", "update",
+		"Kitchen", "--name", "Bob's kitchen"); code != exitFailure || !strings.Contains(stderr, "only the owner") {
+		t.Errorf("bdbs update --as bob = %d, stderr %q; want an editor refused", code, stderr)
+	}
 	if changes := bdb("", "changes", "Kitchen"); !strings.Contains(changes, "  bob@example.com  ") {
 		t.Errorf("changes of Kitchen as the owner = %q, want bob's write under his email", changes)
 	}

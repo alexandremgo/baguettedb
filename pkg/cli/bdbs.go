@@ -18,8 +18,9 @@ import (
 // newBdbsCmd builds the bdbs command group, whose commands list, create, export and import the owner's bdbs; bare, it
 // lists them.
 func newBdbsCmd(flags *globalFlags, open localOpener) *cobra.Command {
-	return newListGroup("bdbs", "List, create, export and import bdbs", newBdbsListCmd(flags, open),
-		newBdbsCreateCmd(flags, open), newBdbsExportCmd(flags, open), newBdbsImportCmd(flags, open))
+	return newListGroup("bdbs", "List, create, update, export and import bdbs", newBdbsListCmd(flags, open),
+		newBdbsCreateCmd(flags, open), newBdbsUpdateCmd(flags, open), newBdbsExportCmd(flags, open),
+		newBdbsImportCmd(flags, open))
 }
 
 // newBdbsListCmd builds the bdbs list command, which prints the owner's bdbs with their role and table count, or
@@ -105,6 +106,50 @@ func newBdbsCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	f.StringVar(&description, "description", "", "what the bdb is for")
 	f.StringVar(&starter, "starter", "", "the key of a starter to seed the bdb from (see starters list)")
 	f.BoolVar(&asJSON, "json", false, "print the new bdb as JSON")
+	return cmd
+}
+
+// newBdbsUpdateCmd builds the bdbs update command, which renames a bdb, changes its description, or both.
+func newBdbsUpdateCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	var name, description string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "update <bdb> [--name <name>] [--description <text>]",
+		Short: "Rename a bdb or change its description",
+		Long: "update renames a bdb, changes its description, or both: only what its flags give changes, and only " +
+			"the bdb's owner may. " + bdbArgHelp,
+		Args: usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var newName, newDescription *string
+			if cmd.Flags().Changed("name") {
+				newName = &name
+			}
+			if cmd.Flags().Changed("description") {
+				newDescription = &description
+			}
+			if newName == nil && newDescription == nil {
+				return usageError{err: errors.New("nothing to change: give --name, --description or both")}
+			}
+			return runLocal(cmd, flags, open, func(l *local) error {
+				updated, err := l.bdbs.Update(cmd.Context(), args[0], newName, newDescription)
+				if errors.Is(err, domain.ErrBdbNameTaken) {
+					return fmt.Errorf("%w; `%s bdbs` lists them", err, cmd.Root().Name())
+				}
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					return writeJSON(cmd.OutOrStdout(), toBdbJSON(updated))
+				}
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Updated %s (%s)\n", updated.Name, updated.ID)
+				return err
+			})
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&name, "name", "", "a new name, unique among your bdbs whatever the case")
+	f.StringVar(&description, "description", "", "a new description of what the bdb is for")
+	f.BoolVar(&asJSON, "json", false, "print the changed bdb as JSON")
 	return cmd
 }
 

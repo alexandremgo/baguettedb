@@ -14,7 +14,7 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 )
 
-// bdbDirectory lists, reads and creates the account's bdbs in the bdbs app.
+// bdbDirectory lists, reads, creates and changes the account's bdbs in the bdbs app.
 type bdbDirectory interface {
 	// ListBdbs returns the bdbs the account belongs to, soft-deleted ones excluded, with its role in each.
 	ListBdbs(ctx context.Context) ([]domain.Bdb, error)
@@ -25,6 +25,11 @@ type bdbDirectory interface {
 	// CreateBdb creates a blank bdb owned by the account and returns it. The name and description are validated by
 	// the bdbs app, which also enforces the account's bdb quota.
 	CreateBdb(ctx context.Context, name, description string) (domain.Bdb, error)
+
+	// UpdateBdb changes the name, the description, or both, of the bdb bdbID, which the account owns, and returns it; a
+	// nil field is left as it is. A name another of the owner's bdbs has wraps domain.ErrBdbNameTaken, and a bdb the
+	// account does not own domain.ErrNotBdbOwner.
+	UpdateBdb(ctx context.Context, bdbID uuid.UUID, name, description *string) (domain.Bdb, error)
 }
 
 // starterSeeder creates bdbs from the starters app's catalog.
@@ -125,4 +130,13 @@ func (s *BdbService) Create(ctx context.Context, name, description, starterKey s
 	}
 	created.Tables, created.Formulas = tables, formulas
 	return created, nil
+}
+
+// Update changes the name, the description, or both, of the bdb ref names; a nil field is left as it is.
+func (s *BdbService) Update(ctx context.Context, ref string, name, description *string) (domain.Bdb, error) {
+	b, err := s.Resolve(ctx, ref)
+	if err != nil {
+		return domain.Bdb{}, err
+	}
+	return s.bdbs.UpdateBdb(ctx, b.ID, name, description)
 }

@@ -83,6 +83,22 @@ func (a *BdbsApp) CreateBdb(ctx context.Context, name, description string) (doma
 	return a.toBdb(b)
 }
 
+// UpdateBdb changes the name, the description, or both, of the bdb bdbID, which the account owns, and returns it; a
+// nil field is left as it is.
+func (a *BdbsApp) UpdateBdb(ctx context.Context, bdbID uuid.UUID, name, description *string) (domain.Bdb, error) {
+	ctx = a.account.bind(ctx)
+	b, err := a.bdbSvc.UpdateBdb(ctx, a.account.ID, bdbID, name, description)
+	switch {
+	case errors.Is(err, bdbsdomain.ErrBdbNameTaken):
+		return domain.Bdb{}, domain.ErrBdbNameTaken
+	case errors.Is(err, bdbsdomain.ErrNotBdbMember):
+		return domain.Bdb{}, domain.ErrNotBdbOwner
+	case err != nil:
+		return domain.Bdb{}, err
+	}
+	return a.toBdb(b)
+}
+
 // DeleteBdb soft-deletes the bdb bdbID, owned by the account, which can restore it during the bdbs app's grace period.
 func (a *BdbsApp) DeleteBdb(ctx context.Context, bdbID uuid.UUID) error {
 	return a.bdbSvc.DeleteBdb(a.account.bind(ctx), a.account.ID, bdbID)

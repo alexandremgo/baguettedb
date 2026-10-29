@@ -224,3 +224,46 @@ func TestRun_BdbsMissingDatabaseFile(t *testing.T) {
 		t.Errorf("after the query, stat %s = %v; want the file still missing", files[0], err)
 	}
 }
+
+// TestRun_Bdbs_Update checks that bdbs update changes only what its flags give, the description or the name, prints
+// the bdb or its JSON, and refuses no change and a name another of the owner's bdbs has, whatever the case.
+func TestRun_Bdbs_Update(t *testing.T) {
+	clearDataDirEnv(t)
+	dataDir := filepath.Join(t.TempDir(), ".baguettedb")
+	for _, name := range []string{"Notes", "Board"} {
+		if code, _, stderr := runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "create", name); code != exitOK {
+			t.Fatalf("bdbs create %s = %d, stderr %q", name, code, stderr)
+		}
+	}
+
+	code, stdout, stderr := runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "update", "Notes", "--description",
+		"Meeting notes", "--json")
+	var updated struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &updated); code != exitOK || err != nil || updated.Name != "Notes" ||
+		updated.Description != "Meeting notes" {
+		t.Errorf("bdbs update --description = %d %q (%v), stderr %q; want the description changed, the name kept",
+			code, stdout, err, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "update", "notes", "--name", "Journal")
+	if code != exitOK || !strings.HasPrefix(stdout, "Updated Journal (") {
+		t.Errorf("bdbs update --name = %d %q, stderr %q; want the bdb renamed", code, stdout, stderr)
+	}
+	if _, stdout, _ = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs"); !strings.Contains(stdout, "Journal") ||
+		strings.Contains(stdout, "Notes") {
+		t.Errorf("bdbs after the rename = %q, want Journal and no Notes", stdout)
+	}
+
+	code, _, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "update", "Journal", "--name", "board")
+	if code != exitFailure || !strings.Contains(stderr, "already have a bdb with that name") ||
+		!strings.Contains(stderr, "`bdb bdbs` lists them") {
+		t.Errorf("renaming to a taken name = %d, stderr %q; want it refused with a pointer to the list", code, stderr)
+	}
+	if code, _, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "bdbs", "update", "Journal"); code != exitUsage ||
+		!strings.Contains(stderr, "nothing to change") {
+		t.Errorf("bdbs update without a flag = %d, stderr %q; want a usage error", code, stderr)
+	}
+}

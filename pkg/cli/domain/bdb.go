@@ -54,6 +54,9 @@ var ErrBdbNotFound = errors.New("no bdb")
 // ErrBdbNameTaken reports a name another bdb of the same owner has, whatever the case.
 var ErrBdbNameTaken = errors.New("you already have a bdb with that name, whatever the case")
 
+// ErrNotBdbOwner reports a change only the bdb's owner may make, asked by another member.
+var ErrNotBdbOwner = errors.New("only the owner can rename a bdb or change its description")
+
 // AmbiguousBdbError reports a bdb reference that matches several bdbs at the same level.
 type AmbiguousBdbError struct {
 	Ref     string
