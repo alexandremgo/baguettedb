@@ -13,14 +13,14 @@ import (
 // NewServer creates an MCP server with all database query tools registered.
 func NewServer(
 	querySvc *service.QueryService, skillSvc *service.SkillService,
-	formulaSvc *service.FormulaService, logger zerolog.Logger,
+	formulaSvc *service.FormulaService, docsSvc *service.DocsService, logger zerolog.Logger,
 ) *mcpserver.MCPServer {
 	s := mcpserver.NewMCPServer(
 		"baguettedb-databases",
 		"1.0.0",
 	)
 
-	registerTools(s, querySvc, skillSvc, formulaSvc, logger)
+	registerTools(s, querySvc, skillSvc, formulaSvc, docsSvc, logger)
 
 	return s
 }

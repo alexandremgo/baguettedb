@@ -2,9 +2,7 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"slices"
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -360,27 +358,11 @@ func formulaParamItemSchema() map[string]any {
 	}
 }
 
-// formulaAuthoringErrors lists the validation sentinels a formula author can fix by following the
-// authoring rules — the failures worth pointing at the doc. Authorization, not-found, and
-// infrastructure errors stay out: no documentation fixes those.
-var formulaAuthoringErrors = []error{
-	domain.ErrFormulaNameInvalid,
-	domain.ErrFormulaDescriptionInvalid,
-	domain.ErrFormulaLabelInvalid,
-	domain.ErrFormulaSQLInvalid,
-	domain.ErrFormulaKindUndeterminable,
-	domain.ErrFormulaParamInvalid,
-	domain.ErrFormulaAttachConflict,
-	domain.ErrFormulaDisplayInvalid,
-	domain.ErrFormulaViewNotPageable,
-	domain.ErrUnsupportedStatement,
-}
-
 // formulaErrorResult wraps a create/update failure as a tool error, appending a get_docs pointer to
 // authoring-validation rejections so the manual stays discoverable even when it was skipped.
 func formulaErrorResult(action string, err error) *mcplib.CallToolResult {
 	msg := fmt.Sprintf("failed to %s formula: %v", action, err)
-	if slices.ContainsFunc(formulaAuthoringErrors, func(target error) bool { return errors.Is(err, target) }) {
+	if service.FormulasManualCovers(err) {
 		msg += ". Call " + mcputil.ToolGetDocs + "(topic: 'formulas') for the authoring rules."
 	}
 	return mcplib.NewToolResultError(msg)

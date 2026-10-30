@@ -37,7 +37,8 @@ func newRootCmd(name, argv0 string) *cobra.Command {
 		Use:   name,
 		Short: "A private BaguetteDB on this machine, for your AI agents",
 		Long: name + " runs a BaguetteDB instance on this machine, with no server, login or Docker: " +
-			"its data lives in a directory of your own (~/.baguettedb by default).",
+			"its data lives in a directory of your own (~/.baguettedb by default). An agent starts with `" + name +
+			" docs`.",
 		Version:       version,
 		Args:          usageArgs(noArgsSuggesting),
 		SilenceUsage:  true,
@@ -64,7 +65,7 @@ func newRootCmd(name, argv0 string) *cobra.Command {
 	root.AddCommand(
 		newVersionCmd(), newInfoCmd(flags), mcpCmd, newBdbsCmd(flags, openLocal), newStartersCmd(flags, openLocal),
 		newSQLCmd(flags, openLocal), newChangesCmd(flags, openLocal), newFormulasCmd(flags, openLocal),
-		newSkillsCmd(flags, openLocal),
+		newSkillsCmd(flags, openLocal), newDocsCmd(flags, openLocal),
 		newUsersCmd(flags, openLocal), newTokensCmd(flags, openLocal), newServeCmd(flags, openLocal),
 		newInitCmd(flags, openLocal),
 		newSQLRunCmd("q", "Run a read query and print its rows (short for sql query)", domain.IntentQuery, flags,

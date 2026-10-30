@@ -197,7 +197,7 @@ func setupGatewayMCPClient(
 	querySvc := dbsvc.NewQueryService(dbService, sqliteClient, classifier, limits, 100, 0)
 	skillSvc := dbsvc.NewSkillService(dbService, sqliteClient)
 	formulaSvc := dbsvc.NewFormulaService(dbService, sqliteClient, classifier, querySvc, 0, testLogger)
-	dbMCPServer := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, testLogger)
+	dbMCPServer := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, dbsvc.NewDocsService(querySvc), testLogger)
 
 	// Wires the databases app into the bdbs MCP server for list_bdbs enrichment.
 	dbRef.App = bdbsintra.NewDatabasesApp(querySvc, skillSvc, formulaSvc, dbService)

@@ -199,6 +199,7 @@ type local struct {
 	changes  *service.ChangeService
 	formulas *service.FormulaService
 	skills   *service.SkillService
+	docs     *service.DocsService
 	exports  *service.ExportService
 	imports  *service.ImportService
 	users    *service.UserService
@@ -230,7 +231,7 @@ func openLocal(ctx context.Context, dataDir, as string, logger zerolog.Logger) (
 	}
 	starters := intraprocess.NewStartersApp(inst.Starters, acting)
 	databases := intraprocess.NewDatabasesApp(inst.Databases.QuerySvc, inst.Databases.FormulaSvc,
-		inst.Databases.SkillSvc, inst.Databases.ExportSvc, inst.Databases.ImportSvc, acting)
+		inst.Databases.SkillSvc, inst.Databases.DocsSvc, inst.Databases.ExportSvc, inst.Databases.ImportSvc, acting)
 	bdbsApp := intraprocess.NewBdbsApp(inst.Bdbs.BdbSvc, acting)
 	bdbs := service.NewBdbService(bdbsApp, starters, databases, databases, databases)
 	return &local{
@@ -240,6 +241,7 @@ func openLocal(ctx context.Context, dataDir, as string, logger zerolog.Logger) (
 		changes:  service.NewChangeService(bdbs, databases),
 		formulas: service.NewFormulaService(bdbs, databases, databases, databases, databases),
 		skills:   service.NewSkillService(bdbs, databases, databases),
+		docs:     service.NewDocsService(databases),
 		exports:  service.NewExportService(bdbs, databases),
 		imports:  service.NewImportService(bdbsApp, databases),
 		users:    service.NewUserService(auth),

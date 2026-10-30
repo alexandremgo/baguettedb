@@ -118,6 +118,22 @@ func (e *ParamValueError) Error() string {
 // ErrFormulaNotFound reports a formula reference that matches no formula in the bdb.
 var ErrFormulaNotFound = errors.New("no formula")
 
+// FormulaRefusedError reports a formula the databases app refused for a rule of how to write one, which the formulas
+// manual explains.
+type FormulaRefusedError struct {
+	Err error
+}
+
+// Error returns the refusal as the databases app words it.
+func (e *FormulaRefusedError) Error() string {
+	return e.Err.Error()
+}
+
+// Unwrap returns the refusal.
+func (e *FormulaRefusedError) Unwrap() error {
+	return e.Err
+}
+
 // Export is a bdb's database written out: its size, and the one-time passphrase that opens it.
 type Export struct {
 	SizeBytes  int64

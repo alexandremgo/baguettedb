@@ -426,6 +426,6 @@ list. An attached formula must keep its kind — detach first to flip a view to 
 
 `display` is tri-state on update: omit = unchanged; null = clear (back to the plain table); an object =
 replace (re-validated against the SQL's result columns and the attached formulas). This is where slots
-are set. To change one part (e.g. reorder `row_actions`), read the current display with get_formula and
+are set. To change one part (e.g. reorder `row_actions`), read the current display with `{{.ToolGetFormula}}` and
 resend all of it with that part changed. A formula referenced by a slot of its parent's display resists
 changes that break the slot's shape — clear the slot first.

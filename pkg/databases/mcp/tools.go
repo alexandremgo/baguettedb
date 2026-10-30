@@ -26,6 +26,7 @@ func registerTools(
 	querySvc *service.QueryService,
 	skillSvc *service.SkillService,
 	formulaSvc *service.FormulaService,
+	docsSvc *service.DocsService,
 	logger zerolog.Logger,
 ) {
 	s.AddTool(
@@ -190,7 +191,7 @@ func registerTools(
 		executeSchemaHandler(querySvc, logger),
 	)
 
-	registerDocsTool(s, querySvc)
+	registerDocsTool(s, docsSvc)
 }
 
 func describeTableHandler(

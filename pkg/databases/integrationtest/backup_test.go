@@ -79,7 +79,7 @@ func setupBackupStack(t *testing.T, storePrefix string, maxSnapshotAge time.Dura
 	}
 	t.Cleanup(tv.Close)
 
-	mcpSrv := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, testLogger)
+	mcpSrv := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, service.NewDocsService(querySvc), testLogger)
 	sseServer := mcpserver.NewSSEServer(mcpSrv,
 		mcpserver.WithStaticBasePath("/mcp"),
 		mcpserver.WithSSEContextFunc(mcputil.SSEContextFunc),

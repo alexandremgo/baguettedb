@@ -38,6 +38,7 @@ type SetupResult struct {
 	QuerySvc    *service.QueryService
 	SkillSvc    *service.SkillService
 	FormulaSvc  *service.FormulaService
+	DocsSvc     *service.DocsService
 	ExportSvc   *service.ExportService
 	ImportSvc   *service.ImportService
 	MCPServer   *mcpserver.MCPServer
@@ -370,7 +371,8 @@ func Setup(
 	})
 
 	// Creates MCP server (tool handlers only, no transport).
-	mcpServer := dbmcp.NewServer(querySvc, skillSvc, mcpFormulaSvc, logger)
+	docsSvc := service.NewDocsService(querySvc)
+	mcpServer := dbmcp.NewServer(querySvc, skillSvc, mcpFormulaSvc, docsSvc, logger)
 
 	// In standalone mode, creates SSE transport and mounts MCP routes on the router.
 	var sseServer *mcpserver.SSEServer
@@ -423,6 +425,7 @@ func Setup(
 		QuerySvc:       querySvc,
 		SkillSvc:       skillSvc,
 		FormulaSvc:     formulaSvc,
+		DocsSvc:        docsSvc,
 		ExportSvc:      exportSvc,
 		ImportSvc:      importSvc,
 		MCPServer:      mcpServer,

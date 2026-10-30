@@ -25,6 +25,7 @@ type DatabasesApp struct {
 	querySvc   *dbservice.QueryService
 	formulaSvc *dbservice.FormulaService
 	skillSvc   *dbservice.SkillService
+	docsSvc    *dbservice.DocsService
 	exportSvc  *dbservice.ExportService
 	importSvc  *dbservice.ImportService
 	account    Account
@@ -33,11 +34,12 @@ type DatabasesApp struct {
 // NewDatabasesApp creates a DatabasesApp acting as account.
 func NewDatabasesApp(
 	querySvc *dbservice.QueryService, formulaSvc *dbservice.FormulaService, skillSvc *dbservice.SkillService,
-	exportSvc *dbservice.ExportService, importSvc *dbservice.ImportService, account Account,
+	docsSvc *dbservice.DocsService, exportSvc *dbservice.ExportService, importSvc *dbservice.ImportService,
+	account Account,
 ) *DatabasesApp {
 	return &DatabasesApp{
-		querySvc: querySvc, formulaSvc: formulaSvc, skillSvc: skillSvc, exportSvc: exportSvc, importSvc: importSvc,
-		account: account,
+		querySvc: querySvc, formulaSvc: formulaSvc, skillSvc: skillSvc, docsSvc: docsSvc, exportSvc: exportSvc,
+		importSvc: importSvc, account: account,
 	}
 }
 
@@ -319,7 +321,7 @@ func (a *DatabasesApp) CreateFormula(ctx context.Context, bdbID uuid.UUID, spec 
 	ctx = a.account.bind(ctx)
 	f, err := a.formulaSvc.CreateFormula(ctx, a.account.ID, bdbID, input)
 	if err != nil {
-		return domain.FormulaDetail{}, err
+		return domain.FormulaDetail{}, refusedFormula(err)
 	}
 	return toFormulaDetail(f), nil
 }
@@ -343,7 +345,7 @@ func (a *DatabasesApp) UpdateFormula(
 		return domain.FormulaDetail{}, fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
 	}
 	if err != nil {
-		return domain.FormulaDetail{}, err
+		return domain.FormulaDetail{}, refusedFormula(err)
 	}
 	return toFormulaDetail(f), nil
 }
@@ -411,6 +413,21 @@ func (a *DatabasesApp) UpdateSkill(
 		return apptypes.Skill{}, err
 	}
 	return appconv.Skill(s), nil
+}
+
+// refusedFormula returns err as a *domain.FormulaRefusedError when the formulas manual explains how to fix it, as is
+// otherwise.
+func refusedFormula(err error) error {
+	if dbservice.FormulasManualCovers(err) {
+		return &domain.FormulaRefusedError{Err: err}
+	}
+	return err
+}
+
+// RenderManual renders the manual for topic, each operation named by its command, quoting the limits the account works
+// under.
+func (a *DatabasesApp) RenderManual(ctx context.Context, topic string) (string, error) {
+	return a.docsSvc.Manual(a.account.bind(ctx), topic, domain.CommandForTool)
 }
 
 // decodeSpec decodes spec, a single JSON object, into v, refusing a key v does not declare and anything after the

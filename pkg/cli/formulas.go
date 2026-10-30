@@ -95,8 +95,8 @@ func newFormulasShowCmd(flags *globalFlags, open localOpener) *cobra.Command {
 }
 
 // formulaError adds to err, when it reports an unknown formula of the bdb b, the command that lists b's formulas, and
-// words a parameter value error as a usage error about its --param flag, pointing at the command that shows the
-// formula's parameters.
+// to a formula refused for how it is written, the manual that explains it; it words a parameter value error as a usage
+// error about its --param flag, pointing at the command that shows the formula's parameters.
 func formulaError(cmd *cobra.Command, b domain.Bdb, formula string, err error) error {
 	if refused, ok := errors.AsType[*domain.ParamValueError](err); ok {
 		show := shellJoin([]string{cmd.Root().Name(), "formulas", "show", b.Name, formula})
@@ -107,6 +107,9 @@ func formulaError(cmd *cobra.Command, b domain.Bdb, formula string, err error) e
 	}
 	if errors.Is(err, domain.ErrFormulaNotFound) {
 		return fmt.Errorf("%w; `%s formulas %s` lists them", err, cmd.Root().Name(), b.Name)
+	}
+	if _, ok := errors.AsType[*domain.FormulaRefusedError](err); ok {
+		return fmt.Errorf("%w; `%s docs formulas` explains how to write one", err, cmd.Root().Name())
 	}
 	return err
 }
@@ -282,7 +285,7 @@ func newFormulasCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 			return runLocal(cmd, flags, open, func(l *local) error {
 				b, f, err := l.formulas.Create(cmd.Context(), args[0], spec)
 				if err != nil {
-					return err
+					return formulaError(cmd, b, "", err)
 				}
 				return printWrittenFormula(cmd, "Created", b, f, asJSON)
 			})

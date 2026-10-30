@@ -67,7 +67,8 @@ func TestRun_Formulas_Create(t *testing.T) {
 }
 
 // TestRun_Formulas_Create_Refused checks what formulas create refuses before anything is written: no --file, an empty
-// formula, JSON that is not one object, an unknown field, and a formula the databases app finds invalid.
+// formula, JSON that is not one object, an unknown field, and a formula the databases app finds invalid, which points
+// at the formulas manual.
 func TestRun_Formulas_Create_Refused(t *testing.T) {
 	dataDir := newKanban(t)
 	create := func(stdin string, args ...string) (int, string) {
@@ -94,8 +95,10 @@ func TestRun_Formulas_Create_Refused(t *testing.T) {
 	}
 	invalid := `{"name": "Open Tasks", "description": "Tasks not done yet", "sql": "SELECT name FROM tasks"}`
 	if code, stderr := create(invalid, "--file", "-"); code != exitFailure || !strings.Contains(stderr, "in Kanban:") ||
-		!strings.Contains(stderr, "name") {
-		t.Errorf("create with an invalid name = %d, stderr %q; want the databases app's refusal", code, stderr)
+		!strings.Contains(stderr, "name") ||
+		!strings.Contains(stderr, "`bdb docs formulas` explains how to write one") {
+		t.Errorf("create with an invalid name = %d, stderr %q; want the databases app's refusal, pointing at the "+
+			"formulas manual", code, stderr)
 	}
 	if _, stdout, _ := runCLI(t, "bdb", "--data-dir", dataDir, "formulas", "list", "Kanban"); strings.Contains(stdout,
 		"open-tasks") || strings.Contains(stdout, "Open Tasks") {
