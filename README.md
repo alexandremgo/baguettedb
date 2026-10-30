@@ -63,8 +63,10 @@ C toolchain, plus `pkg-config` and the OpenSSL 3 headers on Linux, and leaves ou
 
 ### Connect your agent
 
-`bdb mcp config` prints what to register in your MCP client, so the client starts `bdb` itself. `--client claude`
-covers Claude Desktop and Claude Code:
+An agent that runs commands on your machine, such as Claude Code or Codex, can use `bdb` as it is: nothing to
+register, and `bdb docs` tells it where to start. To give an agent MCP tools instead, `bdb mcp config` prints what to
+register in your MCP client, so the client starts `bdb` itself. `--client claude` covers Claude Desktop and Claude
+Code:
 
 ```bash
 bdb mcp config --client claude   # also: codex, vibe
@@ -76,8 +78,14 @@ bdb mcp config --client claude   # also: codex, vibe
 # Creates a bdb from the kanban starter, named Kanban
 bdb bdbs create --starter kanban
 
+# Prints its tables, its skills in full and its formulas: what an agent reads first
+bdb bdbs describe Kanban
+
 # Runs one of its formulas, adding a task
 bdb formulas run Kanban add-task --param name="Buy bread"
+
+# Adds a formula of your own, written as JSON in a file
+bdb formulas create Kanban --file open-tasks.json
 
 # Queries it in SQL
 bdb q Kanban "SELECT name FROM tasks"
@@ -86,7 +94,8 @@ bdb q Kanban "SELECT name FROM tasks"
 bdb changes Kanban
 bdb changes undo Kanban
 
-# Lists every command
+# Prints the guide for agents, then every command
+bdb docs
 bdb --help
 ```
 
@@ -135,8 +144,10 @@ account `--as` names, over stdio; the account its token belongs to over HTTP.
 | Skills | `get_skill`, `create_skill`, `update_skill` |
 | Reference | `get_docs`, the built-in manuals on two topics: `sql` (the engine's rules, the change log included) and `formulas` |
 
-Each tool's parameters and behavior are in [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md), generated from
-the code.
+Each tool has a `bdb` command that does the same, so an agent can work through either: `describe_bdb` is
+`bdb bdbs describe`, `execute_data` is `bdb sql data`, `create_formula` is `bdb formulas create`, `get_docs` is
+`bdb docs`. Each tool's parameters and behavior are in [docs/reference/mcp-tools.md](docs/reference/mcp-tools.md),
+generated from the code.
 
 ## Development
 
