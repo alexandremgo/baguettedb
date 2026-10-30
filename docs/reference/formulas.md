@@ -22,7 +22,7 @@ also contains a DELETE classifies as delete and is rejected for the add slot.
 - `description`: one line; appears alongside the name in `describe_bdb` and `list_formulas` for routing.
 - `display_order`: position among siblings (lower sorts first). Omit to append after existing formulas.
 - `hidden: true` marks the formula assistant-only: omitted from the members' formula list (writers can
-  reveal it), while MCP tools always see it and running stays permission-gated as usual. Use it for
+  reveal it), while agents always see it and running stays permission-gated as usual. Use it for
   assistant-plumbing formulas (rollups, maintenance actions).
 
 ## Parameters
@@ -35,7 +35,7 @@ Each `params` entry declares:
 
 - `name`: the bind parameter name without the colon (e.g. `status` for `:status`).
 - `type`: `text`, `integer`, `float`, `boolean`, `date`, `datetime`, `time`, or `group`.
-- `source`: `prompt`, `selection-single`, `selection-bulk`, `pagination`, `lookup`, or `reorder`
+- `source`: `prompt`, `selection-single`, `selection-bulk`, `pagination`, `lookup`, `reorder`, or `window`
   (each described below).
 - `optional`, `default`, `defaults`, `options`, `hint`, `multiline`, `inline`, `multiple`, `when`, `lookup`,
   `fields`: described below.
@@ -106,7 +106,7 @@ binds its default, else NULL (`'[]'` for a group); a supplied value still binds 
 parameter may gate: it must be passed exactly while its condition holds. The controller must be a
 prompt-sourced sibling without a `when` of its own; when it declares options, an eq/ne `value` must be
 one of the option VALUES. Use it for two-faced actions (e.g. an equal-split payer required only while a
-custom-split toggle is off) or fields tied to one choice of a kind-style option param. For plain MCP
+custom-split toggle is off) or fields tied to one choice of a kind-style option param. For an agent's
 runs the mechanics are display-oriented: pass or omit values as usual — a hidden field submits nothing.
 
 ### Group parameters (repeated rows)
@@ -159,13 +159,13 @@ columns must exist.
   lookup-sourced sibling, each value the column of `table` whose value the pick writes there — e.g.
   `{"category": "category_name", "habit": "habit"}` on an item picker files the two fields the way the
   catalog has them. A pick overwrites the sibling; text typed past the options fills nothing; clearing
-  the picker leaves siblings alone. Display-only: an MCP run never fills anything, so the SQL must cope
+  the picker leaves siblings alone. Display-only: an agent's run never fills anything, so the SQL must cope
   with the siblings arriving empty. When `value_column` is not unique, which row's columns fill is
   arbitrary — point fills at catalog tables. Never valid with `multiple`, never on a group field.
 - `multiple: true` marks a lookup multi-select — see Multi-selects. Never valid with `allow_new`, never
   on a group field.
 
-Over MCP there is no picker; pass the value(s) directly in `params`.
+An agent has no picker: it passes the value(s) directly, like any other parameter.
 
 ### Multi-selects
 
@@ -212,8 +212,8 @@ includes a `pagination` block with `has_more: true`, run again with `:cursor` se
 An action that targets one selected row takes `:rowid` (source `selection-single`); one targeting
 several takes `:rowids` (source `selection-bulk`, expanded to `IN (?, …)` at run time). Attach such an
 action to a view via `attached_to_formula_id` AND name it in the view's display (a fixed slot, or the
-bulk / row_actions lists) — an attached action renders nowhere until named; when running over MCP you
-pass their values in `params` explicitly.
+bulk / row_actions lists) — an attached action renders nowhere until named; an agent running them
+passes their values explicitly, like any other parameter.
 
 Row detail: attach a SELECT that takes `:rowid` (source `selection-single`) to a view (e.g.
 `SELECT * FROM recipes WHERE id = :rowid`), then name it in the view's display slot `detail` — the app
@@ -308,8 +308,8 @@ WHERE id IN (SELECT value FROM json_each(:ordered_rowids))
 
 Beyond `:ordered_rowids` (and `:parent_rowid` on a detail view) only optional params are allowed — the
 action runs immediately, no dialog opens. The view's SELECT must ORDER BY the column the action
-renumbers, or the list re-renders in its old order and the reorder looks like it did nothing. Over MCP
-pass the array directly, e.g. `ordered_rowids: [5, 3, 8]`.
+renumbers, or the list re-renders in its old order and the reorder looks like it did nothing. An agent
+passes the array directly, e.g. `[5, 3, 8]` for `ordered_rowids`.
 
 ### Move slot (drag across board columns or calendar days)
 
@@ -346,7 +346,7 @@ Monday-to-Sunday week unless `window` says otherwise, see below); rows whose day
 - a `day`-role column (and a `title`; `body` optional);
 - the reserved window pair `:window_start` / `:window_end`, source `window`, both `date` or both
   `datetime`, never optional and never one without the other. The app binds the visible span's first
-  and last day (inclusive) on every run; a run that omits them (over MCP, an export) binds NULL on
+  and last day (inclusive) on every run; a run that omits them (an agent's, an export) binds NULL on
   both, so guard each bound with `IS NULL` to make an omitted window mean "everything";
 - no pagination (the window bounds the rows) and no toggle slot.
 

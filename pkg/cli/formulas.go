@@ -258,10 +258,10 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 }
 
 // formulaSpecHelp describes the JSON object formulas create and update read.
-const formulaSpecHelp = "The formula is a JSON object read from --file (- reads stdin), with the fields of the " +
-	"create_formula MCP tool: name, description and sql, and optionally label, params, display, " +
-	"attached_to_formula_id, display_order and hidden. A key it does not know is refused, so a misspelled field is " +
-	"not dropped."
+const formulaSpecHelp = "The formula is a JSON object read from --file (- reads stdin): name, description and sql, " +
+	"and optionally label, params, display, attached_to_formula_id, display_order and hidden, which bdb docs " +
+	"formulas explains. A key it does not know is refused, so a misspelled field is not dropped. Formulas are not " +
+	"in the bdb's change log: changes undo does not revert this."
 
 // newFormulasCreateCmd builds the formulas create command, which creates a formula in a bdb from a JSON object.
 func newFormulasCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {

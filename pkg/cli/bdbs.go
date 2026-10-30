@@ -133,7 +133,7 @@ func newBdbsDescribeCmd(flags *globalFlags, open localOpener) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print the description as JSON, with the keys of describe_bdb")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the description as JSON")
 	return cmd
 }
 

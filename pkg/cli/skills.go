@@ -14,7 +14,8 @@ import (
 
 // skillHelp says what a skill is, for the long help of the commands that write one.
 const skillHelp = "A skill is markdown in the bdb that teaches agents how it is meant to be used: for the whole bdb, " +
-	"or for some of its tables."
+	"or for some of its tables. A skill is deleted in the web app (bdb serve), not from the command line, and its " +
+	"changes are not in the bdb's change log."
 
 // newSkillsCmd builds the skills command group, whose commands list, show, create and update a bdb's skills; bare, it
 // lists them.
@@ -137,7 +138,8 @@ func newSkillsUpdateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		Short: "Change a skill of a bdb",
 		Long: "update changes a skill of a bdb, by name: only what its flags give changes. --table replaces the " +
 			"tables the skill targets (repeat it for several), --no-tables makes it cover the whole bdb, and --file " +
-			"replaces its markdown body (- reads stdin). " + bdbArgHelp,
+			"replaces its markdown body (- reads stdin). The change is not in the bdb's change log, so changes undo " +
+			"does not revert it. " + bdbArgHelp,
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f := cmd.Flags()
