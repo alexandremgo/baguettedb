@@ -61,7 +61,7 @@ func newMCPShardPod(
 	t.Cleanup(tv.Close)
 
 	shardRouter := dbapi.NewShardRouter(color, ordinal, peerURL, dbSvc, testLogger)
-	mcpServer := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, testLogger)
+	mcpServer := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, service.NewDocsService(querySvc), testLogger)
 	// Stateless so a forwarded tools/call needs no prior session on the owner — the same option production uses.
 	internalMCP := mcpserver.NewStreamableHTTPServer(mcpServer,
 		mcpserver.WithHTTPContextFunc(mcputil.NewInternalHTTPContextFunc(tv)),

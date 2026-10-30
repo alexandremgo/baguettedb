@@ -12,11 +12,12 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 )
 
-// newFormulasCmd builds the formulas command group, whose commands list, show and run a bdb's formulas; bare, it lists
-// them.
+// newFormulasCmd builds the formulas command group, whose commands list, show, run, create, update and delete a bdb's
+// formulas; bare, it lists them.
 func newFormulasCmd(flags *globalFlags, open localOpener) *cobra.Command {
-	return newListGroup("formulas", "List, show and run a bdb's formulas",
-		newFormulasListCmd(flags, open), newFormulasShowCmd(flags, open), newFormulasRunCmd(flags, open))
+	return newListGroup("formulas", "List, show, run, create, update and delete a bdb's formulas",
+		newFormulasListCmd(flags, open), newFormulasShowCmd(flags, open), newFormulasRunCmd(flags, open),
+		newFormulasCreateCmd(flags, open), newFormulasUpdateCmd(flags, open), newFormulasDeleteCmd(flags, open))
 }
 
 // newFormulasListCmd builds the formulas list command, which prints a bdb's formulas, hidden ones included.
@@ -44,20 +45,25 @@ func newFormulasListCmd(flags *globalFlags, open localOpener) *cobra.Command {
 					cmd.PrintErrf("No formulas in %s.\n", b.Name)
 					return nil
 				}
-				rows := make([][]string, len(formulas))
-				for i, f := range formulas {
-					kind := f.Kind
-					if f.Hidden {
-						kind += ", hidden"
-					}
-					rows[i] = []string{f.Name, kind, f.Label, f.Description}
-				}
-				return writeTable(cmd.OutOrStdout(), []string{"NAME", "KIND", "LABEL", "DESCRIPTION"}, rows)
+				return writeFormulaList(cmd.OutOrStdout(), formulas)
 			})
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the formulas as JSON")
 	return cmd
+}
+
+// writeFormulaList writes formulas to w as a table of their names, kinds (hidden ones marked), labels and descriptions.
+func writeFormulaList(w io.Writer, formulas []apptypes.Formula) error {
+	rows := make([][]string, len(formulas))
+	for i, f := range formulas {
+		kind := f.Kind
+		if f.Hidden {
+			kind += ", hidden"
+		}
+		rows[i] = []string{f.Name, kind, f.Label, f.Description}
+	}
+	return writeTable(w, []string{"NAME", "KIND", "LABEL", "DESCRIPTION"}, rows)
 }
 
 // newFormulasShowCmd builds the formulas show command, which prints one of a bdb's formulas: what it is, the
@@ -89,30 +95,35 @@ func newFormulasShowCmd(flags *globalFlags, open localOpener) *cobra.Command {
 }
 
 // formulaError adds to err, when it reports an unknown formula of the bdb b, the command that lists b's formulas, and
-// words a parameter value error as a usage error about its --param flag, pointing at the command that shows the
-// formula's parameters.
+// to a formula refused for how it is written, the manual that explains it; it words a parameter value error as a usage
+// error about its --param flag, pointing at the command that shows the formula's parameters.
 func formulaError(cmd *cobra.Command, b domain.Bdb, formula string, err error) error {
 	if refused, ok := errors.AsType[*domain.ParamValueError](err); ok {
-		show := shellJoin([]string{cmd.Root().Name(), "formulas", "show", b.Name, formula})
 		return usageError{
 			err:  fmt.Errorf("--param %s %s", refused.Param, refused.Problem),
-			help: fmt.Sprintf("Run `%s` for its parameters.", show),
+			help: formulaShowHint(cmd, b, formula),
 		}
 	}
 	if errors.Is(err, domain.ErrFormulaNotFound) {
 		return fmt.Errorf("%w; `%s formulas %s` lists them", err, cmd.Root().Name(), b.Name)
 	}
+	if _, ok := errors.AsType[*domain.FormulaRefusedError](err); ok {
+		return fmt.Errorf("%w; `%s docs formulas` explains how to write one", err, cmd.Root().Name())
+	}
 	return err
+}
+
+// formulaShowHint returns the hint that points at the command showing the parameters of formula in the bdb b.
+func formulaShowHint(cmd *cobra.Command, b domain.Bdb, formula string) string {
+	show := shellJoin([]string{cmd.Root().Name(), "formulas", "show", b.Name, formula})
+	return fmt.Sprintf("Run `%s` for its parameters.", show)
 }
 
 // printFormula writes f to w: a heading with its kind, its label and description, a table of its parameters, and its
 // SQL.
 func printFormula(w io.Writer, f domain.FormulaDetail) error {
 	var out strings.Builder
-	about := f.Kind
-	if f.Kind == domain.FormulaKindAction && f.Verb != "" {
-		about += ", " + f.Verb + "s"
-	}
+	about := formulaKind(f)
 	if f.Hidden {
 		about += ", hidden"
 	}
@@ -217,18 +228,63 @@ func paramValues(p domain.FormulaParam) string {
 // prints a view's rows or an action's changes.
 func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	params := paramFlag{}
+	var paramsJSON, paramsFile string
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "run <bdb> <formula> [--param name=value]...",
+		Use:   "run <bdb> <formula> [--param name=value]... [--params <json>] [--params-file <path>]",
 		Short: "Run a formula of a bdb",
 		Long: "run runs a formula of a bdb, by name: a view prints its rows, an action the rows it changed. " +
 			bdbArgHelp + " Each --param sets one of the formula's parameters (formulas show lists them), converted " +
 			"to the type it declares; a list (a multi-select, or the rows to act on) is a JSON array, e.g. " +
-			"--param 'rowids=[3,5]' (quoted, as shells read [ ] as a pattern).",
+			"--param 'rowids=[3,5]' (quoted, as shells read [ ] as a pattern). --params gives them all at once as " +
+			"one JSON object instead, each value typed as JSON types it, and a group's rows an array of objects; " +
+			"--params-file reads that object from a file, or from stdin with -. Give only one of the three.",
+		Example: "  bdb formulas run Kanban add-task --param name=\"Buy bread\" --param priority=high\n" +
+			"  bdb formulas run Kanban add-task --params '{\"name\": \"Buy bread\", \"priority\": \"high\"}'\n" +
+			"  bdb formulas run Kanban reorder-tasks --params-file - <<'EOF'\n" +
+			"  {\"ordered_rowids\": [5, 3, 8]}\n" +
+			"  EOF",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			f := cmd.Flags()
+			modes := 0
+			for _, name := range []string{"param", "params", "params-file"} {
+				if f.Changed(name) {
+					modes++
+				}
+			}
+			if modes > 1 {
+				return usageError{err: errors.New("give the parameters with --param, --params or --params-file, " +
+					"only one of them")}
+			}
+			var spec []byte
+			switch {
+			case f.Changed("params") && strings.TrimSpace(paramsJSON) == "":
+				return usageError{err: errors.New("the parameters are empty")}
+			case f.Changed("params"):
+				spec = []byte(paramsJSON)
+			case f.Changed("params-file"):
+				content, err := readFileFlag(cmd.InOrStdin(), paramsFile, "parameters")
+				if err != nil {
+					return err
+				}
+				spec = content
+			}
 			return runLocal(cmd, flags, open, func(l *local) error {
-				b, run, err := l.formulas.Run(cmd.Context(), args[0], args[1], params)
+				var b domain.Bdb
+				var run domain.FormulaRun
+				var err error
+				if spec != nil {
+					b, run, err = l.formulas.RunJSON(cmd.Context(), args[0], args[1], spec)
+				} else {
+					b, run, err = l.formulas.Run(cmd.Context(), args[0], args[1], params)
+				}
+				if refused, ok := errors.AsType[*domain.ParamValueError](err); ok && spec != nil {
+					return usageError{
+						err:  fmt.Errorf("parameter %q %s", refused.Param, refused.Problem),
+						help: formulaShowHint(cmd, b, args[1]),
+					}
+				}
 				if err != nil {
 					return formulaError(cmd, b, args[1], err)
 				}
@@ -238,7 +294,11 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 				if err := printQueryResult(cmd, run.Result, domain.IntentQuery, asJSON); err != nil {
 					return err
 				}
-				if run.HasMore && run.NextCursor != nil {
+				switch {
+				case !run.HasMore || run.NextCursor == nil:
+				case spec != nil:
+					cmd.PrintErrf("More rows: add \"cursor\": %d to the parameters\n", *run.NextCursor)
+				default:
 					cmd.PrintErrf("More rows: add --param cursor=%d\n", *run.NextCursor)
 				}
 				return nil
@@ -246,7 +306,123 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		},
 	}
 	cmd.Flags().Var(params, "param", "a parameter of the formula, repeated for each one")
+	cmd.Flags().StringVar(&paramsJSON, "params", "", "every parameter as one JSON object")
+	cmd.Flags().StringVar(&paramsFile, "params-file", "",
+		"read every parameter as one JSON object from this file, or from stdin with -")
 	cmd.Flags().BoolVar(&asJSON, "json", false,
 		"print a view's rows as a JSON array, or an action's result as an object")
 	return cmd
+}
+
+// formulaSpecHelp describes the JSON object formulas create and update read.
+const formulaSpecHelp = "The formula is a JSON object read from --file (- reads stdin): name, description and sql, " +
+	"and optionally label, params, display, attached_to_formula_id, display_order and hidden, which bdb docs " +
+	"formulas explains. A key it does not know is refused, so a misspelled field is not dropped. Formulas are not " +
+	"in the bdb's change log: changes undo does not revert this."
+
+// newFormulasCreateCmd builds the formulas create command, which creates a formula in a bdb from a JSON object.
+func newFormulasCreateCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	var file string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "create <bdb> --file <path>",
+		Short: "Create a formula in a bdb",
+		Long:  "create creates a formula in a bdb. " + bdbArgHelp + " " + formulaSpecHelp,
+		Example: "  bdb formulas create Kanban --file add-task.json\n" +
+			"  bdb formulas create Kanban --file - <<'EOF'\n" +
+			"  {\"name\": \"open-tasks\", \"description\": \"Tasks not done yet\", " +
+			"\"sql\": \"SELECT name FROM tasks WHERE status != 'done'\"}\n" +
+			"  EOF",
+		Args: usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spec, err := readFileFlag(cmd.InOrStdin(), file, "formula")
+			if err != nil {
+				return err
+			}
+			return runLocal(cmd, flags, open, func(l *local) error {
+				b, f, err := l.formulas.Create(cmd.Context(), args[0], spec)
+				if err != nil {
+					return formulaError(cmd, b, "", err)
+				}
+				return printWrittenFormula(cmd, "Created", b, f, asJSON)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "read the formula from this file, or from stdin with -")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the created formula as JSON")
+	return cmd
+}
+
+// newFormulasUpdateCmd builds the formulas update command, which changes a formula of a bdb from a JSON object of the
+// fields to change.
+func newFormulasUpdateCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	var file string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "update <bdb> <formula> --file <path>",
+		Short: "Change a formula of a bdb",
+		Long: "update changes a formula of a bdb, by name: only the fields the JSON object holds change, params " +
+			"replace the whole list, and \"display\": null resets the display to a table. " + bdbArgHelp + " " +
+			formulaSpecHelp,
+		Example: "  bdb formulas update Kanban open-tasks --file - <<'EOF'\n" +
+			"  {\"sql\": \"SELECT name FROM tasks WHERE status = 'todo'\"}\n" +
+			"  EOF",
+		Args: usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spec, err := readFileFlag(cmd.InOrStdin(), file, "formula")
+			if err != nil {
+				return err
+			}
+			return runLocal(cmd, flags, open, func(l *local) error {
+				b, f, err := l.formulas.Update(cmd.Context(), args[0], args[1], spec)
+				if err != nil {
+					return formulaError(cmd, b, args[1], err)
+				}
+				return printWrittenFormula(cmd, "Updated", b, f, asJSON)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "read the fields to change from this file, or from stdin with -")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the changed formula as JSON")
+	return cmd
+}
+
+// newFormulasDeleteCmd builds the formulas delete command, which deletes one of a bdb's formulas.
+func newFormulasDeleteCmd(flags *globalFlags, open localOpener) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete <bdb> <formula>",
+		Short: "Delete a formula of a bdb",
+		Long:  "delete deletes a formula of a bdb, by name. " + bdbArgHelp,
+		Args:  usageArgs(argsByUsage),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLocal(cmd, flags, open, func(l *local) error {
+				b, err := l.formulas.Delete(cmd.Context(), args[0], args[1])
+				if err != nil {
+					return formulaError(cmd, b, args[1], err)
+				}
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Deleted formula %s from %s\n", args[1], b.Name)
+				return err
+			})
+		},
+	}
+	return cmd
+}
+
+// printWrittenFormula prints the formula f a command just created or updated in the bdb b: as JSON under asJSON, or
+// as one line naming it with its kind, which the SQL decides, after verb.
+func printWrittenFormula(cmd *cobra.Command, verb string, b domain.Bdb, f domain.FormulaDetail, asJSON bool) error {
+	if asJSON {
+		return writeJSON(cmd.OutOrStdout(), toFormulaDetailJSON(f))
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s formula %s in %s (%s)\n", verb, f.Name, b.Name, formulaKind(f))
+	return err
+}
+
+// formulaKind words the kind of the formula f, which its SQL decides: "view", or "action" with the change it makes
+// ("action, inserts").
+func formulaKind(f domain.FormulaDetail) string {
+	if f.Kind == domain.FormulaKindAction && f.Verb != "" {
+		return f.Kind + ", " + f.Verb + "s"
+	}
+	return f.Kind
 }

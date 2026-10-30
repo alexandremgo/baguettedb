@@ -2,17 +2,14 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"slices"
-	"strconv"
 
-	"github.com/google/uuid"
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
 
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
+	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	"github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
@@ -361,27 +358,11 @@ func formulaParamItemSchema() map[string]any {
 	}
 }
 
-// formulaAuthoringErrors lists the validation sentinels a formula author can fix by following the
-// authoring rules — the failures worth pointing at the doc. Authorization, not-found, and
-// infrastructure errors stay out: no documentation fixes those.
-var formulaAuthoringErrors = []error{
-	domain.ErrFormulaNameInvalid,
-	domain.ErrFormulaDescriptionInvalid,
-	domain.ErrFormulaLabelInvalid,
-	domain.ErrFormulaSQLInvalid,
-	domain.ErrFormulaKindUndeterminable,
-	domain.ErrFormulaParamInvalid,
-	domain.ErrFormulaAttachConflict,
-	domain.ErrFormulaDisplayInvalid,
-	domain.ErrFormulaViewNotPageable,
-	domain.ErrUnsupportedStatement,
-}
-
 // formulaErrorResult wraps a create/update failure as a tool error, appending a get_docs pointer to
 // authoring-validation rejections so the manual stays discoverable even when it was skipped.
 func formulaErrorResult(action string, err error) *mcplib.CallToolResult {
 	msg := fmt.Sprintf("failed to %s formula: %v", action, err)
-	if slices.ContainsFunc(formulaAuthoringErrors, func(target error) bool { return errors.Is(err, target) }) {
+	if service.FormulasManualCovers(err) {
 		msg += ". Call " + mcputil.ToolGetDocs + "(topic: 'formulas') for the authoring rules."
 	}
 	return mcplib.NewToolResultError(msg)
@@ -401,46 +382,20 @@ func createFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Log
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
 
-		args := request.GetArguments()
-		name, _ := args["name"].(string)
-		label, _ := args["label"].(string)
-		description, _ := args["description"].(string)
-		sql, _ := args["sql"].(string)
-
-		input := service.FormulaInput{
-			Name:        name,
-			Label:       label,
-			Description: description,
-			SQL:         sql,
+		var req appinput.CreateFormula
+		if err := request.BindArguments(&req); err != nil {
+			return mcplib.NewToolResultError("invalid arguments: " + err.Error()), nil
 		}
-		params, perr := parseParamSchema(args["params"])
-		if perr != nil {
-			return mcplib.NewToolResultError(perr.Error()), nil
-		}
-		input.Params = params
-		if v, ok := args["attached_to_formula_id"].(string); ok && v != "" {
-			id, perr := uuid.Parse(v)
-			if perr != nil {
-				return mcplib.NewToolResultError("invalid attached_to_formula_id"), nil
-			}
-			input.AttachedToFormulaID = &id
-		}
-		if v, ok := args["display_order"].(float64); ok {
-			n := int(v)
-			input.DisplayOrder = &n
-		}
-		if dm, ok := args["display"].(map[string]any); ok {
-			input.Display = parseDisplay(dm)
-		}
-		if v, ok := args["hidden"].(bool); ok {
-			input.Hidden = v
+		input, err := req.Input()
+		if err != nil {
+			return mcplib.NewToolResultError(err.Error()), nil
 		}
 
 		formula, err := formulaSvc.CreateFormula(ctx, userID, bdbID, input)
 		if err != nil {
 			logger.Error().Err(err).
 				Str("user_id", userID.String()).Str("bdb_id", bdbID.String()).
-				Str("name", name).Msg("MCP create_formula failed")
+				Str("name", input.Name).Msg("MCP create_formula failed")
 			return formulaErrorResult("create", err), nil
 		}
 		return marshalToJSON(toFormulaDetail(formula))
@@ -467,44 +422,13 @@ func updateFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Log
 			return mcplib.NewToolResultError("ref is required"), nil
 		}
 
-		patch := service.FormulaPatch{}
-		if v, ok := args["name"].(string); ok && v != "" {
-			patch.Name = &v
+		var req appinput.UpdateFormula
+		if err := request.BindArguments(&req); err != nil {
+			return mcplib.NewToolResultError("invalid arguments: " + err.Error()), nil
 		}
-		// Empty is meaningful for the label, unlike the fields around it: it clears the label back to the name.
-		if v, ok := args["label"].(string); ok {
-			patch.Label = &v
-		}
-		if v, ok := args["description"].(string); ok && v != "" {
-			patch.Description = &v
-		}
-		if v, ok := args["sql"].(string); ok && v != "" {
-			patch.SQL = &v
-		}
-		if raw, ok := args["params"]; ok && raw != nil {
-			parsed, perr := parseParamSchema(raw)
-			if perr != nil {
-				return mcplib.NewToolResultError(perr.Error()), nil
-			}
-			patch.Params = &parsed
-		}
-		if v, ok := args["display_order"].(float64); ok {
-			n := int(v)
-			patch.DisplayOrder = &n
-		}
-		// Display is tri-state: absent = unchanged, explicit null = clear, object = replace.
-		if raw, exists := args["display"]; exists {
-			switch dm := raw.(type) {
-			case nil:
-				patch.ClearDisplay = true
-			case map[string]any:
-				patch.Display = parseDisplay(dm)
-			default:
-				return mcplib.NewToolResultError("display must be an object or null"), nil
-			}
-		}
-		if v, ok := args["hidden"].(bool); ok {
-			patch.Hidden = &v
+		patch, err := req.Patch()
+		if err != nil {
+			return mcplib.NewToolResultError(err.Error()), nil
 		}
 
 		formula, err := formulaSvc.UpdateFormula(ctx, userID, bdbID, ref, patch)
@@ -633,255 +557,6 @@ func runFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Logger
 		}
 		return marshalToJSON(toFormulaRunResult(result))
 	}
-}
-
-// parseParamSchema converts the params arg-list (a []any of {name, type, source} objects) into a
-// domain.ParamSchema. Malformed entries are skipped and the service validates the resulting schema;
-// the one shape reported here is a default of a type the schema cannot mean (see parseDefault), since
-// silently dropping it would store a param with no default at all.
-func parseParamSchema(raw any) (domain.ParamSchema, error) {
-	arr, ok := raw.([]any)
-	if !ok {
-		return domain.ParamSchema{}, nil
-	}
-	out := make(domain.ParamSchema, 0, len(arr))
-	for _, item := range arr {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		fp, err := parseParam(m)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, fp)
-	}
-	return out, nil
-}
-
-// parseParam converts one raw params entry — group fields included — into a domain parameter.
-func parseParam(m map[string]any) (domain.FormulaParam, error) {
-	name, _ := m["name"].(string)
-	typ, _ := m["type"].(string)
-	source, _ := m["source"].(string)
-	optional, _ := m["optional"].(bool)
-	var lookup *domain.LookupConfig
-	if lm, ok := m["lookup"].(map[string]any); ok {
-		table, _ := lm["table"].(string)
-		labelColumn, _ := lm["label_column"].(string)
-		valueColumn, _ := lm["value_column"].(string)
-		excludeSelection, _ := lm["exclude_selection"].(bool)
-		allowNew, _ := lm["allow_new"].(bool)
-		var scope map[string]string
-		if sm, ok := lm["scope"].(map[string]any); ok {
-			scope = make(map[string]string, len(sm))
-			for sibling, col := range sm {
-				if c, ok := col.(string); ok {
-					scope[sibling] = c
-				}
-			}
-		}
-		var fill map[string]string
-		if fm, ok := lm["fill"].(map[string]any); ok {
-			fill = make(map[string]string, len(fm))
-			for sibling, col := range fm {
-				if c, ok := col.(string); ok {
-					fill[sibling] = c
-				}
-			}
-		}
-		lookup = &domain.LookupConfig{
-			Table: table, LabelColumn: labelColumn, ValueColumn: valueColumn, ExcludeSelection: excludeSelection,
-			AllowNew: allowNew, Scope: scope, Fill: fill,
-		}
-	}
-	hint, _ := m["hint"].(string)
-	multiline, _ := m["multiline"].(bool)
-	inline, _ := m["inline"].(bool)
-	multiple, _ := m["multiple"].(bool)
-	def, err := parseDefault(m["default"])
-	if err != nil {
-		return domain.FormulaParam{}, fmt.Errorf("parameter %q: %w", name, err)
-	}
-	defaults, err := parseDefaults(m["defaults"])
-	if err != nil {
-		return domain.FormulaParam{}, fmt.Errorf("parameter %q: %w", name, err)
-	}
-	var options []domain.FormulaOption
-	if raw, ok := m["options"].([]any); ok {
-		for _, o := range raw {
-			if opt, ok := parseOption(o); ok {
-				options = append(options, opt)
-			}
-		}
-	}
-	var when *domain.ParamWhen
-	if wm, ok := m["when"].(map[string]any); ok {
-		param, _ := wm["param"].(string)
-		op, _ := wm["op"].(string)
-		value, _ := wm["value"].(string)
-		when = &domain.ParamWhen{Param: param, Op: op, Value: value}
-	}
-	fp := domain.FormulaParam{
-		Name: name, Type: typ, Source: domain.ParamSource(source), Optional: optional, Lookup: lookup, Hint: hint,
-		Multiline: multiline, Inline: inline, Multiple: multiple, Options: options, Default: def, Defaults: defaults,
-		When: when,
-	}
-	if fields, ok := m["fields"].([]any); ok {
-		for _, field := range fields {
-			fm, ok := field.(map[string]any)
-			if !ok {
-				continue
-			}
-			sub, err := parseParam(fm)
-			if err != nil {
-				return domain.FormulaParam{}, err
-			}
-			fp.Fields = append(fp.Fields, sub)
-		}
-	}
-	return fp, nil
-}
-
-// parseDefault reads a param's default: a string (a scalar default, or the "all" literal) or nothing.
-// Any other shape is an error rather than a silent drop — a multi-select's subset goes in defaults.
-func parseDefault(raw any) (string, error) {
-	switch v := raw.(type) {
-	case nil:
-		return "", nil
-	case string:
-		return v, nil
-	default:
-		return "", errors.New("default must be a string — a multi-select's subset goes in defaults")
-	}
-}
-
-// parseDefaults reads a multi-select's declared subset: an array of strings and numbers, each kept in
-// its string form, or nothing. Any other shape is an error rather than a silent drop.
-func parseDefaults(raw any) ([]string, error) {
-	switch v := raw.(type) {
-	case nil:
-		return nil, nil
-	case []any:
-		values := make([]string, 0, len(v))
-		for _, el := range v {
-			s, ok := optionScalarString(el)
-			if !ok {
-				return nil, errors.New("a defaults entry must be a string or a number")
-			}
-			values = append(values, s)
-		}
-		return values, nil
-	default:
-		return nil, errors.New("defaults must be an array of values")
-	}
-}
-
-// parseOption converts one raw options entry into a domain option: a bare string or number means
-// value = label, a {value, label} object carries both (label folding to the value when absent, a
-// numeric value to its literal string form). ok is false for any other shape — the entry is skipped
-// and the service's schema validation reports what remains.
-func parseOption(raw any) (domain.FormulaOption, bool) {
-	if s, ok := optionScalarString(raw); ok {
-		return domain.FormulaOption{Value: s, Label: s}, true
-	}
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return domain.FormulaOption{}, false
-	}
-	value, ok := optionScalarString(m["value"])
-	if !ok {
-		return domain.FormulaOption{}, false
-	}
-	label, _ := m["label"].(string)
-	if label == "" {
-		label = value
-	}
-	return domain.FormulaOption{Value: value, Label: label}, true
-}
-
-// optionScalarString renders a JSON-decoded string or number as its string form (a whole-valued
-// number without a decimal point); ok is false for any other type.
-func optionScalarString(raw any) (string, bool) {
-	switch v := raw.(type) {
-	case string:
-		return v, true
-	case float64:
-		return strconv.FormatFloat(v, 'g', -1, 64), true
-	default:
-		return "", false
-	}
-}
-
-// parseDisplay converts the display arg object into the domain config. Unknown or mistyped fields
-// are zero-valued; the service validates the result.
-func parseDisplay(m map[string]any) *domain.FormulaDisplay {
-	d := &domain.FormulaDisplay{}
-	if v, ok := m["mode"].(string); ok {
-		d.Mode = domain.DisplayMode(v)
-	}
-	if cols, ok := m["columns"].([]any); ok {
-		for _, col := range cols {
-			cm, ok := col.(map[string]any)
-			if !ok {
-				continue
-			}
-			entry := domain.FormulaDisplayColumn{}
-			entry.Column, _ = cm["column"].(string)
-			if v, ok := cm["role"].(string); ok {
-				entry.Role = domain.DisplayColumnRole(v)
-			}
-			if v, ok := cm["format"].(string); ok {
-				entry.Format = domain.DisplayColumnFormat(v)
-			}
-			if v, ok := cm["hidden"].(bool); ok {
-				entry.Hidden = v
-			}
-			d.Columns = append(d.Columns, entry)
-		}
-	}
-	if sm, ok := m["slots"].(map[string]any); ok {
-		d.Slots.Add, _ = sm["add"].(string)
-		d.Slots.Toggle, _ = sm["toggle"].(string)
-		d.Slots.Edit, _ = sm["edit"].(string)
-		d.Slots.Delete, _ = sm["delete"].(string)
-		d.Slots.Detail, _ = sm["detail"].(string)
-		d.Slots.Reorder, _ = sm["reorder"].(string)
-		d.Slots.Move, _ = sm["move"].(string)
-		d.Slots.Bulk = parseRefList(sm["bulk"])
-		d.Slots.RowActions = parseRefList(sm["row_actions"])
-	}
-	if wm, ok := m["window"].(map[string]any); ok {
-		w := &domain.FormulaDisplayWindow{}
-		if v, ok := wm["week_start"].(string); ok {
-			w.WeekStart = domain.DisplayWeekday(v)
-		}
-		if v, ok := wm["week_end"].(string); ok {
-			w.WeekEnd = domain.DisplayWeekday(v)
-		}
-		w.Start, _ = wm["start"].(string)
-		if v, ok := wm["days"].(float64); ok {
-			w.Days = int(v)
-		}
-		d.Window = w
-	}
-	return d
-}
-
-// parseRefList reads an ordered list of formula refs from a raw JSON array, dropping non-string
-// and empty entries.
-func parseRefList(v any) []string {
-	items, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	var out []string
-	for _, item := range items {
-		if s, ok := item.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 // buildFormulaRunInput converts the raw run_formula MCP arguments into a service.FormulaRunInput: the

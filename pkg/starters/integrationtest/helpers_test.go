@@ -225,7 +225,8 @@ func setupHTTPEngine(
 	}
 	t.Cleanup(tv.Close)
 
-	mcpSrv := dbmcp.NewServer(stacks.querySvc, stacks.skillSvc, stacks.formulaSvc, testLogger)
+	mcpSrv := dbmcp.NewServer(stacks.querySvc, stacks.skillSvc, stacks.formulaSvc,
+		dbservice.NewDocsService(stacks.querySvc), testLogger)
 	sseServer := mcpserver.NewSSEServer(mcpSrv,
 		mcpserver.WithStaticBasePath("/mcp"),
 		mcpserver.WithSSEContextFunc(mcputil.SSEContextFunc),

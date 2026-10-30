@@ -32,7 +32,8 @@ func newChangesListCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		Use:   "list <bdb>",
 		Short: "List a bdb's changes, newest first",
 		Long: "list prints a bdb's changes, newest first, one line per batch: what one write, undo, redo or revert " +
-			"touched. " + bdbArgHelp + " --json adds every entry with its values before and after.",
+			"touched: rows written and schema changed, while formulas and skills stay out of the log. " + bdbArgHelp +
+			" --json adds every entry with its values before and after.",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if filter.Kind != "" && filter.Kind != domain.ChangeKindData && filter.Kind != domain.ChangeKindSchema {
@@ -137,8 +138,9 @@ func newChangesUndoCmd(name, short string, flags *globalFlags, open localOpener)
 	cmd := &cobra.Command{
 		Use:   name + " <bdb>",
 		Short: short,
-		Long:  short + ", or anyone's with --anyone (the bdb's owner only). " + bdbArgHelp,
-		Args:  usageArgs(argsByUsage),
+		Long: short + ", or anyone's with --anyone (the bdb's owner only). Only rows and schema are in the change " +
+			"log: a formula or a skill changed since is not reverted. " + bdbArgHelp,
+		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLocal(cmd, flags, open, func(l *local) error {
 				reverse, done := l.changes.Undo, "Undid the last change"

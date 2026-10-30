@@ -12,6 +12,7 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/cli/domain"
 	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/databases/appconv"
+	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	dbdomain "github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	dbservice "github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
@@ -21,6 +22,8 @@ import (
 type DatabasesApp struct {
 	querySvc   *dbservice.QueryService
 	formulaSvc *dbservice.FormulaService
+	skillSvc   *dbservice.SkillService
+	docsSvc    *dbservice.DocsService
 	exportSvc  *dbservice.ExportService
 	importSvc  *dbservice.ImportService
 	account    Account
@@ -28,11 +31,13 @@ type DatabasesApp struct {
 
 // NewDatabasesApp creates a DatabasesApp acting as account.
 func NewDatabasesApp(
-	querySvc *dbservice.QueryService, formulaSvc *dbservice.FormulaService, exportSvc *dbservice.ExportService,
-	importSvc *dbservice.ImportService, account Account,
+	querySvc *dbservice.QueryService, formulaSvc *dbservice.FormulaService, skillSvc *dbservice.SkillService,
+	docsSvc *dbservice.DocsService, exportSvc *dbservice.ExportService, importSvc *dbservice.ImportService,
+	account Account,
 ) *DatabasesApp {
 	return &DatabasesApp{
-		querySvc: querySvc, formulaSvc: formulaSvc, exportSvc: exportSvc, importSvc: importSvc, account: account,
+		querySvc: querySvc, formulaSvc: formulaSvc, skillSvc: skillSvc, docsSvc: docsSvc, exportSvc: exportSvc,
+		importSvc: importSvc, account: account,
 	}
 }
 
@@ -44,6 +49,16 @@ func (a *DatabasesApp) ListTables(ctx context.Context, bdbID uuid.UUID) ([]appty
 		return nil, err
 	}
 	return appconv.TableInfos(infos), nil
+}
+
+// ListTableSchemas returns the user tables of the bdb bdbID with their columns and foreign keys.
+func (a *DatabasesApp) ListTableSchemas(ctx context.Context, bdbID uuid.UUID) ([]apptypes.TableSchema, error) {
+	ctx = a.account.bind(ctx)
+	schemas, err := a.querySvc.ListTablesWithSchemas(ctx, a.account.ID, bdbID)
+	if err != nil {
+		return nil, err
+	}
+	return appconv.TableSchemas(schemas), nil
 }
 
 // ListFormulas returns every formula of the bdb bdbID, hidden ones included.
@@ -264,6 +279,26 @@ func (a *DatabasesApp) RunFormula(
 ) (domain.FormulaRun, error) {
 	ctx = a.account.bind(ctx)
 	r, err := a.formulaSvc.RunFormulaFromStrings(ctx, a.account.ID, bdbID, ref, params)
+	return toFormulaRun(r, err, ref)
+}
+
+// RunFormulaJSON runs the formula ref of the bdb bdbID with params, a JSON object of the values keyed by parameter
+// name, each typed as JSON types it: a list a JSON array, a group's rows an array of objects.
+func (a *DatabasesApp) RunFormulaJSON(
+	ctx context.Context, bdbID uuid.UUID, ref string, params []byte,
+) (domain.FormulaRun, error) {
+	values, err := decodeParams(params)
+	if err != nil {
+		return domain.FormulaRun{}, err
+	}
+	ctx = a.account.bind(ctx)
+	r, err := a.formulaSvc.RunFormula(ctx, a.account.ID, bdbID, ref, dbservice.FormulaRunInput{Params: values})
+	return toFormulaRun(r, err, ref)
+}
+
+// toFormulaRun converts the result of running the formula ref, or its error: an unknown formula wraps
+// domain.ErrFormulaNotFound, and a refused statement or parameter becomes the command line's own error.
+func toFormulaRun(r *dbservice.FormulaRunResult, err error, ref string) (domain.FormulaRun, error) {
 	if errors.Is(err, dbdomain.ErrFormulaNotFound) {
 		return domain.FormulaRun{}, fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
 	}
@@ -277,6 +312,18 @@ func (a *DatabasesApp) RunFormula(
 	return run, nil
 }
 
+// decodeParams decodes params, a single JSON object, into the parameter values it holds; JSON null holds none.
+func decodeParams(params []byte) (map[string]any, error) {
+	values, err := decodeOne[map[string]any](params)
+	switch {
+	case errors.Is(err, errMoreThanOneValue):
+		return nil, fmt.Errorf("reading the parameters: %w", err)
+	case err != nil:
+		return nil, fmt.Errorf("reading the parameters: want a JSON object, such as {\"name\": \"value\"}: %w", err)
+	}
+	return values, nil
+}
+
 // GetFormula returns the formula ref (a name or an ID) of the bdb bdbID with its parameters and SQL.
 func (a *DatabasesApp) GetFormula(ctx context.Context, bdbID uuid.UUID, ref string) (domain.FormulaDetail, error) {
 	ctx = a.account.bind(ctx)
@@ -287,6 +334,134 @@ func (a *DatabasesApp) GetFormula(ctx context.Context, bdbID uuid.UUID, ref stri
 	if err != nil {
 		return domain.FormulaDetail{}, err
 	}
+	return toFormulaDetail(f), nil
+}
+
+// CreateFormula creates a formula in the bdb bdbID from spec, the JSON object the databases app's create-formula
+// input takes, and returns it. A key the input does not know is an error, so a misspelled field is not dropped.
+func (a *DatabasesApp) CreateFormula(ctx context.Context, bdbID uuid.UUID, spec []byte) (domain.FormulaDetail, error) {
+	req, err := decodeOne[appinput.CreateFormula](spec)
+	if err != nil {
+		return domain.FormulaDetail{}, fmt.Errorf("reading the formula: %w", err)
+	}
+	input, err := req.Input()
+	if err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	ctx = a.account.bind(ctx)
+	f, err := a.formulaSvc.CreateFormula(ctx, a.account.ID, bdbID, input)
+	if err != nil {
+		return domain.FormulaDetail{}, refusedFormula(err)
+	}
+	return toFormulaDetail(f), nil
+}
+
+// UpdateFormula changes the formula ref (a name or an ID) of the bdb bdbID from spec, the JSON object of the fields to
+// change the databases app's update-formula input takes, and returns it. A key the input does not know is an error.
+func (a *DatabasesApp) UpdateFormula(
+	ctx context.Context, bdbID uuid.UUID, ref string, spec []byte,
+) (domain.FormulaDetail, error) {
+	req, err := decodeOne[appinput.UpdateFormula](spec)
+	if err != nil {
+		return domain.FormulaDetail{}, fmt.Errorf("reading the formula: %w", err)
+	}
+	patch, err := req.Patch()
+	if err != nil {
+		return domain.FormulaDetail{}, err
+	}
+	ctx = a.account.bind(ctx)
+	f, err := a.formulaSvc.UpdateFormula(ctx, a.account.ID, bdbID, ref, patch)
+	if errors.Is(err, dbdomain.ErrFormulaNotFound) {
+		return domain.FormulaDetail{}, fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
+	}
+	if err != nil {
+		return domain.FormulaDetail{}, refusedFormula(err)
+	}
+	return toFormulaDetail(f), nil
+}
+
+// DeleteFormula deletes the formula ref (a name or an ID) of the bdb bdbID.
+func (a *DatabasesApp) DeleteFormula(ctx context.Context, bdbID uuid.UUID, ref string) error {
+	ctx = a.account.bind(ctx)
+	err := a.formulaSvc.DeleteFormula(ctx, a.account.ID, bdbID, ref)
+	if errors.Is(err, dbdomain.ErrFormulaNotFound) {
+		return fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
+	}
+	return err
+}
+
+// ListSkills returns every skill of the bdb bdbID, with its body.
+func (a *DatabasesApp) ListSkills(ctx context.Context, bdbID uuid.UUID) ([]apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	skills, err := a.skillSvc.ListSkills(ctx, a.account.ID, bdbID)
+	if err != nil {
+		return nil, err
+	}
+	return appconv.Skills(skills), nil
+}
+
+// GetSkill returns the skill ref (a name or an ID) of the bdb bdbID.
+func (a *DatabasesApp) GetSkill(ctx context.Context, bdbID uuid.UUID, ref string) (apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	s, err := a.skillSvc.GetSkill(ctx, a.account.ID, bdbID, ref)
+	if errors.Is(err, dbdomain.ErrSkillNotFound) {
+		return apptypes.Skill{}, fmt.Errorf("%w named %q", domain.ErrSkillNotFound, ref)
+	}
+	if err != nil {
+		return apptypes.Skill{}, err
+	}
+	return appconv.Skill(s), nil
+}
+
+// CreateSkill creates a skill in the bdb bdbID targeting tables, a bdb-level skill when tables is empty, and returns
+// it.
+func (a *DatabasesApp) CreateSkill(
+	ctx context.Context, bdbID uuid.UUID, name, description, body string, tables []string,
+) (apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	s, err := a.skillSvc.CreateSkill(ctx, a.account.ID, bdbID, dbservice.SkillInput{
+		Name: name, Description: description, Body: body, TargetTables: tables,
+	})
+	if err != nil {
+		return apptypes.Skill{}, err
+	}
+	return appconv.Skill(s), nil
+}
+
+// UpdateSkill applies change to the skill ref (a name or an ID) of the bdb bdbID and returns it.
+func (a *DatabasesApp) UpdateSkill(
+	ctx context.Context, bdbID uuid.UUID, ref string, change domain.SkillChange,
+) (apptypes.Skill, error) {
+	ctx = a.account.bind(ctx)
+	s, err := a.skillSvc.UpdateSkill(ctx, a.account.ID, bdbID, ref, dbservice.SkillPatch{
+		Name: change.Name, Description: change.Description, Body: change.Body, TargetTables: change.Tables,
+	})
+	if errors.Is(err, dbdomain.ErrSkillNotFound) {
+		return apptypes.Skill{}, fmt.Errorf("%w named %q", domain.ErrSkillNotFound, ref)
+	}
+	if err != nil {
+		return apptypes.Skill{}, err
+	}
+	return appconv.Skill(s), nil
+}
+
+// refusedFormula returns err as a *domain.FormulaRefusedError when the formulas manual explains how to fix it, as is
+// otherwise.
+func refusedFormula(err error) error {
+	if dbservice.FormulasManualCovers(err) {
+		return &domain.FormulaRefusedError{Err: err}
+	}
+	return err
+}
+
+// RenderManual renders the manual for topic, each operation named by its command, quoting the limits the account works
+// under.
+func (a *DatabasesApp) RenderManual(ctx context.Context, topic string) (string, error) {
+	return a.docsSvc.Manual(a.account.bind(ctx), topic, domain.CommandForTool)
+}
+
+// toFormulaDetail converts a formula of the databases app, with its parameters and SQL.
+func toFormulaDetail(f *dbdomain.Formula) domain.FormulaDetail {
 	return domain.FormulaDetail{
 		Name:        f.Name,
 		Label:       f.Label,
@@ -296,7 +471,7 @@ func (a *DatabasesApp) GetFormula(ctx context.Context, bdbID uuid.UUID, ref stri
 		Hidden:      f.Hidden,
 		SQL:         f.SQL,
 		Params:      toFormulaParams(f.Params),
-	}, nil
+	}
 }
 
 // toFormulaParams converts the databases app's parameters of a formula, or of a group parameter's rows.

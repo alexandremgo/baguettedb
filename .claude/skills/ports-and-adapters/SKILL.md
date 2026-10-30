@@ -23,6 +23,7 @@ pkg/<app>/
 │   ├── port.go       # MULTI-STAKEHOLDER contracts only (see rules below)
 │   └── *.go          # Services; per-consumer interface slices live here, next to their consumer
 ├── appconv/          # domain → apptypes converters (only in apps that export vocabulary shapes)
+├── appinput/         # request DTOs → service inputs, shared by the entry points that decode them
 ├── adapters/
 │   ├── postgres/     # Persistence on a Postgres instance store
 │   ├── sqlite/       # Persistence on a SQLite instance store

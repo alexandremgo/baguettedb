@@ -59,6 +59,9 @@
 - Test doubles implement the slice a test needs, not the full port.
 - Cross-app transfer shapes live once in `pkg/common/apptypes` (tagged structs, no behavior; only shapes that cross
   an app boundary through a `*App` port); the providing app owns the domain→apptypes converters in `pkg/<app>/appconv`.
+- A request shape several entry points decode (a REST body, an MCP tool call's arguments, a command-line file) lives
+  once as a tagged DTO in `pkg/<app>/appinput`, converted there into the service input: the inbound counterpart of
+  `appconv`. Responses stay per adapter.
 - See `.claude/skills/ports-and-adapters/SKILL.md` for the full conventions, patterns, and checklist.
 
 ## Domain vs DTO Separation

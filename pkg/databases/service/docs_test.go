@@ -1,11 +1,13 @@
-package mcp
+package service
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
 	"github.com/alexandremgo/baguettedb/pkg/common/quota"
+	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 )
 
 // testLimits are the caps the doc tests render against.
@@ -16,9 +18,9 @@ var testLimits = quota.Limits{
 // renderDoc renders one topic against testLimits, failing the test on a render error.
 func renderDoc(t *testing.T, topic string) string {
 	t.Helper()
-	doc, err := RenderDocs(topic, testLimits)
+	doc, err := renderManual(topic, testLimits, ToolNames)
 	if err != nil {
-		t.Fatalf("RenderDocs(%q): %v", topic, err)
+		t.Fatalf("renderManual(%q): %v", topic, err)
 	}
 	return doc
 }
@@ -104,8 +106,8 @@ func TestFormulasDoc_CoversAuthoringSections(t *testing.T) {
 // limits, and an unknown or empty topic errors with a deterministic, alphabetically ordered list of
 // valid topics.
 func TestDocsForTopic(t *testing.T) {
-	if len(docTemplates) != 2 {
-		t.Fatalf("expected 2 registered doc topics, got %d", len(docTemplates))
+	if len(manualTemplates) != 2 {
+		t.Fatalf("expected 2 registered doc topics, got %d", len(manualTemplates))
 	}
 
 	tests := []struct {
@@ -121,22 +123,22 @@ func TestDocsForTopic(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			doc, err := RenderDocs(tt.topic, testLimits)
+			doc, err := renderManual(tt.topic, testLimits, ToolNames)
 			if tt.wantError {
 				if err == nil {
-					t.Fatalf("RenderDocs(%q): expected an error, got none", tt.topic)
+					t.Fatalf("renderManual(%q): expected an error, got none", tt.topic)
 				}
 				if !strings.Contains(err.Error(), "'formulas', 'sql'") {
-					t.Errorf("RenderDocs(%q) error %q should list the valid topics in alphabetical order",
+					t.Errorf("renderManual(%q) error %q should list the valid topics in alphabetical order",
 						tt.topic, err.Error())
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("RenderDocs(%q): unexpected error: %v", tt.topic, err)
+				t.Fatalf("renderManual(%q): unexpected error: %v", tt.topic, err)
 			}
 			if doc != tt.want {
-				t.Errorf("RenderDocs(%q) returned the wrong document", tt.topic)
+				t.Errorf("renderManual(%q) returned the wrong document", tt.topic)
 			}
 		})
 	}
@@ -181,10 +183,11 @@ func TestSQLDoc_CoversEngineSections(t *testing.T) {
 // TestSQLDoc_RendersCallerLimits pins that the limits section quotes the caller's own caps, and that a zero cap,
 // which is off, is described as no cap instead of being quoted as a number.
 func TestSQLDoc_RendersCallerLimits(t *testing.T) {
-	doc, err := RenderDocs("sql",
-		quota.Limits{MaxStatementsPerRequest: 3, MaxRowsPerRequest: 7, MaxQueryResultRows: 11, MaxConcurrentQueries: 5})
+	doc, err := renderManual("sql",
+		quota.Limits{MaxStatementsPerRequest: 3, MaxRowsPerRequest: 7, MaxQueryResultRows: 11, MaxConcurrentQueries: 5},
+		ToolNames)
 	if err != nil {
-		t.Fatalf("RenderDocs: %v", err)
+		t.Fatalf("renderManual: %v", err)
 	}
 	for _, want := range []string{"At most\n  11 result rows", "up to 3 DML statements", "at most\n  7 affected rows",
 		"up to 3 DDL statements", "At most 5 of your requests"} {
@@ -193,9 +196,9 @@ func TestSQLDoc_RendersCallerLimits(t *testing.T) {
 		}
 	}
 
-	doc, err = RenderDocs("sql", quota.Limits{})
+	doc, err = renderManual("sql", quota.Limits{}, ToolNames)
 	if err != nil {
-		t.Fatalf("RenderDocs with zero limits: %v", err)
+		t.Fatalf("renderManual with zero limits: %v", err)
 	}
 	_, limitsSection, found := strings.Cut(doc, "## Statement limits")
 	if !found {
@@ -211,5 +214,40 @@ func TestSQLDoc_RendersCallerLimits(t *testing.T) {
 		if strings.Contains(limitsSection, unwanted) {
 			t.Errorf("sql doc with zero limits still quotes a cap (%q), got: %s", unwanted, limitsSection)
 		}
+	}
+}
+
+// TestRenderManual_NamesOperationsAsTheReaderCallsThem checks that a reader's Namer replaces every tool name the
+// manuals cite, so a reader who calls operations by other names meets none of the tool names.
+func TestRenderManual_NamesOperationsAsTheReaderCallsThem(t *testing.T) {
+	cited := []string{mcputil.ToolRunFormula, mcputil.ToolUpdateFormula, mcputil.ToolGetFormula,
+		mcputil.ToolDescribeBdb, mcputil.ToolListFormulas, mcputil.ToolExecuteQuery, mcputil.ToolExecuteData,
+		mcputil.ToolExecuteSchema, mcputil.ToolListChanges, mcputil.ToolUndoLastChange, mcputil.ToolRedoLastChange,
+		mcputil.ToolRevertChange}
+	renamed := func(tool string) string { return "op:" + strings.ToUpper(tool) }
+	for _, topic := range ManualTopics() {
+		doc, err := renderManual(topic, testLimits, renamed)
+		if err != nil {
+			t.Fatalf("renderManual(%q): %v", topic, err)
+		}
+		for _, tool := range cited {
+			if strings.Contains(doc, "`"+tool+"`") {
+				t.Errorf("the %s manual still cites `%s`", topic, tool)
+			}
+		}
+		if !strings.Contains(doc, "op:") {
+			t.Errorf("the %s manual cites no renamed operation", topic)
+		}
+	}
+}
+
+// TestFormulasManualCovers checks that a formula refused for an authoring rule is one the formulas manual covers, even
+// wrapped, and that a not-found error is not.
+func TestFormulasManualCovers(t *testing.T) {
+	if !FormulasManualCovers(fmt.Errorf("creating: %w", domain.ErrFormulaParamInvalid)) {
+		t.Error("an invalid parameter should be covered by the formulas manual")
+	}
+	if FormulasManualCovers(domain.ErrFormulaNotFound) {
+		t.Error("an unknown formula should not be covered by the formulas manual")
 	}
 }

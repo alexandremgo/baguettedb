@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
 	"github.com/alexandremgo/baguettedb/pkg/common/quota"
 	databasesmcp "github.com/alexandremgo/baguettedb/pkg/databases/mcp"
+	dbservice "github.com/alexandremgo/baguettedb/pkg/databases/service"
 	"github.com/alexandremgo/baguettedb/pkg/mcpgateway"
 	startersmcp "github.com/alexandremgo/baguettedb/pkg/starters/mcp"
 )
@@ -63,7 +65,7 @@ func collectTools() []mcplib.Tool {
 	logger := zerolog.Nop()
 	bdbsServer := bdbsmcp.NewServer(nil, nil, bdbsmcp.Options{}, logger)
 	startersmcp.RegisterTools(bdbsServer, nil, logger)
-	databasesServer := databasesmcp.NewServer(nil, nil, nil, logger)
+	databasesServer := databasesmcp.NewServer(nil, nil, nil, nil, logger)
 
 	var tools []mcplib.Tool
 	for _, listed := range bdbsServer.ListTools() {
@@ -84,6 +86,14 @@ var defaultLimits = quota.Limits{
 	MaxConcurrentQueries:    config.DefaultQuotaMaxConcurrentQueries,
 }
 
+// fixedLimits serves the same limits to every caller, so the reference quotes the defaults.
+type fixedLimits quota.Limits
+
+// Limits returns the fixed limits, whoever the caller.
+func (l fixedLimits) Limits(context.Context) quota.Limits {
+	return quota.Limits(l)
+}
+
 // renderAll renders every reference file, keyed by file name. The manuals render with defaultLimits.
 func renderAll(tools []mcplib.Tool) (map[string]string, error) {
 	files := map[string]string{}
@@ -94,8 +104,9 @@ func renderAll(tools []mcplib.Tool) (map[string]string, error) {
 	}
 	files["mcp-tools.md"] = toolsDoc
 
-	for _, topic := range databasesmcp.DocTopics() {
-		doc, err := databasesmcp.RenderDocs(topic, defaultLimits)
+	manuals := dbservice.NewDocsService(fixedLimits(defaultLimits))
+	for _, topic := range dbservice.ManualTopics() {
+		doc, err := manuals.Manual(context.Background(), topic, dbservice.ToolNames)
 		if err != nil {
 			return nil, fmt.Errorf("rendering %s manual: %w", topic, err)
 		}

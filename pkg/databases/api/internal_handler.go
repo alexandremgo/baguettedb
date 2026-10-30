@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexandremgo/baguettedb/pkg/common/httputil"
 	"github.com/alexandremgo/baguettedb/pkg/databases/appconv"
+	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	"github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
@@ -43,18 +44,12 @@ type executeDataInternalRequest struct {
 	Args   []valueRequest `json:"args,omitempty"`
 }
 
-// createFormulaInternalRequest holds the JSON body for an internal create-formula request. Params reuses the
-// public create-formula parameter payload; AttachedToFormulaID is nil for a top-level formula.
+// createFormulaInternalRequest holds the JSON body for an internal create-formula request: the acting user and bdb,
+// then the same formula fields as the public create.
 type createFormulaInternalRequest struct {
-	UserID              string                `json:"user_id"`
-	BdbID               string                `json:"bdb_id"`
-	Name                string                `json:"name"`
-	Label               string                `json:"label,omitempty"`
-	Description         string                `json:"description"`
-	SQL                 string                `json:"sql"`
-	Params              []formulaParamRequest `json:"params,omitempty"`
-	AttachedToFormulaID *string               `json:"attached_to_formula_id,omitempty"`
-	Hidden              bool                  `json:"hidden,omitempty"`
+	UserID string `json:"user_id"`
+	BdbID  string `json:"bdb_id"`
+	appinput.CreateFormula
 }
 
 // createFormulaInternalResponse carries the created formula's ID back to the internal caller.
@@ -66,10 +61,10 @@ type createFormulaInternalResponse struct {
 // to store, replacing any existing one. Slot refs may be formula names — the service resolves them against the
 // view's attached formulas and stores UUIDs, exactly as the public PUT does.
 type updateFormulaInternalRequest struct {
-	UserID  string             `json:"user_id"`
-	BdbID   string             `json:"bdb_id"`
-	Ref     string             `json:"ref"`
-	Display *formulaDisplayDTO `json:"display"`
+	UserID  string                   `json:"user_id"`
+	BdbID   string                   `json:"bdb_id"`
+	Ref     string                   `json:"ref"`
+	Display *appinput.FormulaDisplay `json:"display"`
 }
 
 // createSkillInternalRequest holds the JSON body for an internal create-skill request.
@@ -365,25 +360,13 @@ func (h *InternalHandler) CreateFormula(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	var attachedToID *uuid.UUID
-	if req.AttachedToFormulaID != nil {
-		parsed, err := uuid.Parse(*req.AttachedToFormulaID)
-		if err != nil {
-			httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid attached_to_formula_id"})
-			return
-		}
-		attachedToID = &parsed
+	input, err := req.Input()
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
 	}
 
-	created, err := h.formulaSvc.CreateFormula(r.Context(), userID, bdbID, service.FormulaInput{
-		Name:                req.Name,
-		Label:               req.Label,
-		Description:         req.Description,
-		SQL:                 req.SQL,
-		Params:              toParamSchema(req.Params),
-		AttachedToFormulaID: attachedToID,
-		Hidden:              req.Hidden,
-	})
+	created, err := h.formulaSvc.CreateFormula(r.Context(), userID, bdbID, input)
 	if err != nil {
 		h.logger.Warn().Err(err).
 			Str("user_id", userID.String()).
@@ -415,7 +398,7 @@ func (h *InternalHandler) UpdateFormula(w http.ResponseWriter, r *http.Request) 
 	}
 
 	_, err := h.formulaSvc.UpdateFormula(r.Context(), userID, bdbID, req.Ref, service.FormulaPatch{
-		Display: toDomainDisplay(req.Display),
+		Display: req.Display.ToDomain(),
 	})
 	if err != nil {
 		h.logger.Warn().Err(err).
