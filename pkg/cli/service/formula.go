@@ -15,6 +15,10 @@ type formulaRunner interface {
 	// RunFormula runs the formula ref (a name or an ID) of the bdb bdbID with params, each value a string the
 	// databases app converts to the parameter's declared type. An unknown formula wraps domain.ErrFormulaNotFound.
 	RunFormula(ctx context.Context, bdbID uuid.UUID, ref string, params map[string]string) (domain.FormulaRun, error)
+
+	// RunFormulaJSON runs the formula ref (a name or an ID) of the bdb bdbID with params, a JSON object of the values
+	// keyed by parameter name, each typed as JSON types it. An unknown formula wraps domain.ErrFormulaNotFound.
+	RunFormulaJSON(ctx context.Context, bdbID uuid.UUID, ref string, params []byte) (domain.FormulaRun, error)
 }
 
 // formulaReader reads one of a bdb's formulas in the databases app.
@@ -90,6 +94,21 @@ func (s *FormulaService) Run(
 		return domain.Bdb{}, domain.FormulaRun{}, err
 	}
 	run, err := s.runner.RunFormula(ctx, b.ID, name, params)
+	if err != nil {
+		return b, domain.FormulaRun{}, fmt.Errorf("in %s: %w", b.Name, err)
+	}
+	return b, run, nil
+}
+
+// RunJSON runs the formula name of the bdb ref names with params, a JSON object of the values keyed by parameter name.
+func (s *FormulaService) RunJSON(
+	ctx context.Context, ref, name string, params []byte,
+) (domain.Bdb, domain.FormulaRun, error) {
+	b, err := s.bdbs.Resolve(ctx, ref)
+	if err != nil {
+		return domain.Bdb{}, domain.FormulaRun{}, err
+	}
+	run, err := s.runner.RunFormulaJSON(ctx, b.ID, name, params)
 	if err != nil {
 		return b, domain.FormulaRun{}, fmt.Errorf("in %s: %w", b.Name, err)
 	}

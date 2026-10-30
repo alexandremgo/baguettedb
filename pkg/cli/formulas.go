@@ -99,10 +99,9 @@ func newFormulasShowCmd(flags *globalFlags, open localOpener) *cobra.Command {
 // error about its --param flag, pointing at the command that shows the formula's parameters.
 func formulaError(cmd *cobra.Command, b domain.Bdb, formula string, err error) error {
 	if refused, ok := errors.AsType[*domain.ParamValueError](err); ok {
-		show := shellJoin([]string{cmd.Root().Name(), "formulas", "show", b.Name, formula})
 		return usageError{
 			err:  fmt.Errorf("--param %s %s", refused.Param, refused.Problem),
-			help: fmt.Sprintf("Run `%s` for its parameters.", show),
+			help: formulaShowHint(cmd, b, formula),
 		}
 	}
 	if errors.Is(err, domain.ErrFormulaNotFound) {
@@ -112,6 +111,12 @@ func formulaError(cmd *cobra.Command, b domain.Bdb, formula string, err error) e
 		return fmt.Errorf("%w; `%s docs formulas` explains how to write one", err, cmd.Root().Name())
 	}
 	return err
+}
+
+// formulaShowHint returns the hint that points at the command showing the parameters of formula in the bdb b.
+func formulaShowHint(cmd *cobra.Command, b domain.Bdb, formula string) string {
+	show := shellJoin([]string{cmd.Root().Name(), "formulas", "show", b.Name, formula})
+	return fmt.Sprintf("Run `%s` for its parameters.", show)
 }
 
 // printFormula writes f to w: a heading with its kind, its label and description, a table of its parameters, and its
@@ -223,18 +228,63 @@ func paramValues(p domain.FormulaParam) string {
 // prints a view's rows or an action's changes.
 func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	params := paramFlag{}
+	var paramsJSON, paramsFile string
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "run <bdb> <formula> [--param name=value]...",
+		Use:   "run <bdb> <formula> [--param name=value]... [--params <json>] [--params-file <path>]",
 		Short: "Run a formula of a bdb",
 		Long: "run runs a formula of a bdb, by name: a view prints its rows, an action the rows it changed. " +
 			bdbArgHelp + " Each --param sets one of the formula's parameters (formulas show lists them), converted " +
 			"to the type it declares; a list (a multi-select, or the rows to act on) is a JSON array, e.g. " +
-			"--param 'rowids=[3,5]' (quoted, as shells read [ ] as a pattern).",
+			"--param 'rowids=[3,5]' (quoted, as shells read [ ] as a pattern). --params gives them all at once as " +
+			"one JSON object instead, each value typed as JSON types it, and a group's rows an array of objects; " +
+			"--params-file reads that object from a file, or from stdin with -. Give only one of the three.",
+		Example: "  bdb formulas run Kanban add-task --param name=\"Buy bread\" --param priority=high\n" +
+			"  bdb formulas run Kanban add-task --params '{\"name\": \"Buy bread\", \"priority\": \"high\"}'\n" +
+			"  bdb formulas run Kanban reorder-tasks --params-file - <<'EOF'\n" +
+			"  {\"ordered_rowids\": [5, 3, 8]}\n" +
+			"  EOF",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			f := cmd.Flags()
+			modes := 0
+			for _, name := range []string{"param", "params", "params-file"} {
+				if f.Changed(name) {
+					modes++
+				}
+			}
+			if modes > 1 {
+				return usageError{err: errors.New("give the parameters with --param, --params or --params-file, " +
+					"only one of them")}
+			}
+			var spec []byte
+			switch {
+			case f.Changed("params") && strings.TrimSpace(paramsJSON) == "":
+				return usageError{err: errors.New("the parameters are empty")}
+			case f.Changed("params"):
+				spec = []byte(paramsJSON)
+			case f.Changed("params-file"):
+				content, err := readFileFlag(cmd.InOrStdin(), paramsFile, "parameters")
+				if err != nil {
+					return err
+				}
+				spec = content
+			}
 			return runLocal(cmd, flags, open, func(l *local) error {
-				b, run, err := l.formulas.Run(cmd.Context(), args[0], args[1], params)
+				var b domain.Bdb
+				var run domain.FormulaRun
+				var err error
+				if spec != nil {
+					b, run, err = l.formulas.RunJSON(cmd.Context(), args[0], args[1], spec)
+				} else {
+					b, run, err = l.formulas.Run(cmd.Context(), args[0], args[1], params)
+				}
+				if refused, ok := errors.AsType[*domain.ParamValueError](err); ok && spec != nil {
+					return usageError{
+						err:  fmt.Errorf("parameter %q %s", refused.Param, refused.Problem),
+						help: formulaShowHint(cmd, b, args[1]),
+					}
+				}
 				if err != nil {
 					return formulaError(cmd, b, args[1], err)
 				}
@@ -244,7 +294,11 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 				if err := printQueryResult(cmd, run.Result, domain.IntentQuery, asJSON); err != nil {
 					return err
 				}
-				if run.HasMore && run.NextCursor != nil {
+				switch {
+				case !run.HasMore || run.NextCursor == nil:
+				case spec != nil:
+					cmd.PrintErrf("More rows: add \"cursor\": %d to the parameters\n", *run.NextCursor)
+				default:
 					cmd.PrintErrf("More rows: add --param cursor=%d\n", *run.NextCursor)
 				}
 				return nil
@@ -252,6 +306,9 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		},
 	}
 	cmd.Flags().Var(params, "param", "a parameter of the formula, repeated for each one")
+	cmd.Flags().StringVar(&paramsJSON, "params", "", "every parameter as one JSON object")
+	cmd.Flags().StringVar(&paramsFile, "params-file", "",
+		"read every parameter as one JSON object from this file, or from stdin with -")
 	cmd.Flags().BoolVar(&asJSON, "json", false,
 		"print a view's rows as a JSON array, or an action's result as an object")
 	return cmd

@@ -1,9 +1,7 @@
 package intraprocess
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -281,6 +279,26 @@ func (a *DatabasesApp) RunFormula(
 ) (domain.FormulaRun, error) {
 	ctx = a.account.bind(ctx)
 	r, err := a.formulaSvc.RunFormulaFromStrings(ctx, a.account.ID, bdbID, ref, params)
+	return toFormulaRun(r, err, ref)
+}
+
+// RunFormulaJSON runs the formula ref of the bdb bdbID with params, a JSON object of the values keyed by parameter
+// name, each typed as JSON types it: a list a JSON array, a group's rows an array of objects.
+func (a *DatabasesApp) RunFormulaJSON(
+	ctx context.Context, bdbID uuid.UUID, ref string, params []byte,
+) (domain.FormulaRun, error) {
+	values, err := decodeParams(params)
+	if err != nil {
+		return domain.FormulaRun{}, err
+	}
+	ctx = a.account.bind(ctx)
+	r, err := a.formulaSvc.RunFormula(ctx, a.account.ID, bdbID, ref, dbservice.FormulaRunInput{Params: values})
+	return toFormulaRun(r, err, ref)
+}
+
+// toFormulaRun converts the result of running the formula ref, or its error: an unknown formula wraps
+// domain.ErrFormulaNotFound, and a refused statement or parameter becomes the command line's own error.
+func toFormulaRun(r *dbservice.FormulaRunResult, err error, ref string) (domain.FormulaRun, error) {
 	if errors.Is(err, dbdomain.ErrFormulaNotFound) {
 		return domain.FormulaRun{}, fmt.Errorf("%w named %q", domain.ErrFormulaNotFound, ref)
 	}
@@ -292,6 +310,18 @@ func (a *DatabasesApp) RunFormula(
 		run.HasMore, run.NextCursor = r.Pagination.HasMore, r.Pagination.NextCursor
 	}
 	return run, nil
+}
+
+// decodeParams decodes params, a single JSON object, into the parameter values it holds; JSON null holds none.
+func decodeParams(params []byte) (map[string]any, error) {
+	values, err := decodeOne[map[string]any](params)
+	switch {
+	case errors.Is(err, errMoreThanOneValue):
+		return nil, fmt.Errorf("reading the parameters: %w", err)
+	case err != nil:
+		return nil, fmt.Errorf("reading the parameters: want a JSON object, such as {\"name\": \"value\"}: %w", err)
+	}
+	return values, nil
 }
 
 // GetFormula returns the formula ref (a name or an ID) of the bdb bdbID with its parameters and SQL.
@@ -310,9 +340,9 @@ func (a *DatabasesApp) GetFormula(ctx context.Context, bdbID uuid.UUID, ref stri
 // CreateFormula creates a formula in the bdb bdbID from spec, the JSON object the databases app's create-formula
 // input takes, and returns it. A key the input does not know is an error, so a misspelled field is not dropped.
 func (a *DatabasesApp) CreateFormula(ctx context.Context, bdbID uuid.UUID, spec []byte) (domain.FormulaDetail, error) {
-	var req appinput.CreateFormula
-	if err := decodeSpec(spec, &req); err != nil {
-		return domain.FormulaDetail{}, err
+	req, err := decodeOne[appinput.CreateFormula](spec)
+	if err != nil {
+		return domain.FormulaDetail{}, fmt.Errorf("reading the formula: %w", err)
 	}
 	input, err := req.Input()
 	if err != nil {
@@ -331,9 +361,9 @@ func (a *DatabasesApp) CreateFormula(ctx context.Context, bdbID uuid.UUID, spec 
 func (a *DatabasesApp) UpdateFormula(
 	ctx context.Context, bdbID uuid.UUID, ref string, spec []byte,
 ) (domain.FormulaDetail, error) {
-	var req appinput.UpdateFormula
-	if err := decodeSpec(spec, &req); err != nil {
-		return domain.FormulaDetail{}, err
+	req, err := decodeOne[appinput.UpdateFormula](spec)
+	if err != nil {
+		return domain.FormulaDetail{}, fmt.Errorf("reading the formula: %w", err)
 	}
 	patch, err := req.Patch()
 	if err != nil {
@@ -428,20 +458,6 @@ func refusedFormula(err error) error {
 // under.
 func (a *DatabasesApp) RenderManual(ctx context.Context, topic string) (string, error) {
 	return a.docsSvc.Manual(a.account.bind(ctx), topic, domain.CommandForTool)
-}
-
-// decodeSpec decodes spec, a single JSON object, into v, refusing a key v does not declare and anything after the
-// object.
-func decodeSpec(spec []byte, v any) error {
-	dec := json.NewDecoder(bytes.NewReader(spec))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("reading the formula: %w", err)
-	}
-	if dec.More() {
-		return errors.New("reading the formula: more than one JSON value")
-	}
-	return nil
 }
 
 // toFormulaDetail converts a formula of the databases app, with its parameters and SQL.

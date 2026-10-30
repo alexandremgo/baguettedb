@@ -17,8 +17,8 @@ Before working in a bdb:
    starter that bdb starters lists) only when the user asks, with its name confirmed first.
 2. bdb bdbs describe <bdb> prints its tables with their columns, its skills in full and its formulas. Read the
    skills before changing anything: they say how the bdb is meant to be used.
-3. Prefer its formulas to writing SQL: bdb formulas run <bdb> <formula> --param name=value runs one, and
-   bdb formulas show <bdb> <formula> prints its parameters.
+3. Prefer its formulas to writing SQL: bdb formulas run <bdb> <formula> --param name=value runs one (or
+   --params with every parameter as one JSON object), and bdb formulas show <bdb> <formula> prints its parameters.
 4. Read bdb docs sql before writing SQL, a formula's included (bdb q, bdb sql data, bdb sql schema), and
    bdb docs formulas before writing a formula (bdb formulas create).
 
