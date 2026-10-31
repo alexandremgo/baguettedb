@@ -27,7 +27,12 @@ func NewPostgresContainer(ctx context.Context) (string, func(), error) {
 			"POSTGRES_PASSWORD": postgresPassword,
 			"POSTGRES_DB":       postgresDB,
 		},
-		WaitingFor: wait.ForListeningPort(postgresPort),
+		// The image initializes the database with a throwaway server before starting the real one, which opens its port
+		// before it accepts connections: only the real server's ready line, the second, means connections succeed.
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort(postgresPort),
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+		),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
