@@ -28,7 +28,7 @@ jobs:
       changed: ${{ steps.diff.outputs.changed }}
     steps:
       # The branch's own commit rather than its merge with main, since the file is committed onto the branch.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
@@ -73,7 +73,7 @@ jobs:
     env:
       PUSH_TOKEN: ${{ secrets.DEPENDABOT_PUSH_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: env.PUSH_TOKEN != ''
         with:
           ref: ${{ github.event.pull_request.head.sha }}
