@@ -127,6 +127,19 @@ jobs:
       - name: Install C build deps (libssl + pkg-config)
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      # Embeds the web app in the code under test, as a release does: part of bdb serve's behavior only exists with it.
+      - name: Build the web app into the binary
+        run: make web-build webui-sync
+
       # The integration suites live in the integrationtest packages and run on the instance store BAGUETTEDB_TEST_STORE
       # names; Postgres and the S3 store start in containers, on the runner's Docker. -count=1 because the restored
       # build cache also holds test results.
