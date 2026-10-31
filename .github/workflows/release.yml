@@ -68,7 +68,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       # The macOS build runs on the runner itself; the Linux one in a container that brings its own Go.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: matrix.os == 'darwin'
         with:
           go-version-file: go.mod
