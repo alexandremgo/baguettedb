@@ -27,12 +27,12 @@ jobs:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       TAG: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: env.HOMEBREW_TAP_TOKEN != ''
 
       - name: Check out the tap
         if: env.HOMEBREW_TAP_TOKEN != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: alexandremgo/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
