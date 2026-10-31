@@ -1,0 +1,101 @@
+# Regenerates THIRD_PARTY_LICENSES on Dependabot pull requests and commits it onto their branch: a dependency bump
+# stales the file, and Dependabot cannot run the generator itself. A license outside the policy still fails the run,
+# and nothing is committed, since that one needs a person.
+#
+# The generator builds the pull request's dependencies, so it runs in a job with read-only access and hands the file
+# over as an artifact; the job that pushes runs none of the pull request's code.
+name: "Dependabot: regenerate notices"
+
+on:
+  pull_request:
+    paths:
+      - go.mod
+      - go.sum
+      - web/package.json
+      - web/package-lock.json
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: "Dependabot: regenerate notices"
+    # Dependabot's pushes only: the commit this workflow pushes is not Dependabot's, so it does not start another
+    # regeneration.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      # The branch's own commit rather than its merge with main, since the file is committed onto the branch.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Regenerate the notices
+        run: make notices
+
+      - name: Check whether the notices changed
+        id: diff
+        run: |
+          if [ -n "$(git status --porcelain -- THIRD_PARTY_LICENSES)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload the notices
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: third-party-licenses
+          path: THIRD_PARTY_LICENSES
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    name: "Dependabot: commit notices"
+    needs: generate
+    if: needs.generate.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      PUSH_TOKEN: ${{ secrets.DEPENDABOT_PUSH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        if: env.PUSH_TOKEN != ''
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          token: ${{ secrets.DEPENDABOT_PUSH_TOKEN }}
+
+      - name: Download the notices
+        if: env.PUSH_TOKEN != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: third-party-licenses
+          path: ${{ runner.temp }}/notices
+
+      # Only the notices file is taken from the artifact, which a job running the pull request's dependencies made. A
+      # push onto a branch Dependabot moved meanwhile is refused as non-fast-forward; the run for its new commit
+      # regenerates the file.
+      - name: Commit and push
+        if: env.PUSH_TOKEN != ''
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          cp "$RUNNER_TEMP/notices/THIRD_PARTY_LICENSES" THIRD_PARTY_LICENSES
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: regenerate the third-party notices" -- THIRD_PARTY_LICENSES
+          git push origin "HEAD:refs/heads/${BRANCH}"
