@@ -40,7 +40,8 @@ const minCoverage = 75
 // again.
 type override struct {
 	// license is the license expression the file was reviewed as, printed as is. Empty leaves the file out of the
-	// notices, for a file about something the binaries do not contain.
+	// notices, for a file about something the binaries do not contain, or one restating licenses that other files
+	// already bring into the notices.
 	license string
 
 	sha256 string // hex SHA-256 of the normalized text that was reviewed
@@ -63,6 +64,12 @@ var overrides = map[string]override{
 	"modernc.org/memory/LICENSE-LOGO": {
 		sha256: "ce9c578c2968e316b80b180c3f5a5d70a8f32f37256c1bcf944a5de4f9f4eb59",
 		reason: "Only the source of the repository's logo image, which the binaries do not contain.",
+	},
+	"modernc.org/sqlite/LICENSE-3RD-PARTY.md": {
+		sha256: "d782121ab8bc21a30d401f333c3d769394651cd0d162f00a70b1655858378506",
+		reason: "An index of the licenses across modernc.org/sqlite's module graph. Every component it lists as " +
+			"linked brings its own license file into the notices, and the MPL-2.0 text it reproduces is for a module " +
+			"bdb does not link.",
 	},
 	"modernc.org/sqlite/LICENSE-SQLITE": {
 		license: "public domain",
