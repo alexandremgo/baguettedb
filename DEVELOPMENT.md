@@ -89,7 +89,8 @@ Integration suites run on the instance store `BAGUETTEDB_TEST_STORE` names: `pos
 container) or `sqlite` (a fresh SQLite file). A suite opens its store with `testutil.OpenInstanceDB` and builds
 its repositories for whichever one it got, so every integration suite runs on both.
 
-Integration tests carry the `integration` build tag. For gopls to see them:
+Integration tests carry the `integration` build tag and live in the `integrationtest` packages, which CI runs on both
+instance stores. For gopls to see them:
 
 ```bash
 GOFLAGS="-tags=integration" gopls check <file>
