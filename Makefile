@@ -62,21 +62,23 @@ test:
 test-fresh:
 	go test -count=1 ./...
 
-test-integration:
+# The targets running the integration tests first embed the web app in the code under test, as a release does: part of
+# bdb serve's behavior only exists with it.
+test-integration: web-build webui-sync
 	go test -tags=integration ./...
 
-test-integration-fresh:
+test-integration-fresh: web-build webui-sync
 	go test -tags=integration -count=1 ./...
 
 # Unit and integration tests on the Postgres instance store, bypassing the cache.
-test-all-postgres:
+test-all-postgres: web-build webui-sync
 	BAGUETTEDB_TEST_STORE=postgres go test -tags=integration -count=1 ./...
 
 # Unit and integration tests on the SQLite instance store, bypassing the cache.
-test-all-sqlite:
+test-all-sqlite: web-build webui-sync
 	BAGUETTEDB_TEST_STORE=sqlite go test -tags=integration -count=1 ./...
 
-test-all:
+test-all: web-build webui-sync
 	go test -tags=integration ./...
 
 # Unit and integration tests on both instance stores, bypassing the cache.
