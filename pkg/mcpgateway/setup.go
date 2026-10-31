@@ -55,9 +55,11 @@ func SetupInProcess(
 			return nil, fmt.Errorf("starting in-process client %d: %w", i, err)
 		}
 
+		// Stays on the initialize handshake: a proxied call runs in the caller's HTTP request context, and the backend
+		// checks a 2026-07-28 call against that request's headers, which a client of an earlier version never sends.
 		if _, err := c.Initialize(ctx, mcp.InitializeRequest{
 			Params: mcp.InitializeParams{
-				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+				ProtocolVersion: mcp.LATEST_LEGACY_PROTOCOL_VERSION,
 				ClientInfo: mcp.Implementation{
 					Name:    "baguettedb-gateway",
 					Version: "1.0.0",

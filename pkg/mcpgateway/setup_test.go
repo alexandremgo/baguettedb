@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
@@ -78,5 +79,56 @@ func TestSetupHTTP_ConnectsAfterBackendBecomesReady(t *testing.T) {
 	defer result.Cleanup()
 	if result.StreamableServer == nil {
 		t.Fatal("expected a streamable server after setup")
+	}
+}
+
+// TestSetupInProcess_ServesClientsOfEitherProtocolEra checks that a tool call reaches an in-process backend through
+// the gateway's Streamable HTTP server whichever protocol era the client speaks: one on the initialize handshake
+// sends no Mcp-Method or Mcp-Name header, and that must not fail the call on the backend.
+func TestSetupInProcess_ServesClientsOfEitherProtocolEra(t *testing.T) {
+	for _, version := range []string{mcp.LATEST_LEGACY_PROTOCOL_VERSION, mcp.LATEST_PROTOCOL_VERSION} {
+		t.Run(version, func(t *testing.T) {
+			result, err := SetupInProcess([]*mcpserver.MCPServer{newPingBackend()}, zerolog.Nop(), Options{})
+			if err != nil {
+				t.Fatalf("SetupInProcess: %v", err)
+			}
+			defer result.Cleanup()
+			gatewaySrv := httptest.NewServer(result.StreamableServer)
+			defer gatewaySrv.Close()
+
+			ctx := context.Background()
+			c, err := mcpclient.NewStreamableHttpClient(gatewaySrv.URL)
+			if err != nil {
+				t.Fatalf("NewStreamableHttpClient: %v", err)
+			}
+			defer func() {
+				if err := c.Close(); err != nil {
+					t.Errorf("closing gateway client: %v", err)
+				}
+			}()
+			if err := c.Start(ctx); err != nil {
+				t.Fatalf("starting gateway client: %v", err)
+			}
+			if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+				ProtocolVersion: version,
+				ClientInfo:      mcp.Implementation{Name: "test", Version: "1.0.0"},
+			}}); err != nil {
+				t.Fatalf("initializing gateway client: %v", err)
+			}
+			if got := c.ProtocolVersion(); got != version {
+				t.Fatalf("negotiated protocol version %q, want %q", got, version)
+			}
+
+			res, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "ping"}})
+			if err != nil {
+				t.Fatalf("CallTool through the gateway: %v", err)
+			}
+			if len(res.Content) != 1 {
+				t.Fatalf("tool result content = %+v, want one text", res.Content)
+			}
+			if text, ok := res.Content[0].(mcp.TextContent); !ok || res.IsError || text.Text != "pong" {
+				t.Fatalf("tool result = %+v (error %t), want text pong", res.Content[0], res.IsError)
+			}
+		})
 	}
 }
