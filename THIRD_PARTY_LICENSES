@@ -474,7 +474,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2 v1.42.0
+github.com/aws/aws-sdk-go-v2 v1.47.4
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -489,7 +489,7 @@ NOTICE.txt:
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.13
+github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.24
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -498,7 +498,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/credentials v1.19.24
+github.com/aws/aws-sdk-go-v2/credentials v1.20.10
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -507,7 +507,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29
+github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.7
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -516,7 +516,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29
+github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.7
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -525,7 +525,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.30
+github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.7
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -534,7 +534,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.12
+github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.22
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -543,7 +543,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.22
+github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.8
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -552,7 +552,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.29
+github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.7
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -561,7 +561,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.29
+github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.7
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -570,7 +570,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/s3 v1.103.3
+github.com/aws/aws-sdk-go-v2/service/s3 v1.114.5
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -579,7 +579,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/smithy-go v1.27.1
+github.com/aws/smithy-go v1.28.6
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -589,46 +589,6 @@ LICENSE: shared text [3] below.
 NOTICE:
 
     Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-
-
---------------------------------------------------------------------------
-github.com/bahlo/generic-list-go v0.2.0
---------------------------------------------------------------------------
-
-License: BSD-3-Clause
-
-LICENSE: shared text [4] below.
-
-
---------------------------------------------------------------------------
-github.com/buger/jsonparser v1.1.1
---------------------------------------------------------------------------
-
-License: MIT
-
-LICENSE:
-
-    MIT License
-
-    Copyright (c) 2016 Leonid Bugaev
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
 
 
 --------------------------------------------------------------------------
@@ -694,7 +654,7 @@ LICENSE.txt:
 
 
 --------------------------------------------------------------------------
-github.com/dustin/go-humanize v1.0.1
+github.com/dustin/go-humanize v1.1.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -725,7 +685,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/exaring/otelpgx v0.10.0
+github.com/exaring/otelpgx v0.13.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -734,7 +694,7 @@ LICENSE: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/felixge/httpsnoop v1.0.4
+github.com/felixge/httpsnoop v1.1.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -763,7 +723,7 @@ LICENSE.txt:
 
 
 --------------------------------------------------------------------------
-github.com/go-chi/chi/v5 v5.2.5
+github.com/go-chi/chi/v5 v5.5.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -798,7 +758,7 @@ github.com/go-logr/logr v1.4.4
 
 License: Apache-2.0
 
-LICENSE: shared text [5] below.
+LICENSE: shared text [4] below.
 
 
 --------------------------------------------------------------------------
@@ -811,16 +771,16 @@ LICENSE: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/go-viper/mapstructure/v2 v2.4.0
+github.com/go-viper/mapstructure/v2 v2.5.0
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [6] below.
+LICENSE: shared text [5] below.
 
 
 --------------------------------------------------------------------------
-github.com/golang-migrate/migrate/v4 v4.19.1
+github.com/golang-migrate/migrate/v4 v4.20.1
 --------------------------------------------------------------------------
 
 License: MIT
@@ -855,6 +815,37 @@ LICENSE:
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
+
+
+--------------------------------------------------------------------------
+github.com/google/jsonschema-go v0.4.2
+--------------------------------------------------------------------------
+
+License: MIT
+
+LICENSE:
+
+    MIT License
+
+    Copyright (c) 2025 JSON Schema Go Project Authors
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
 
 
 --------------------------------------------------------------------------
@@ -895,7 +886,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
+github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -929,35 +920,6 @@ LICENSE:
     ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
---------------------------------------------------------------------------
-github.com/invopop/jsonschema v0.13.0
---------------------------------------------------------------------------
-
-License: MIT
-
-COPYING:
-
-    Copyright (C) 2014 Alec Thomas
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy of
-    this software and associated documentation files (the "Software"), to deal in
-    the Software without restriction, including without limitation the rights to
-    use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-    of the Software, and to permit persons to whom the Software is furnished to do
-    so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
 
 
 --------------------------------------------------------------------------
@@ -1025,7 +987,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/jackc/pgx/v5 v5.9.2
+github.com/jackc/pgx/v5 v5.11.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1094,7 +1056,7 @@ github.com/knadh/koanf/maps v0.1.2
 
 License: MIT
 
-LICENSE: shared text [7] below.
+LICENSE: shared text [6] below.
 
 
 --------------------------------------------------------------------------
@@ -1103,25 +1065,25 @@ github.com/knadh/koanf/providers/env v1.1.0
 
 License: MIT
 
-LICENSE: shared text [7] below.
+LICENSE: shared text [6] below.
 
 
 --------------------------------------------------------------------------
-github.com/knadh/koanf/v2 v2.3.2
+github.com/knadh/koanf/v2 v2.4.1
+--------------------------------------------------------------------------
+
+License: MIT
+
+LICENSE: shared text [6] below.
+
+
+--------------------------------------------------------------------------
+github.com/lestrrat-go/blackmagic v1.0.4
 --------------------------------------------------------------------------
 
 License: MIT
 
 LICENSE: shared text [7] below.
-
-
---------------------------------------------------------------------------
-github.com/lestrrat-go/blackmagic v1.0.3
---------------------------------------------------------------------------
-
-License: MIT
-
-LICENSE: shared text [8] below.
 
 
 --------------------------------------------------------------------------
@@ -1130,7 +1092,7 @@ github.com/lestrrat-go/httpcc v1.0.1
 
 License: MIT
 
-LICENSE: shared text [9] below.
+LICENSE: shared text [8] below.
 
 
 --------------------------------------------------------------------------
@@ -1170,11 +1132,11 @@ github.com/lestrrat-go/iter v1.0.2
 
 License: MIT
 
-LICENSE: shared text [9] below.
+LICENSE: shared text [8] below.
 
 
 --------------------------------------------------------------------------
-github.com/lestrrat-go/jwx/v2 v2.1.6
+github.com/lestrrat-go/jwx/v2 v2.1.7
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1210,46 +1172,42 @@ github.com/lestrrat-go/option v1.0.1
 
 License: MIT
 
-LICENSE: shared text [8] below.
+LICENSE: shared text [7] below.
 
 
 --------------------------------------------------------------------------
-github.com/lib/pq v1.10.9
---------------------------------------------------------------------------
-
-License: MIT
-
-LICENSE.md:
-
-    Copyright (c) 2011-2013, 'pq' Contributors
-    Portions Copyright (C) 2011 Blake Mizerany
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
---------------------------------------------------------------------------
-github.com/mailru/easyjson v0.7.7
+github.com/lib/pq v1.12.3
 --------------------------------------------------------------------------
 
 License: MIT
 
 LICENSE:
 
-    Copyright (c) 2016 Mail.Ru Group
+    MIT License
 
-    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+    Copyright (c) 2011-2013, 'pq' Contributors. Portions Copyright (c) 2011 Blake Mizerany
 
-    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
 
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
 
 
 --------------------------------------------------------------------------
-github.com/mark3labs/mcp-go v0.44.1
+github.com/mark3labs/mcp-go v1.4.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1280,7 +1238,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/mattn/go-colorable v0.1.13
+github.com/mattn/go-colorable v0.1.14
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1366,11 +1324,11 @@ github.com/mitchellh/reflectwalk v1.0.2
 
 License: MIT
 
-LICENSE: shared text [6] below.
+LICENSE: shared text [5] below.
 
 
 --------------------------------------------------------------------------
-github.com/ncruces/go-strftime v1.0.0
+github.com/ncruces/go-strftime v1.1.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1438,7 +1396,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/rs/zerolog v1.34.0
+github.com/rs/zerolog v1.35.1
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1466,6 +1424,15 @@ LICENSE:
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
+
+
+--------------------------------------------------------------------------
+github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+--------------------------------------------------------------------------
+
+License: Apache-2.0
+
+LICENSE: shared text [3] below.
 
 
 --------------------------------------------------------------------------
@@ -1509,7 +1476,7 @@ LICENSE.txt: shared text [3] below.
 
 
 --------------------------------------------------------------------------
-github.com/spf13/pflag v1.0.9
+github.com/spf13/pflag v1.0.10
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1544,15 +1511,6 @@ LICENSE:
     THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
---------------------------------------------------------------------------
-github.com/wk8/go-ordered-map/v2 v2.1.8
---------------------------------------------------------------------------
-
-License: Apache-2.0
-
-LICENSE: shared text [5] below.
 
 
 --------------------------------------------------------------------------
@@ -1600,84 +1558,93 @@ LICENSE: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0
---------------------------------------------------------------------------
-
-License: Apache-2.0
-
-LICENSE: shared text [2] below.
-
-
---------------------------------------------------------------------------
-go.opentelemetry.io/otel v1.45.0
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0 AND BSD-3-Clause
 
-LICENSE: shared text [10] below.
+LICENSE: shared text [9] below.
 
 
 --------------------------------------------------------------------------
-go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.44.0
---------------------------------------------------------------------------
-
-License: Apache-2.0 AND BSD-3-Clause
-
-LICENSE: shared text [10] below.
-
-
---------------------------------------------------------------------------
-go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0
+go.opentelemetry.io/otel v1.47.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0 AND BSD-3-Clause
 
-LICENSE: shared text [10] below.
+LICENSE: shared text [9] below.
 
 
 --------------------------------------------------------------------------
-go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
---------------------------------------------------------------------------
-
-License: Apache-2.0 AND BSD-3-Clause
-
-LICENSE: shared text [10] below.
-
-
---------------------------------------------------------------------------
-go.opentelemetry.io/otel/metric v1.45.0
+go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.47.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0 AND BSD-3-Clause
 
-LICENSE: shared text [10] below.
+LICENSE: shared text [9] below.
 
 
 --------------------------------------------------------------------------
-go.opentelemetry.io/otel/sdk v1.45.0
---------------------------------------------------------------------------
-
-License: Apache-2.0 AND BSD-3-Clause
-
-LICENSE: shared text [10] below.
-
-
---------------------------------------------------------------------------
-go.opentelemetry.io/otel/sdk/metric v1.45.0
+go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0 AND BSD-3-Clause
 
-LICENSE: shared text [10] below.
+LICENSE: shared text [9] below.
 
 
 --------------------------------------------------------------------------
-go.opentelemetry.io/otel/trace v1.45.0
+go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0 AND BSD-3-Clause
 
-LICENSE: shared text [10] below.
+LICENSE: shared text [9] below.
+
+
+--------------------------------------------------------------------------
+go.opentelemetry.io/otel/log v1.47.0
+--------------------------------------------------------------------------
+
+License: Apache-2.0 AND BSD-3-Clause
+
+LICENSE: shared text [9] below.
+
+
+--------------------------------------------------------------------------
+go.opentelemetry.io/otel/metric v1.47.0
+--------------------------------------------------------------------------
+
+License: Apache-2.0 AND BSD-3-Clause
+
+LICENSE: shared text [9] below.
+
+
+--------------------------------------------------------------------------
+go.opentelemetry.io/otel/sdk v1.47.0
+--------------------------------------------------------------------------
+
+License: Apache-2.0 AND BSD-3-Clause
+
+LICENSE: shared text [9] below.
+
+
+--------------------------------------------------------------------------
+go.opentelemetry.io/otel/sdk/metric v1.47.0
+--------------------------------------------------------------------------
+
+License: Apache-2.0 AND BSD-3-Clause
+
+LICENSE: shared text [9] below.
+
+
+--------------------------------------------------------------------------
+go.opentelemetry.io/otel/trace v1.47.0
+--------------------------------------------------------------------------
+
+License: Apache-2.0 AND BSD-3-Clause
+
+LICENSE: shared text [9] below.
 
 
 --------------------------------------------------------------------------
@@ -1695,7 +1662,7 @@ go.yaml.in/yaml/v2 v2.4.2
 
 License: Apache-2.0 AND MIT
 
-LICENSE: shared text [5] below.
+LICENSE: shared text [4] below.
 
 LICENSE.libyaml:
 
@@ -1731,11 +1698,25 @@ LICENSE.libyaml:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-NOTICE: shared text [11] below.
+NOTICE:
+
+    Copyright 2011-2016 Canonical Ltd.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
 
 
 --------------------------------------------------------------------------
-golang.org/x/crypto v0.57.0
+golang.org/x/crypto v0.58.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1753,7 +1734,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/sync v0.23.0
+golang.org/x/sync v0.24.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1762,7 +1743,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/sys v0.48.0
+golang.org/x/sys v0.49.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1771,7 +1752,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/term v0.46.0
+golang.org/x/term v0.47.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1780,7 +1761,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/text v0.42.0
+golang.org/x/text v0.43.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1789,7 +1770,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d
+google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -1798,7 +1779,7 @@ LICENSE: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -1807,7 +1788,7 @@ LICENSE: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-google.golang.org/grpc v1.83.2
+google.golang.org/grpc v1.84.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -1832,7 +1813,7 @@ NOTICE.txt:
 
 
 --------------------------------------------------------------------------
-google.golang.org/protobuf v1.36.11
+google.golang.org/protobuf v1.36.12
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1869,68 +1850,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-gopkg.in/yaml.v3 v3.0.1
---------------------------------------------------------------------------
-
-License: MIT AND Apache-2.0
-
-LICENSE:
-
-    This project is covered by two different licenses: MIT and Apache.
-
-    #### MIT License ####
-
-    The following files were ported to Go from C files of libyaml, and thus
-    are still covered by their original MIT license, with the additional
-    copyright staring in 2011 when the project was ported over:
-
-        apic.go emitterc.go parserc.go readerc.go scannerc.go
-        writerc.go yamlh.go yamlprivateh.go
-
-    Copyright (c) 2006-2010 Kirill Simonov
-    Copyright (c) 2006-2011 Kirill Simonov
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy of
-    this software and associated documentation files (the "Software"), to deal in
-    the Software without restriction, including without limitation the rights to
-    use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-    of the Software, and to permit persons to whom the Software is furnished to do
-    so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
-
-    ### Apache License ###
-
-    All the remaining project files are covered by the Apache license:
-
-    Copyright (c) 2011-2019 Canonical Ltd
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-
-NOTICE: shared text [11] below.
-
-
---------------------------------------------------------------------------
-modernc.org/libc v1.75.7
+modernc.org/libc v1.79.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause AND BSD-3-Clause AND MIT
@@ -2347,7 +2267,35 @@ LICENSE:
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-LICENSE-GO: shared text [4] below.
+LICENSE-GO:
+
+    Copyright (c) 2009 The Go Authors. All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+       * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+       * Redistributions in binary form must reproduce the above
+    copyright notice, this list of conditions and the following disclaimer
+    in the documentation and/or other materials provided with the
+    distribution.
+       * Neither the name of Google Inc. nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 LICENSE-MMAP-GO:
 
@@ -2378,7 +2326,7 @@ LICENSE-MMAP-GO:
 
 
 --------------------------------------------------------------------------
-modernc.org/sqlite v1.59.0
+modernc.org/sqlite v1.61.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause AND public domain AND MIT
@@ -2794,7 +2742,7 @@ worker runtime generated alongside it.
 
 License: MIT
 
-LICENSE: shared text [12] below.
+LICENSE: shared text [10] below.
 
 
 --------------------------------------------------------------------------
@@ -2803,7 +2751,7 @@ LICENSE: shared text [12] below.
 
 License: MIT
 
-LICENSE: shared text [12] below.
+LICENSE: shared text [10] below.
 
 
 --------------------------------------------------------------------------
@@ -2812,7 +2760,7 @@ LICENSE: shared text [12] below.
 
 License: MIT
 
-LICENSE: shared text [12] below.
+LICENSE: shared text [10] below.
 
 
 --------------------------------------------------------------------------
@@ -2821,7 +2769,7 @@ LICENSE: shared text [12] below.
 
 License: MIT
 
-LICENSE: shared text [12] below.
+LICENSE: shared text [10] below.
 
 
 --------------------------------------------------------------------------
@@ -2933,7 +2881,7 @@ LICENSE:
 
 License: MIT
 
-LICENSE: shared text [13] below.
+LICENSE: shared text [11] below.
 
 
 --------------------------------------------------------------------------
@@ -2942,7 +2890,7 @@ LICENSE: shared text [13] below.
 
 License: MIT
 
-LICENSE: shared text [13] below.
+LICENSE: shared text [11] below.
 
 
 --------------------------------------------------------------------------
@@ -2976,7 +2924,7 @@ bail 2.0.2
 
 License: MIT
 
-LICENSE: shared text [14] below.
+LICENSE: shared text [12] below.
 
 
 --------------------------------------------------------------------------
@@ -2985,7 +2933,7 @@ ccount 2.0.1
 
 License: MIT
 
-LICENSE: shared text [14] below.
+LICENSE: shared text [12] below.
 
 
 --------------------------------------------------------------------------
@@ -2994,7 +2942,7 @@ comma-separated-tokens 2.0.3
 
 License: MIT
 
-LICENSE: shared text [15] below.
+LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
@@ -3003,7 +2951,7 @@ decode-named-character-reference 1.3.0
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3044,7 +2992,7 @@ escape-string-regexp 5.0.0
 
 License: MIT
 
-LICENSE: shared text [17] below.
+LICENSE: shared text [15] below.
 
 
 --------------------------------------------------------------------------
@@ -3053,7 +3001,7 @@ estree-util-is-identifier-name 3.0.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3094,7 +3042,7 @@ hast-util-to-jsx-runtime 2.3.6
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3103,7 +3051,7 @@ hast-util-whitespace 3.0.0
 
 License: MIT
 
-LICENSE: shared text [15] below.
+LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
@@ -3162,7 +3110,7 @@ is-plain-obj 4.1.0
 
 License: MIT
 
-LICENSE: shared text [17] below.
+LICENSE: shared text [15] below.
 
 
 --------------------------------------------------------------------------
@@ -3171,7 +3119,7 @@ longest-streak 3.1.0
 
 License: MIT
 
-LICENSE: shared text [19] below.
+LICENSE: shared text [17] below.
 
 
 --------------------------------------------------------------------------
@@ -3233,7 +3181,7 @@ markdown-table 3.0.4
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3242,7 +3190,7 @@ mdast-util-find-and-replace 3.0.2
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3251,7 +3199,7 @@ mdast-util-from-markdown 2.0.3
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3260,7 +3208,7 @@ mdast-util-gfm 3.1.0
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3269,7 +3217,7 @@ mdast-util-gfm-autolink-literal 2.0.1
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3278,7 +3226,7 @@ mdast-util-gfm-footnote 2.1.0
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3287,7 +3235,7 @@ mdast-util-gfm-strikethrough 2.0.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3296,7 +3244,7 @@ mdast-util-gfm-table 2.0.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3305,7 +3253,7 @@ mdast-util-gfm-task-list-item 2.0.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3347,7 +3295,7 @@ mdast-util-to-hast 13.2.1
 
 License: MIT
 
-LICENSE: shared text [15] below.
+LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
@@ -3356,7 +3304,7 @@ mdast-util-to-markdown 2.1.2
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3365,7 +3313,7 @@ mdast-util-to-string 4.0.0
 
 License: MIT
 
-LICENSE: shared text [14] below.
+LICENSE: shared text [12] below.
 
 
 --------------------------------------------------------------------------
@@ -3374,7 +3322,7 @@ micromark 4.0.2
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3383,7 +3331,7 @@ micromark-core-commonmark 2.0.3
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3392,7 +3340,7 @@ micromark-extension-gfm 3.0.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3401,7 +3349,7 @@ micromark-extension-gfm-autolink-literal 2.1.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3442,7 +3390,7 @@ micromark-extension-gfm-strikethrough 2.1.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3451,7 +3399,7 @@ micromark-extension-gfm-table 2.1.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3460,7 +3408,7 @@ micromark-extension-gfm-task-list-item 2.1.0
 
 License: MIT
 
-LICENSE: shared text [18] below.
+LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
@@ -3469,7 +3417,7 @@ micromark-factory-destination 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3478,7 +3426,7 @@ micromark-factory-label 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3487,7 +3435,7 @@ micromark-factory-space 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3496,7 +3444,7 @@ micromark-factory-title 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3505,7 +3453,7 @@ micromark-factory-whitespace 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3514,7 +3462,7 @@ micromark-util-character 2.1.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3523,7 +3471,7 @@ micromark-util-chunked 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3532,7 +3480,7 @@ micromark-util-classify-character 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3541,7 +3489,7 @@ micromark-util-combine-extensions 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3550,7 +3498,7 @@ micromark-util-decode-numeric-character-reference 2.0.2
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3559,7 +3507,7 @@ micromark-util-decode-string 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3568,7 +3516,7 @@ micromark-util-html-tag-name 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3577,7 +3525,7 @@ micromark-util-normalize-identifier 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3586,7 +3534,7 @@ micromark-util-resolve-all 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3595,7 +3543,7 @@ micromark-util-sanitize-uri 2.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3604,7 +3552,7 @@ micromark-util-subtokenize 2.1.0
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3645,7 +3593,7 @@ react 19.2.8
 
 License: MIT
 
-LICENSE: shared text [20] below.
+LICENSE: shared text [18] below.
 
 
 --------------------------------------------------------------------------
@@ -3654,7 +3602,7 @@ react-dom 19.2.8
 
 License: MIT
 
-LICENSE: shared text [20] below.
+LICENSE: shared text [18] below.
 
 
 --------------------------------------------------------------------------
@@ -3727,7 +3675,7 @@ remark-gfm 4.0.1
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3767,7 +3715,7 @@ remark-rehype 11.1.2
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3776,7 +3724,7 @@ scheduler 0.27.0
 
 License: MIT
 
-LICENSE: shared text [20] below.
+LICENSE: shared text [18] below.
 
 
 --------------------------------------------------------------------------
@@ -3785,7 +3733,7 @@ space-separated-tokens 2.0.2
 
 License: MIT
 
-LICENSE: shared text [15] below.
+LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
@@ -3858,7 +3806,7 @@ trim-lines 3.0.1
 
 License: MIT
 
-LICENSE: shared text [19] below.
+LICENSE: shared text [17] below.
 
 
 --------------------------------------------------------------------------
@@ -3898,7 +3846,7 @@ unified 11.0.5
 
 License: MIT
 
-LICENSE: shared text [21] below.
+LICENSE: shared text [19] below.
 
 
 --------------------------------------------------------------------------
@@ -3939,7 +3887,7 @@ unist-util-position 5.0.0
 
 License: MIT
 
-LICENSE: shared text [14] below.
+LICENSE: shared text [12] below.
 
 
 --------------------------------------------------------------------------
@@ -3948,7 +3896,7 @@ unist-util-stringify-position 4.0.0
 
 License: MIT
 
-LICENSE: shared text [15] below.
+LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
@@ -3957,7 +3905,7 @@ unist-util-visit 5.1.0
 
 License: MIT
 
-LICENSE: shared text [14] below.
+LICENSE: shared text [12] below.
 
 
 --------------------------------------------------------------------------
@@ -3966,7 +3914,7 @@ unist-util-visit-parents 6.0.2
 
 License: MIT
 
-LICENSE: shared text [15] below.
+LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
@@ -3975,7 +3923,7 @@ vfile 6.0.3
 
 License: MIT
 
-LICENSE: shared text [21] below.
+LICENSE: shared text [19] below.
 
 
 --------------------------------------------------------------------------
@@ -3984,7 +3932,7 @@ vfile-message 4.0.3
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3995,7 +3943,7 @@ Bundled into the service worker.
 
 License: MIT
 
-LICENSE: shared text [22] below.
+LICENSE: shared text [20] below.
 
 
 --------------------------------------------------------------------------
@@ -4006,7 +3954,7 @@ Bundled into the service worker.
 
 License: MIT
 
-LICENSE: shared text [22] below.
+LICENSE: shared text [20] below.
 
 
 --------------------------------------------------------------------------
@@ -4017,7 +3965,7 @@ Bundled into the service worker.
 
 License: MIT
 
-LICENSE: shared text [22] below.
+LICENSE: shared text [20] below.
 
 
 --------------------------------------------------------------------------
@@ -4028,7 +3976,7 @@ Bundled into the service worker.
 
 License: MIT
 
-LICENSE: shared text [22] below.
+LICENSE: shared text [20] below.
 
 
 ==========================================================================
@@ -4088,7 +4036,6 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url,
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared,
 github.com/aws/aws-sdk-go-v2/service/s3, github.com/exaring/otelpgx,
 github.com/go-logr/stdr, go.opentelemetry.io/auto/sdk,
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp,
 go.opentelemetry.io/proto/otlp, google.golang.org/genproto/googleapis/api,
 google.golang.org/genproto/googleapis/rpc, google.golang.org/grpc.
 
@@ -4299,7 +4246,8 @@ google.golang.org/genproto/googleapis/rpc, google.golang.org/grpc.
 [3] Apache-2.0
 --------------------------------------------------------------------------
 
-Used by: github.com/aws/smithy-go, github.com/spf13/cobra.
+Used by: github.com/aws/smithy-go,
+github.com/santhosh-tekuri/jsonschema/v6, github.com/spf13/cobra.
 
                                      Apache License
                                Version 2.0, January 2004
@@ -4478,46 +4426,10 @@ Used by: github.com/aws/smithy-go, github.com/spf13/cobra.
 
 
 --------------------------------------------------------------------------
-[4] BSD-3-Clause
+[4] Apache-2.0
 --------------------------------------------------------------------------
 
-Used by: github.com/bahlo/generic-list-go, modernc.org/memory.
-
-    Copyright (c) 2009 The Go Authors. All rights reserved.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are
-    met:
-
-       * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-       * Redistributions in binary form must reproduce the above
-    copyright notice, this list of conditions and the following disclaimer
-    in the documentation and/or other materials provided with the
-    distribution.
-       * Neither the name of Google Inc. nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
---------------------------------------------------------------------------
-[5] Apache-2.0
---------------------------------------------------------------------------
-
-Used by: github.com/go-logr/logr, github.com/wk8/go-ordered-map/v2,
-go.yaml.in/yaml/v2.
+Used by: github.com/go-logr/logr, go.yaml.in/yaml/v2.
 
                                      Apache License
                                Version 2.0, January 2004
@@ -4723,7 +4635,7 @@ go.yaml.in/yaml/v2.
 
 
 --------------------------------------------------------------------------
-[6] MIT
+[5] MIT
 --------------------------------------------------------------------------
 
 Used by: github.com/go-viper/mapstructure/v2,
@@ -4753,7 +4665,7 @@ github.com/mitchellh/reflectwalk.
 
 
 --------------------------------------------------------------------------
-[7] MIT
+[6] MIT
 --------------------------------------------------------------------------
 
 Used by: github.com/knadh/koanf/maps,
@@ -4783,7 +4695,7 @@ github.com/knadh/koanf/providers/env, github.com/knadh/koanf/v2.
 
 
 --------------------------------------------------------------------------
-[8] MIT
+[7] MIT
 --------------------------------------------------------------------------
 
 Used by: github.com/lestrrat-go/blackmagic, github.com/lestrrat-go/option.
@@ -4812,7 +4724,7 @@ Used by: github.com/lestrrat-go/blackmagic, github.com/lestrrat-go/option.
 
 
 --------------------------------------------------------------------------
-[9] MIT
+[8] MIT
 --------------------------------------------------------------------------
 
 Used by: github.com/lestrrat-go/httpcc, github.com/lestrrat-go/iter.
@@ -4841,15 +4753,17 @@ Used by: github.com/lestrrat-go/httpcc, github.com/lestrrat-go/iter.
 
 
 --------------------------------------------------------------------------
-[10] Apache-2.0 AND BSD-3-Clause
+[9] Apache-2.0 AND BSD-3-Clause
 --------------------------------------------------------------------------
 
-Used by: go.opentelemetry.io/otel,
+Used by: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp,
+go.opentelemetry.io/otel,
 go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc,
 go.opentelemetry.io/otel/exporters/otlp/otlptrace,
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc,
-go.opentelemetry.io/otel/metric, go.opentelemetry.io/otel/sdk,
-go.opentelemetry.io/otel/sdk/metric, go.opentelemetry.io/otel/trace.
+go.opentelemetry.io/otel/log, go.opentelemetry.io/otel/metric,
+go.opentelemetry.io/otel/sdk, go.opentelemetry.io/otel/sdk/metric,
+go.opentelemetry.io/otel/trace.
 
                                      Apache License
                                Version 2.0, January 2004
@@ -5085,28 +4999,7 @@ go.opentelemetry.io/otel/sdk/metric, go.opentelemetry.io/otel/trace.
 
 
 --------------------------------------------------------------------------
-[11] Notice
---------------------------------------------------------------------------
-
-Used by: go.yaml.in/yaml/v2, gopkg.in/yaml.v3.
-
-    Copyright 2011-2016 Canonical Ltd.
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-
-
---------------------------------------------------------------------------
-[12] MIT
+[10] MIT
 --------------------------------------------------------------------------
 
 Used by: @dnd-kit/accessibility, @dnd-kit/core, @dnd-kit/sortable,
@@ -5136,7 +5029,7 @@ Used by: @dnd-kit/accessibility, @dnd-kit/core, @dnd-kit/sortable,
 
 
 --------------------------------------------------------------------------
-[13] MIT
+[11] MIT
 --------------------------------------------------------------------------
 
 Used by: @tanstack/query-core, @tanstack/react-query.
@@ -5165,7 +5058,7 @@ Used by: @tanstack/query-core, @tanstack/react-query.
 
 
 --------------------------------------------------------------------------
-[14] MIT
+[12] MIT
 --------------------------------------------------------------------------
 
 Used by: bail, ccount, mdast-util-to-string, unist-util-position,
@@ -5196,7 +5089,7 @@ unist-util-visit.
 
 
 --------------------------------------------------------------------------
-[15] MIT
+[13] MIT
 --------------------------------------------------------------------------
 
 Used by: comma-separated-tokens, hast-util-whitespace, mdast-util-to-hast,
@@ -5228,7 +5121,7 @@ unist-util-visit-parents.
 
 
 --------------------------------------------------------------------------
-[16] MIT
+[14] MIT
 --------------------------------------------------------------------------
 
 Used by: decode-named-character-reference, hast-util-to-jsx-runtime,
@@ -5271,7 +5164,7 @@ remark-rehype, vfile-message.
 
 
 --------------------------------------------------------------------------
-[17] MIT
+[15] MIT
 --------------------------------------------------------------------------
 
 Used by: escape-string-regexp, is-plain-obj.
@@ -5288,7 +5181,7 @@ Used by: escape-string-regexp, is-plain-obj.
 
 
 --------------------------------------------------------------------------
-[18] MIT
+[16] MIT
 --------------------------------------------------------------------------
 
 Used by: estree-util-is-identifier-name, mdast-util-gfm-autolink-literal,
@@ -5323,7 +5216,7 @@ micromark-extension-gfm-task-list-item.
 
 
 --------------------------------------------------------------------------
-[19] MIT
+[17] MIT
 --------------------------------------------------------------------------
 
 Used by: longest-streak, trim-lines.
@@ -5353,7 +5246,7 @@ Used by: longest-streak, trim-lines.
 
 
 --------------------------------------------------------------------------
-[20] MIT
+[18] MIT
 --------------------------------------------------------------------------
 
 Used by: react, react-dom, scheduler.
@@ -5382,7 +5275,7 @@ Used by: react, react-dom, scheduler.
 
 
 --------------------------------------------------------------------------
-[21] MIT
+[19] MIT
 --------------------------------------------------------------------------
 
 Used by: unified, vfile.
@@ -5411,7 +5304,7 @@ Used by: unified, vfile.
 
 
 --------------------------------------------------------------------------
-[22] MIT
+[20] MIT
 --------------------------------------------------------------------------
 
 Used by: workbox-core, workbox-precaching, workbox-routing,
