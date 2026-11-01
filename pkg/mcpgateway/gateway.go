@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -133,11 +134,36 @@ func (gw *Gateway) discoverAndRegister() error {
 // proxyHandler returns a tool handler that forwards the call to the given backend.
 func (gw *Gateway) proxyHandler(backend *mcpclient.Client) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		result, err := backend.CallTool(ctx, request)
+		// The caller's connection metadata describes its connection to the gateway, not the gateway's to the backend,
+		// which can run on another protocol version: a 2026-07-28 version over a connection on an earlier one fails.
+		result, err := backend.CallTool(ctx, withoutConnectionMeta(request))
 		if err != nil {
 			gw.logger.Error().Err(err).Str("tool", request.Params.Name).Msg("proxied tool call failed")
 			return mcp.NewToolResultError(fmt.Sprintf("tool call failed: %v", err)), nil
 		}
 		return result, nil
 	}
+}
+
+// connectionMetaKeys are the _meta keys that describe the connection a request travels on rather than the request
+// itself: the protocol version, and the client's identity, capabilities, and log level. Protocol version 2026-07-28
+// defines them, carrying on each request what earlier versions settle once per connection through the initialize
+// handshake and logging/setLevel.
+var connectionMetaKeys = []string{
+	mcp.MetaKeyProtocolVersion, mcp.MetaKeyClientInfo, mcp.MetaKeyClientCapabilities, mcp.MetaKeyLogLevel,
+}
+
+// withoutConnectionMeta returns request with connectionMetaKeys removed from its _meta, keeping every other field,
+// such as a progress token. The _meta of the request passed in is left unchanged.
+func withoutConnectionMeta(request mcp.CallToolRequest) mcp.CallToolRequest {
+	if request.Params.Meta == nil {
+		return request
+	}
+	meta := *request.Params.Meta
+	meta.AdditionalFields = maps.Clone(meta.AdditionalFields)
+	for _, key := range connectionMetaKeys {
+		delete(meta.AdditionalFields, key)
+	}
+	request.Params.Meta = &meta
+	return request
 }

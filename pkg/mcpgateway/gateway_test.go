@@ -229,3 +229,84 @@ func TestNewGateway_ReportsOptions(t *testing.T) {
 		})
 	}
 }
+
+// startStreamableClient starts a Streamable HTTP client on url and initializes it on protocolVersion, closing it when
+// the test ends.
+func startStreamableClient(t *testing.T, url, protocolVersion string) *mcpclient.Client {
+	t.Helper()
+	c, err := mcpclient.NewStreamableHttpClient(url)
+	if err != nil {
+		t.Fatalf("NewStreamableHttpClient: %v", err)
+	}
+	ctx := context.Background()
+	if err := c.Start(ctx); err != nil {
+		t.Fatalf("starting streamable client: %v", err)
+	}
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+		ProtocolVersion: protocolVersion,
+		ClientInfo:      mcp.Implementation{Name: "test", Version: "1.0.0"},
+	}}); err != nil {
+		t.Fatalf("initializing streamable client: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			t.Errorf("closing streamable client: %v", err)
+		}
+	})
+	return c
+}
+
+// TestNewGateway_ProxiesCallersOfANewerProtocolThanItsBackendConnection checks that a gateway whose connection to a
+// backend runs on an earlier protocol version than its caller still reaches the backend, as after the backend
+// upgrades while the gateway keeps the connection it opened before: the caller's protocol version must not travel
+// with the call, while the rest of its _meta does.
+func TestNewGateway_ProxiesCallersOfANewerProtocolThanItsBackendConnection(t *testing.T) {
+	for _, callerVersion := range []string{mcp.LATEST_LEGACY_PROTOCOL_VERSION, mcp.LATEST_PROTOCOL_VERSION} {
+		t.Run(callerVersion, func(t *testing.T) {
+			received := make(chan *mcp.Meta, 1)
+			backend := mcpserver.NewMCPServer("test-backend", "1.0.0")
+			backend.AddTool(
+				mcp.NewTool("ping", mcp.WithDescription("ping")),
+				func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					received <- req.Params.Meta
+					return mcp.NewToolResultText("pong"), nil
+				},
+			)
+			backendSrv := httptest.NewServer(mcpserver.NewStreamableHTTPServer(backend, mcpserver.WithStateLess(true)))
+			defer backendSrv.Close()
+
+			backendClient := startStreamableClient(t, backendSrv.URL, mcp.LATEST_LEGACY_PROTOCOL_VERSION)
+			gw, err := NewGateway([]*mcpclient.Client{backendClient}, zerolog.Nop(), Options{})
+			if err != nil {
+				t.Fatalf("NewGateway: %v", err)
+			}
+			gatewayTransport := mcpserver.NewStreamableHTTPServer(gw.MCPServer(), mcpserver.WithStateLess(true))
+			gatewaySrv := httptest.NewServer(gatewayTransport)
+			defer gatewaySrv.Close()
+
+			caller := startStreamableClient(t, gatewaySrv.URL, callerVersion)
+			res, err := caller.CallTool(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{
+				Name: "ping",
+				Meta: &mcp.Meta{AdditionalFields: map[string]any{"example.com/trace": "t-1"}},
+			}})
+			if err != nil {
+				t.Fatalf("CallTool through the gateway: %v", err)
+			}
+			if len(res.Content) != 1 {
+				t.Fatalf("tool result content = %+v, want one text", res.Content)
+			}
+			if text, ok := res.Content[0].(mcp.TextContent); !ok || res.IsError || text.Text != "pong" {
+				t.Fatalf("tool result = %+v (error %t), want text pong", res.Content[0], res.IsError)
+			}
+
+			meta := <-received
+			if meta == nil || meta.AdditionalFields["example.com/trace"] != "t-1" {
+				t.Errorf("backend received _meta %+v, want the caller's example.com/trace field", meta)
+			}
+			if version := meta.ProtocolVersion(); version != "" {
+				t.Errorf("backend received protocol version %q in _meta over a %s connection, want none",
+					version, mcp.LATEST_LEGACY_PROTOCOL_VERSION)
+			}
+		})
+	}
+}
