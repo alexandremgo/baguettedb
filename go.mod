@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.5
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.12
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.13
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.6
 	github.com/aws/smithy-go v1.28.7
 	github.com/exaring/otelpgx v0.13.0
@@ -13,12 +13,12 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/licensecheck v0.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/v2 v2.4.1
 	github.com/lestrrat-go/jwx/v2 v2.1.7
 	github.com/lib/pq v1.12.3
-	github.com/mark3labs/mcp-go v1.4.0
+	github.com/mark3labs/mcp-go v1.5.0
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -34,7 +34,7 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/term v0.47.0
 	google.golang.org/grpc v1.85.0
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.61.1
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -74,7 +74,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
