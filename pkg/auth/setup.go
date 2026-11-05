@@ -166,7 +166,7 @@ func setupCore(
 	if opts.UserResponseEnricher != nil {
 		handler.SetUserResponseEnricher(opts.UserResponseEnricher)
 	}
-	internalHandler := authapi.NewInternalHandler(roleSvc, userSvc)
+	internalHandler := authapi.NewInternalHandler(roleSvc, userSvc, st.tokenSvc)
 	router := authapi.NewRouter(handler, internalHandler, requireToken, opts.Policy, cfg.InternalAPISecret)
 	if opts.PersonalAccessTokens {
 		authapi.RegisterTokenRoutes(router, authapi.NewTokenHandler(st.tokenSvc, logger), requireToken)
@@ -184,7 +184,8 @@ func setupCore(
 }
 
 // opaqueTokenPrefixes lists the prefixes of the opaque token kinds a request may carry as its bearer token: personal
-// tokens and sessions.
+// tokens and sessions. The Data API key prefix is not among them: a key runs only the formulas picked for it, and is
+// checked on its own.
 var opaqueTokenPrefixes = []string{domain.AccessTokenPersonal.Prefix(), domain.AccessTokenSession.Prefix()}
 
 // opaqueTokenChecker adapts the token service's check to an auth middleware's: a token the service refuses is

@@ -38,7 +38,7 @@ func setupLoginRouter(
 	if len(providers) > 0 {
 		handler.SetOIDCProviders(providers)
 	}
-	internalHandler := api.NewInternalHandler(roleSvc, userSvc)
+	internalHandler := api.NewInternalHandler(roleSvc, userSvc, newTokenService())
 	discovery := api.NewDiscoveryHandler("http://localhost:8080", testJWKS.Issuer(), testLogger)
 	oidcProxy := api.NewOIDCProxyHandler(nil, "http://localhost:8080", testLogger)
 	tv, err := authhttp.NewTokenValidator(
