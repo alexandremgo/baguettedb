@@ -78,6 +78,23 @@ func (a *testAuthApp) GetUserProfiles(
 	return out, nil
 }
 
+// CreateDataAPIKey and the other Data API key methods do nothing, since these tests manage no keys.
+func (a *testAuthApp) CreateDataAPIKey(
+	_ context.Context, _, _ uuid.UUID, _ string,
+) (apptypes.CreatedDataAPIKey, error) {
+	return apptypes.CreatedDataAPIKey{}, nil
+}
+
+func (a *testAuthApp) ListDataAPIKeys(_ context.Context, _ uuid.UUID) ([]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
+func (a *testAuthApp) RevokeDataAPIKey(_ context.Context, _, _ uuid.UUID) error { return nil }
+
+func (a *testAuthApp) RevokeDataAPIKeys(_ context.Context, _ uuid.UUID) error { return nil }
+
+func (a *testAuthApp) RevokeMemberDataAPIKeys(_ context.Context, _, _ uuid.UUID) error { return nil }
+
 // seedUser creates a test user in the database and returns its ID string.
 func seedUser(t *testing.T, email string) string {
 	t.Helper()

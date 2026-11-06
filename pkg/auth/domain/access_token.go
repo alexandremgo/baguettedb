@@ -73,19 +73,34 @@ type AccessToken struct {
 	BdbID *uuid.UUID
 }
 
-// ValidateAccessTokenName returns name trimmed of surrounding spaces, or an ErrInvalidAccessTokenName when it is empty
-// or longer than AccessTokenNameMaxLen.
+// ValidateAccessTokenName returns name trimmed of surrounding spaces, or an InvalidAccessTokenNameError when it is
+// empty or longer than AccessTokenNameMaxLen.
 func ValidateAccessTokenName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", fmt.Errorf("%w: the name is empty", ErrInvalidAccessTokenName)
+		return "", InvalidAccessTokenNameError{Problem: "the name is empty"}
 	}
 	if len(name) > AccessTokenNameMaxLen {
-		return "", fmt.Errorf("%w: the name is longer than %d characters", ErrInvalidAccessTokenName,
-			AccessTokenNameMaxLen)
+		return "", InvalidAccessTokenNameError{
+			Problem: fmt.Sprintf("the name is longer than %d characters", AccessTokenNameMaxLen),
+		}
 	}
 	return name, nil
 }
+
+// InvalidAccessTokenNameError reports a name ValidateAccessTokenName refuses, with what is wrong with it. It unwraps
+// to ErrInvalidAccessTokenName.
+type InvalidAccessTokenNameError struct {
+	// Problem says what is wrong with the name, such as "the name is empty".
+	Problem string
+}
+
+func (e InvalidAccessTokenNameError) Error() string {
+	return ErrInvalidAccessTokenName.Error() + ": " + e.Problem
+}
+
+// Unwrap ties the typed error to the ErrInvalidAccessTokenName sentinel.
+func (e InvalidAccessTokenNameError) Unwrap() error { return ErrInvalidAccessTokenName }
 
 // AccessTokenWithUser is an access token with what checking it needs about its user: whether the account is active,
 // and its roles.

@@ -59,6 +59,17 @@ var (
 	// ErrInviteBdbDeleted indicates that the target bdb has been
 	// soft-deleted, so the invite can no longer be redeemed.
 	ErrInviteBdbDeleted = errors.New("invite target bdb has been deleted")
+
+	// ErrDataAPIKeyNotFound indicates that the bdb has no such Data API key, or that the key is revoked.
+	ErrDataAPIKeyNotFound = errors.New("data API key not found")
+
+	// ErrInvalidDataAPIKeyName indicates a Data API key name that is empty or too long. It is returned wrapped, with
+	// what is wrong with the name.
+	ErrInvalidDataAPIKeyName = errors.New("invalid data API key name")
+
+	// ErrFormulaNotInBdb indicates a formula ID that names none of the bdb's formulas. It is returned wrapped, with the
+	// ID.
+	ErrFormulaNotInBdb = errors.New("no such formula in this bdb")
 )
 
 // BdbLimitReachedError indicates that the user has reached their maximum number of bdbs.

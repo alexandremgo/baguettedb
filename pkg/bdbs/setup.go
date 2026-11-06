@@ -40,7 +40,8 @@ type SetupResult struct {
 	Cleanup        func()
 
 	// SetDatabasesApp injects the databases module dependency after it is set up (enabling schema enrichment in
-	// list_bdbs) and starts the soft-delete purge runner, which needs it. Idempotent: later calls are no-ops.
+	// list_bdbs and the formula checks of Data API keys) and starts the soft-delete purge runner, which needs it.
+	// Idempotent: later calls are no-ops.
 	SetDatabasesApp func(service.DatabasesApp)
 }
 
@@ -120,6 +121,8 @@ func Setup(
 	internalHandler := bdbapi.NewInternalHandler(authChecker, logger)
 	router := bdbapi.NewRouter(
 		handler, inviteHandler, internalHandler, requireToken, cfg.MaxRequestBodySize, cfg.InternalAPISecret)
+	bdbapi.RegisterDataAPIKeyRoutes(router, bdbapi.NewDataAPIKeyHandler(st.dataAPIKeySvc, logger), requireToken,
+		cfg.MaxRequestBodySize)
 
 	// Registers extension-provided extra routes if any.
 	extDeps := ExtDeps{
@@ -189,6 +192,7 @@ func Setup(
 			dbRef.App = app
 			handler.SetDatabasesApp(app)
 			bdbSvc.SetDatabasesApp(app)
+			st.dataAPIKeySvc.SetDatabasesApp(app)
 			startPurger.Do(func() {
 				purgerWG.Go(func() {
 					purger.Run(purgerCtx)

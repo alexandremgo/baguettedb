@@ -66,6 +66,23 @@ func (m *mockAuthApp) GetUserProfiles(
 	return out, nil
 }
 
+// CreateDataAPIKey and the other Data API key methods do nothing, since these tests manage no keys.
+func (m *mockAuthApp) CreateDataAPIKey(
+	_ context.Context, _, _ uuid.UUID, _ string,
+) (apptypes.CreatedDataAPIKey, error) {
+	return apptypes.CreatedDataAPIKey{}, nil
+}
+
+func (m *mockAuthApp) ListDataAPIKeys(_ context.Context, _ uuid.UUID) ([]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
+func (m *mockAuthApp) RevokeDataAPIKey(_ context.Context, _, _ uuid.UUID) error { return nil }
+
+func (m *mockAuthApp) RevokeDataAPIKeys(_ context.Context, _ uuid.UUID) error { return nil }
+
+func (m *mockAuthApp) RevokeMemberDataAPIKeys(_ context.Context, _, _ uuid.UUID) error { return nil }
+
 func (m *mockBdbRepo) CountActive(context.Context) (int64, error) {
 	return 0, nil
 }

@@ -117,7 +117,7 @@ type createDataAPIKeyRequest struct {
 // CreateDataAPIKey handles POST /internal/api/auth/v1/data-api-keys/create: creates a Data API key for a user, bound to
 // a bdb, and returns it with its plain value. Whether the user may create a key for the bdb is not checked here.
 //
-// An invalid name is a 422 carrying the reason, an unknown user a 404.
+// An invalid name is a 422 carrying what is wrong with it, an unknown user a 404.
 func (h *InternalHandler) CreateDataAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req createDataAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -134,10 +134,11 @@ func (h *InternalHandler) CreateDataAPIKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	plain, token, err := h.tokens.CreateDataAPIKey(r.Context(), userID, bdbID, req.Name)
-	switch {
-	case errors.Is(err, domain.ErrInvalidAccessTokenName):
-		httputil.RespondJSON(w, http.StatusUnprocessableEntity, errorResponse{Error: err.Error()})
+	if nameErr, ok := errors.AsType[domain.InvalidAccessTokenNameError](err); ok {
+		httputil.RespondJSON(w, http.StatusUnprocessableEntity, errorResponse{Error: nameErr.Problem})
 		return
+	}
+	switch {
 	case errors.Is(err, domain.ErrUserNotFound):
 		httputil.RespondJSON(w, http.StatusNotFound, errorResponse{Error: "user not found"})
 		return

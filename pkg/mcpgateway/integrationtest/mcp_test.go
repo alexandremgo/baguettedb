@@ -165,6 +165,25 @@ func (a *gatewayTestAuthApp) GetUserProfiles(
 	return out, nil
 }
 
+// CreateDataAPIKey and the other Data API key methods do nothing, since these tests manage no keys.
+func (a *gatewayTestAuthApp) CreateDataAPIKey(
+	_ context.Context, _, _ uuid.UUID, _ string,
+) (apptypes.CreatedDataAPIKey, error) {
+	return apptypes.CreatedDataAPIKey{}, nil
+}
+
+func (a *gatewayTestAuthApp) ListDataAPIKeys(_ context.Context, _ uuid.UUID) ([]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
+func (a *gatewayTestAuthApp) RevokeDataAPIKey(_ context.Context, _, _ uuid.UUID) error { return nil }
+
+func (a *gatewayTestAuthApp) RevokeDataAPIKeys(_ context.Context, _ uuid.UUID) error { return nil }
+
+func (a *gatewayTestAuthApp) RevokeMemberDataAPIKeys(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
 // setupGatewayMCPClient creates both module MCP servers, aggregates them via the gateway, and returns an initialized
 // SSE MCP client authenticated as the given user. Returns the bdbs + databases services so tests can drive lifecycle
 // ops directly (e.g. provisioning a per-bdb DB, soft-deleting, advancing deleted_at, calling PurgeExpired).
