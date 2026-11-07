@@ -93,6 +93,33 @@ func (r *DataAPIKeyFormulaRepo) ListByBdb(
 	return formulas, nil
 }
 
+// HasFormula reports whether the key keyID of the bdb bdbID may run formulaID.
+func (r *DataAPIKeyFormulaRepo) HasFormula(
+	ctx context.Context, bdbID, keyID uuid.UUID, formulaID string,
+) (bool, error) {
+	var found bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (
+		     SELECT 1 FROM data_api_key_formulas WHERE bdb_id = $1 AND key_id = $2 AND formula_id = $3
+		 )`,
+		bdbID, keyID, formulaID,
+	).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("checking a data API key's formula: %w", err)
+	}
+	return found, nil
+}
+
+// DeleteByFormula forgets formulaID for every key of the bdb bdbID.
+func (r *DataAPIKeyFormulaRepo) DeleteByFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM data_api_key_formulas WHERE bdb_id = $1 AND formula_id = $2`, bdbID, formulaID)
+	if err != nil {
+		return fmt.Errorf("deleting a formula's data API key links: %w", err)
+	}
+	return nil
+}
+
 // DeleteByKey forgets every formula of the key keyID of the bdb bdbID.
 func (r *DataAPIKeyFormulaRepo) DeleteByKey(ctx context.Context, bdbID, keyID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx,

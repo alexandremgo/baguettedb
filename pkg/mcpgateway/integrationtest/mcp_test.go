@@ -140,6 +140,15 @@ func (a *allowAllBdbsApp) CheckMemberPermission(
 	return true, nil
 }
 
+// CheckDataAPIKeyFormula and ForgetDataAPIKeyFormula do nothing, since these tests run formulas under no key.
+func (a *allowAllBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}
+
+func (a *allowAllBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
 func (a *allowAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	return uuid.Nil, []authz.Role{authz.RoleUser}, nil
 }

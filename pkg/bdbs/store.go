@@ -61,13 +61,15 @@ func openStore(
 	bdbSvc := service.NewBdbService(bdbRepo, membershipTx, authApp, qr, logger)
 	bdbSvc.SetPurgeLock(bdbpg.NewPurgeLock(pool, logger))
 	bdbSvc.SetDataAPIKeys(dataAPIKeySvc)
+	authChecker := service.NewBdbAuthChecker(bdbRepo, authApp)
+	authChecker.SetDataAPIKeys(dataAPIKeySvc)
 	return &store{
 		pool:   pool,
 		bdbSvc: bdbSvc,
 		inviteSvc: service.NewInviteService(
 			bdbpg.NewInviteRepo(pool), bdbRepo, inviteAcceptTx, qr, authApp, logger,
 		),
-		authChecker:   service.NewBdbAuthChecker(bdbRepo, authApp),
+		authChecker:   authChecker,
 		dataAPIKeySvc: dataAPIKeySvc,
 		close:         pool.Close,
 	}, nil
@@ -99,12 +101,14 @@ func openSQLiteStore(
 	bdbSvc := service.NewBdbService(bdbRepo, membershipTx, authApp, qr, logger)
 	bdbSvc.SetPurgeLock(bdbsqlite.NewPurgeLock(path, logger))
 	bdbSvc.SetDataAPIKeys(dataAPIKeySvc)
+	authChecker := service.NewBdbAuthChecker(bdbRepo, authApp)
+	authChecker.SetDataAPIKeys(dataAPIKeySvc)
 	return &store{
 		bdbSvc: bdbSvc,
 		inviteSvc: service.NewInviteService(
 			bdbsqlite.NewInviteRepo(db), bdbRepo, inviteAcceptTx, qr, authApp, logger,
 		),
-		authChecker:   service.NewBdbAuthChecker(bdbRepo, authApp),
+		authChecker:   authChecker,
 		dataAPIKeySvc: dataAPIKeySvc,
 		close: func() {
 			if err := db.Close(); err != nil {

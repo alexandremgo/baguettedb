@@ -43,6 +43,7 @@ func setupRouterWithLimits(t *testing.T, limits quota.Resolver) chi.Router {
 	bdbSvc := newBdbService(testAuth, limits)
 	inviteSvc := newInviteService(testAuth, limits)
 	authChecker := newAuthChecker(nil)
+	authChecker.SetDataAPIKeys(newDataAPIKeyService(testAuth))
 
 	tv, err := authhttp.NewTokenValidator(context.Background(), testJWKS.JWKSURL(), testJWKS.Issuer(), "", testLogger)
 	if err != nil {

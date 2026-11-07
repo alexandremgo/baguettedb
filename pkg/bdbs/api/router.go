@@ -54,6 +54,8 @@ func NewRouter(
 		r.Post("/internal/api/bdbs/v1/check-permission", internalHandler.CheckPermission)
 		r.Post("/internal/api/bdbs/v1/bdb-owner", internalHandler.GetBdbOwner)
 		r.Post("/internal/api/bdbs/v1/owned-bdb-ids", internalHandler.GetOwnedBdbIDs)
+		r.Post("/internal/api/bdbs/v1/data-api-key-formulas/check", internalHandler.CheckDataAPIKeyFormula)
+		r.Post("/internal/api/bdbs/v1/data-api-key-formulas/forget", internalHandler.ForgetDataAPIKeyFormula)
 	})
 
 	return r

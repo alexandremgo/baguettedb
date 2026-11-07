@@ -28,6 +28,12 @@ type dataAPIKeyFormulaRepository interface {
 	// order they were added.
 	ListByBdb(ctx context.Context, bdbID uuid.UUID) (map[uuid.UUID][]string, error)
 
+	// HasFormula reports whether the key keyID of the bdb bdbID may run formulaID.
+	HasFormula(ctx context.Context, bdbID, keyID uuid.UUID, formulaID string) (bool, error)
+
+	// DeleteByFormula forgets formulaID for every key of the bdb bdbID.
+	DeleteByFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
+
 	// DeleteByKey forgets every formula of the key keyID of the bdb bdbID.
 	DeleteByKey(ctx context.Context, bdbID, keyID uuid.UUID) error
 
@@ -186,6 +192,37 @@ func (s *DataAPIKeyService) RevokeKey(ctx context.Context, userID, bdbID, keyID 
 	if err := s.formulas.DeleteByKey(ctx, bdbID, keyID); err != nil {
 		s.logger.Error().Err(err).Str("bdb_id", bdbID.String()).Str("key_id", keyID.String()).
 			Msg("failed to forget a revoked data API key's formulas")
+	}
+	return nil
+}
+
+// KeyMayRunFormula reports whether the Data API key keyID of the bdb bdbID may run the formula formulaID: it must be
+// among the key's formulas, and the bdb must exist and not be soft-deleted, whatever formulas a key still has there.
+// Whether the key's creator may run the formula is not checked here.
+func (s *DataAPIKeyService) KeyMayRunFormula(
+	ctx context.Context, bdbID, keyID uuid.UUID, formulaID string,
+) (bool, error) {
+	bdb, err := s.bdbs.FindByID(ctx, bdbID)
+	if errors.Is(err, domain.ErrBdbNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("finding bdb: %w", err)
+	}
+	if bdb.IsSoftDeleted() {
+		return false, nil
+	}
+	found, err := s.formulas.HasFormula(ctx, bdbID, keyID, formulaID)
+	if err != nil {
+		return false, fmt.Errorf("checking the data API key's formula: %w", err)
+	}
+	return found, nil
+}
+
+// ForgetFormula forgets the formula formulaID for every Data API key of the bdb bdbID, the formula being gone.
+func (s *DataAPIKeyService) ForgetFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
+	if err := s.formulas.DeleteByFormula(ctx, bdbID, formulaID); err != nil {
+		return fmt.Errorf("forgetting a formula of the data API keys: %w", err)
 	}
 	return nil
 }

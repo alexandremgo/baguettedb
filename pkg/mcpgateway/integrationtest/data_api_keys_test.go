@@ -17,6 +17,8 @@ import (
 	bdbsdomain "github.com/alexandremgo/baguettedb/pkg/bdbs/domain"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/testutil"
+	dbdomain "github.com/alexandremgo/baguettedb/pkg/databases/domain"
+	dbsvc "github.com/alexandremgo/baguettedb/pkg/databases/service"
 	"github.com/alexandremgo/baguettedb/pkg/instance"
 )
 
@@ -366,5 +368,162 @@ func TestDataAPIKeys_RevokedWithTheirBdbOrMember(t *testing.T) {
 	}
 	if k.keyValid(leftKey) {
 		t.Error("the purge left the soft-deleted bdb's key valid")
+	}
+}
+
+// actionFormula creates an action formula adding a note in the bdb bdbID as the holder of token, and returns its ID.
+func (k *keyInstance) actionFormula(token, bdbID, name string) string {
+	k.t.Helper()
+	status, resp := k.do(http.MethodPost, "/api/databases/v1/bdbs/"+bdbID+"/formulas", token, map[string]any{
+		"name": name, "description": "Adds a note", "sql": "INSERT INTO notes (body) VALUES ('added')",
+		"params": []any{},
+	})
+	if status != http.StatusCreated {
+		k.t.Fatalf("creating action formula %s = %d %v, want 201", name, status, resp)
+	}
+	id, _ := resp["id"].(string)
+	return id
+}
+
+// storeLink records directly that the key keyID may run formulaID on the bdb bdbID, for a state REST can't reach.
+func (k *keyInstance) storeLink(bdbID, keyID, formulaID string) {
+	k.t.Helper()
+	if err := testDB.Exec(context.Background(),
+		`INSERT INTO data_api_key_formulas (key_id, bdb_id, formula_id, created_at) VALUES ($1, $2, $3, $4)`,
+		keyID, bdbID, formulaID, time.Now().UTC()); err != nil {
+		k.t.Fatalf("storing a formula link: %v", err)
+	}
+}
+
+// run runs formulaID under the key keyID of the bdb bdbID, acting as userID.
+func (k *keyInstance) run(userID uuid.UUID, keyID, bdbID, formulaID string) (*dbsvc.FormulaRunResult, error) {
+	k.t.Helper()
+	return k.inst.Databases.FormulaSvc.RunFormulaAsDataAPIKey(context.Background(), userID, uuid.MustParse(keyID),
+		uuid.MustParse(bdbID), formulaID, dbsvc.FormulaRunInput{})
+}
+
+// TestDataAPIKeys_RunFormula checks a run under a Data API key: a view and an action on the key run, the action's
+// change showing in the view, while a formula of the bdb that isn't on the key, a formula named rather than given by
+// ID, and a formula on the key asked for on another bdb are all refused.
+func TestDataAPIKeys_RunFormula(t *testing.T) {
+	k := newKeyInstance(t)
+	ownerID, owner := k.user("owner")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Notes", "all-notes", "other-notes")
+	otherBdbID, _ := k.bdbWithFormulas(owner, "Elsewhere")
+	action := k.actionFormula(owner, bdbID, "add-note")
+	keyID, _ := k.createKey(owner, bdbID, "app", formulas[0], action)
+
+	if _, err := k.run(ownerID, keyID, bdbID, action); err != nil {
+		t.Fatalf("running the action on the key = %v", err)
+	}
+	result, err := k.run(ownerID, keyID, bdbID, formulas[0])
+	if err != nil {
+		t.Fatalf("running the view on the key = %v", err)
+	}
+	if len(result.Result.Rows) != 1 {
+		t.Errorf("view rows = %v, want the note the action added", result.Result.Rows)
+	}
+
+	for name, tt := range map[string]struct{ bdb, formula string }{
+		"a formula not on the key":             {bdbID, formulas[1]},
+		"a formula by name":                    {bdbID, "all-notes"},
+		"a formula of the key, on another bdb": {otherBdbID, formulas[0]},
+	} {
+		if _, err := k.run(ownerID, keyID, tt.bdb, tt.formula); !errors.Is(err, dbdomain.ErrAccessDenied) {
+			t.Errorf("running %s = %v, want ErrAccessDenied", name, err)
+		}
+	}
+}
+
+// TestDataAPIKeys_RunRefusedOnASoftDeletedBdb checks that no key runs anything on a soft-deleted bdb, even a key a
+// failed revocation left there with its formula.
+func TestDataAPIKeys_RunRefusedOnASoftDeletedBdb(t *testing.T) {
+	k := newKeyInstance(t)
+	ownerID, owner := k.user("owner")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Notes", "all-notes")
+	keyID, _ := k.createKey(owner, bdbID, "app", formulas[0])
+
+	if status, resp := k.do(http.MethodDelete, "/api/bdbs/v1/bdbs/"+bdbID, owner, nil); status !=
+		http.StatusNoContent {
+		t.Fatalf("soft-deleting the bdb = %d %v, want 204", status, resp)
+	}
+	k.storeLink(bdbID, keyID, formulas[0])
+	if _, err := k.run(ownerID, keyID, bdbID, formulas[0]); !errors.Is(err, dbdomain.ErrAccessDenied) {
+		t.Errorf("running on a soft-deleted bdb = %v, want ErrAccessDenied", err)
+	}
+}
+
+// TestDataAPIKeys_RunStaysWithinTheCreatorsRights checks that a key never does more than the user it acts as: a
+// viewer's key runs a view but not an action, even with both on it, and runs nothing once the viewer has left the bdb.
+// Only the owner creates keys over REST today, so the key is recorded for the viewer directly.
+func TestDataAPIKeys_RunStaysWithinTheCreatorsRights(t *testing.T) {
+	k := newKeyInstance(t)
+	ownerID, owner := k.user("owner")
+	viewerID, _ := k.user("viewer")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Shared", "all-notes")
+	action := k.actionFormula(owner, bdbID, "add-note")
+
+	ctx := context.Background()
+	if _, err := k.inst.Bdbs.BdbSvc.AddMember(ctx, ownerID, uuid.MustParse(bdbID), viewerID, authz.BdbRoleViewer,
+		[]authz.Role{authz.RoleUser}); err != nil {
+		t.Fatalf("adding the viewer: %v", err)
+	}
+	_, key, err := k.inst.Auth.TokenSvc.CreateDataAPIKey(ctx, viewerID, uuid.MustParse(bdbID), "viewer app")
+	if err != nil {
+		t.Fatalf("creating the viewer's key: %v", err)
+	}
+	keyID := key.ID.String()
+	k.storeLink(bdbID, keyID, formulas[0])
+	k.storeLink(bdbID, keyID, action)
+
+	if _, err := k.run(viewerID, keyID, bdbID, formulas[0]); err != nil {
+		t.Errorf("running a view under a viewer's key = %v", err)
+	}
+	if _, err := k.run(viewerID, keyID, bdbID, action); !errors.Is(err, dbdomain.ErrAccessDenied) {
+		t.Errorf("running an action under a viewer's key = %v, want ErrAccessDenied", err)
+	}
+
+	if _, err := k.inst.Bdbs.BdbSvc.RemoveMember(ctx, ownerID, uuid.MustParse(bdbID), viewerID); err != nil {
+		t.Fatalf("removing the viewer: %v", err)
+	}
+	if _, err := k.run(viewerID, keyID, bdbID, formulas[0]); !errors.Is(err, dbdomain.ErrAccessDenied) {
+		t.Errorf("running under a removed member's key = %v, want ErrAccessDenied", err)
+	}
+}
+
+// TestDataAPIKeys_DeletingAFormulaForgetsItsLinks checks that deleting a formula removes it from every key that had
+// it, leaving their other formulas.
+func TestDataAPIKeys_DeletingAFormulaForgetsItsLinks(t *testing.T) {
+	k := newKeyInstance(t)
+	_, owner := k.user("owner")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Notes", "all-notes", "other-notes")
+	firstKey, _ := k.createKey(owner, bdbID, "first app", formulas...)
+	secondKey, _ := k.createKey(owner, bdbID, "second app", formulas[0])
+
+	if status, resp := k.do(http.MethodDelete, "/api/databases/v1/bdbs/"+bdbID+"/formulas/"+formulas[0], owner,
+		nil); status != http.StatusNoContent {
+		t.Fatalf("deleting the formula = %d %v, want 204", status, resp)
+	}
+	got := k.keyFormulas(owner, bdbID)
+	if !slices.Equal(got[firstKey], formulas[1:]) || len(got[secondKey]) != 0 {
+		t.Errorf("keys' formulas after deleting one = %v, want the other formula on the first key alone", got)
+	}
+}
+
+// TestDataAPIKeys_RunForgetsAMissingFormula checks that a key calling a formula that no longer exists, whose link a
+// failed clean-up left behind, gets a not-found error and the link is removed.
+func TestDataAPIKeys_RunForgetsAMissingFormula(t *testing.T) {
+	k := newKeyInstance(t)
+	ownerID, owner := k.user("owner")
+	bdbID, _ := k.bdbWithFormulas(owner, "Notes")
+	keyID, _ := k.createKey(owner, bdbID, "app")
+	missing := uuid.NewString()
+	k.storeLink(bdbID, keyID, missing)
+
+	if _, err := k.run(ownerID, keyID, bdbID, missing); !errors.Is(err, dbdomain.ErrFormulaNotFound) {
+		t.Fatalf("running a formula that no longer exists = %v, want ErrFormulaNotFound", err)
+	}
+	if links := k.storedFormulaLinks(bdbID); links != 0 {
+		t.Errorf("formula links left after running a missing formula = %d, want none", links)
 	}
 }

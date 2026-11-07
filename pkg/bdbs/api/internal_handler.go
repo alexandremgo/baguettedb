@@ -45,6 +45,19 @@ type ownedBdbIDsResponse struct {
 	BdbIDs []string `json:"bdb_ids"`
 }
 
+// checkDataAPIKeyFormulaRequest holds the JSON body for checking that a Data API key may run a formula.
+type checkDataAPIKeyFormulaRequest struct {
+	KeyID     string `json:"key_id"`
+	BdbID     string `json:"bdb_id"`
+	FormulaID string `json:"formula_id"`
+}
+
+// forgetDataAPIKeyFormulaRequest holds the JSON body for forgetting a formula of every Data API key of a bdb.
+type forgetDataAPIKeyFormulaRequest struct {
+	BdbID     string `json:"bdb_id"`
+	FormulaID string `json:"formula_id"`
+}
+
 // InternalHandler handles internal service-to-service endpoints.
 type InternalHandler struct {
 	authChecker *service.BdbAuthChecker
@@ -149,4 +162,58 @@ func (h *InternalHandler) GetOwnedBdbIDs(w http.ResponseWriter, r *http.Request)
 	}
 
 	httputil.RespondJSON(w, http.StatusOK, ownedBdbIDsResponse{BdbIDs: idStrings})
+}
+
+// CheckDataAPIKeyFormula handles POST /internal/api/bdbs/v1/data-api-key-formulas/check.
+// Returns whether the Data API key may run the formula, which no key may on a soft-deleted bdb.
+func (h *InternalHandler) CheckDataAPIKeyFormula(w http.ResponseWriter, r *http.Request) {
+	var req checkDataAPIKeyFormulaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	keyID, err := uuid.Parse(req.KeyID)
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid key_id"})
+		return
+	}
+	bdbID, err := uuid.Parse(req.BdbID)
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid bdb_id"})
+		return
+	}
+
+	allowed, err := h.authChecker.CheckDataAPIKeyFormula(r.Context(), keyID, bdbID, req.FormulaID)
+	if err != nil {
+		h.logger.Error().Err(err).Str("bdb_id", bdbID.String()).Msg("failed to check a data API key's formula")
+		httputil.RespondJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+		return
+	}
+
+	httputil.RespondJSON(w, http.StatusOK, checkPermissionResponse{Allowed: allowed})
+}
+
+// ForgetDataAPIKeyFormula handles POST /internal/api/bdbs/v1/data-api-key-formulas/forget.
+// Forgets the formula for every Data API key of the bdb; a formula no key has is not an error.
+func (h *InternalHandler) ForgetDataAPIKeyFormula(w http.ResponseWriter, r *http.Request) {
+	var req forgetDataAPIKeyFormulaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	bdbID, err := uuid.Parse(req.BdbID)
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid bdb_id"})
+		return
+	}
+
+	if err := h.authChecker.ForgetDataAPIKeyFormula(r.Context(), bdbID, req.FormulaID); err != nil {
+		h.logger.Error().Err(err).Str("bdb_id", bdbID.String()).Msg("failed to forget a data API key formula")
+		httputil.RespondJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

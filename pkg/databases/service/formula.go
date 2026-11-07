@@ -537,6 +537,10 @@ func (s *FormulaService) listFormulas(
 
 // DeleteFormula removes the formula resolved by name or UUID. Attached actions are
 // removed via FK cascade. Returns ErrFormulaNotFound if it does not exist.
+//
+// The formula's Data API key links are forgotten just after, not in one transaction with the delete: the formula lives
+// in the bdb's file and the links in the bdbs app's store. A failure to forget them is only logged, since a link left
+// behind is harmless: running a formula that no longer exists fails.
 func (s *FormulaService) DeleteFormula(ctx context.Context, userID, bdbID uuid.UUID, ref string) error {
 	ctx, span := tracer.Start(ctx, "FormulaService.DeleteFormula",
 		trace.WithAttributes(
@@ -576,6 +580,12 @@ func (s *FormulaService) DeleteFormula(ctx context.Context, userID, bdbID uuid.U
 	if _, err := s.executor.ExecuteInternal(ctx, databaseID, deleteSQL,
 		[]domain.TypedValue{domain.TextValue(existing.ID.String())}); err != nil {
 		return fmt.Errorf("deleting formula: %w", err)
+	}
+	if err := s.dbSvc.ForgetDataAPIKeyFormula(ctx, bdbID, existing.ID.String()); err != nil {
+		s.logger.Error().Err(err).
+			Str("bdb_id", bdbID.String()).
+			Str("formula_id", existing.ID.String()).
+			Msg("failed to forget a deleted formula's data API key links")
 	}
 	return nil
 }

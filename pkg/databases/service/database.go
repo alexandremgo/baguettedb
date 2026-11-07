@@ -289,6 +289,30 @@ func (s *DatabaseService) CheckDatabasePermission(
 	return nil
 }
 
+// CheckDataAPIKeyFormula verifies that the Data API key keyID of the bdb bdbID may run the formula formulaID. Returns
+// domain.ErrAccessDenied if not, which every formula is on a soft-deleted bdb. Whether the key's creator may run the
+// formula is not checked here.
+func (s *DatabaseService) CheckDataAPIKeyFormula(
+	ctx context.Context, keyID, bdbID uuid.UUID, formulaID string,
+) error {
+	allowed, err := s.bdbsApp.CheckDataAPIKeyFormula(ctx, keyID, bdbID, formulaID)
+	if err != nil {
+		return fmt.Errorf("checking the data API key's formula: %w", err)
+	}
+	if !allowed {
+		return domain.ErrAccessDenied
+	}
+	return nil
+}
+
+// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
+func (s *DatabaseService) ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
+	if err := s.bdbsApp.ForgetDataAPIKeyFormula(ctx, bdbID, formulaID); err != nil {
+		return fmt.Errorf("forgetting a formula of the data API keys: %w", err)
+	}
+	return nil
+}
+
 // AuthorizeMembership verifies that the user is a member of the bdb
 // (any role). Returns domain.ErrNotMember if not. Cheaper than the
 // per-operation permission check; intended as the early gate before

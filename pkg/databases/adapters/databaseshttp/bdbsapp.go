@@ -43,6 +43,17 @@ type ownedBdbIDsResponse struct {
 	BdbIDs []string `json:"bdb_ids"`
 }
 
+type checkDataAPIKeyFormulaRequest struct {
+	KeyID     string `json:"key_id"`
+	BdbID     string `json:"bdb_id"`
+	FormulaID string `json:"formula_id"`
+}
+
+type forgetDataAPIKeyFormulaRequest struct {
+	BdbID     string `json:"bdb_id"`
+	FormulaID string `json:"formula_id"`
+}
+
 // BdbsApp implements BdbsApp by calling the bdbs service over HTTP.
 // Used in standalone (microservice) mode where bdbs runs as a separate service.
 type BdbsApp struct {
@@ -188,4 +199,57 @@ func (a *BdbsApp) GetOwnedBdbIDs(ctx context.Context, userID uuid.UUID) ([]uuid.
 	}
 
 	return ids, nil
+}
+
+// CheckDataAPIKeyFormula calls the bdbs service's internal endpoint checking that a Data API key may run a formula.
+func (a *BdbsApp) CheckDataAPIKeyFormula(
+	ctx context.Context, keyID, bdbID uuid.UUID, formulaID string,
+) (bool, error) {
+	var result checkPermissionResponse
+	err := a.postInternal(ctx, "/internal/api/bdbs/v1/data-api-key-formulas/check",
+		checkDataAPIKeyFormulaRequest{KeyID: keyID.String(), BdbID: bdbID.String(), FormulaID: formulaID},
+		http.StatusOK, &result)
+	if err != nil {
+		return false, err
+	}
+	return result.Allowed, nil
+}
+
+// ForgetDataAPIKeyFormula calls the bdbs service's internal endpoint forgetting a formula of every Data API key.
+func (a *BdbsApp) ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
+	return a.postInternal(ctx, "/internal/api/bdbs/v1/data-api-key-formulas/forget",
+		forgetDataAPIKeyFormulaRequest{BdbID: bdbID.String(), FormulaID: formulaID}, http.StatusNoContent, nil)
+}
+
+// postInternal POSTs body as JSON to the bdbs service's internal endpoint path, with the internal API secret. An
+// answer with status want is decoded into out, unless out is nil; any other is an error naming the status.
+func (a *BdbsApp) postInternal(ctx context.Context, path string, body any, want int, out any) error {
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshaling request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+path, bytes.NewReader(encoded))
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	authhttp.SetInternalSecretHeader(req.Header, a.internalAPISecret)
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("calling bdbs service: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != want {
+		return fmt.Errorf("bdbs service returned status %d", resp.StatusCode)
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decoding response: %w", err)
+	}
+	return nil
 }

@@ -185,6 +185,13 @@ type BdbsApp interface {
 	// GetOwnedBdbIDs returns the IDs of every bdb the given user owns, including soft-deleted bdbs
 	// still awaiting purge (their storage remains allocated until the purge removes it).
 	GetOwnedBdbIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+
+	// CheckDataAPIKeyFormula reports whether the Data API key keyID of the bdb bdbID may run the formula formulaID,
+	// which no key may on a soft-deleted bdb. Whether the key's creator may run the formula is not checked here.
+	CheckDataAPIKeyFormula(ctx context.Context, keyID, bdbID uuid.UUID, formulaID string) (bool, error)
+
+	// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
+	ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
 }
 
 // DatabaseRepository defines persistence operations for database metadata.
