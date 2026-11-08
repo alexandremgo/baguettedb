@@ -4,12 +4,18 @@ package integrationtest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
+
+	"github.com/alexandremgo/baguettedb/pkg/common/authhttp"
+	"github.com/alexandremgo/baguettedb/pkg/instance"
 )
 
 // dataAPIPath returns the path of a Data API route of the bdb bdbID, followed by rest.
@@ -158,8 +164,8 @@ func TestDataAPI_ListAndRun(t *testing.T) {
 // TestDataAPI_Refusals checks what the Data API refuses, each with its code: a formula not on the key, or deleted
 // since it was put there (403 formula_not_on_key); an invalid parameter value (400 invalid_params); a body that isn't
 // JSON (400 invalid_request); no key (401 missing_key); a revoked key and a personal token as bearer tokens (401
-// invalid_key); and a request carrying a token in a cookie but no key (401 missing_key), since the Data API reads no
-// cookie.
+// invalid_key); and the owner's personal token in the web app's access-token cookie, which the REST API accepts, but no
+// key (401 missing_key), since the Data API reads no cookie.
 func TestDataAPI_Refusals(t *testing.T) {
 	k := newKeyInstance(t)
 	_, owner := k.user("owner")
@@ -174,6 +180,10 @@ func TestDataAPI_Refusals(t *testing.T) {
 	if status, resp := k.do(http.MethodDelete, "/api/databases/v1/bdbs/"+bdbID+"/formulas/"+formulas[2], owner,
 		nil); status != http.StatusNoContent {
 		t.Fatalf("deleting a formula = %d %v, want 204", status, resp)
+	}
+	accessCookie := authhttp.DefaultCookieName + "=" + owner
+	if status := k.getWithCookie("/api/bdbs/v1/bdbs", accessCookie); status != http.StatusOK {
+		t.Fatalf("listing bdbs with the access-token cookie = %d, want 200", status)
 	}
 
 	run := func(formulaID string) string { return dataAPIPath(bdbID, "/formulas/"+formulaID+"/run") }
@@ -198,8 +208,8 @@ func TestDataAPI_Refusals(t *testing.T) {
 			http.StatusUnauthorized, "invalid_key"},
 		{"a personal token", http.MethodGet, dataAPIPath(bdbID, "/formulas"), owner, nil, nil,
 			http.StatusUnauthorized, "invalid_key"},
-		{"a cookie but no key", http.MethodGet, dataAPIPath(bdbID, "/formulas"), "", nil,
-			map[string]string{"Cookie": "session=" + owner}, http.StatusUnauthorized, "missing_key"},
+		{"the access-token cookie but no key", http.MethodGet, dataAPIPath(bdbID, "/formulas"), "", nil,
+			map[string]string{"Cookie": accessCookie}, http.StatusUnauthorized, "missing_key"},
 	} {
 		status, resp, _ := k.dataCall(tt.method, tt.path, tt.key, tt.body, tt.headers)
 		if status != tt.wantStatus || errorCode(resp) != tt.wantCode {
@@ -260,5 +270,80 @@ func TestDataAPI_AnyOriginMayCall(t *testing.T) {
 		if headers.Get("Access-Control-Allow-Origin") != "*" || headers.Get("Access-Control-Allow-Credentials") != "" {
 			t.Errorf("%s's headers = %v, want any origin allowed and no credentials", name, headers)
 		}
+	}
+}
+
+// getWithCookie sends a GET of path to the instance carrying the Cookie header cookie and no bearer token, and returns
+// the status.
+func (k *keyInstance) getWithCookie(path, cookie string) int {
+	k.t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set("Cookie", cookie)
+	rec := httptest.NewRecorder()
+	k.inst.Router.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+// browserSession signs the user userID in as a browser does on an instance without OAuth, with their email and
+// password, and returns the session cookie the instance sets.
+func (k *keyInstance) browserSession(userID uuid.UUID) *http.Cookie {
+	k.t.Helper()
+	user, err := k.inst.Auth.UserSvc.GetProfile(context.Background(), userID)
+	if err != nil {
+		k.t.Fatalf("looking up user %s: %v", userID, err)
+	}
+	body, err := json.Marshal(map[string]string{"email": user.Email, "password": "Str0ng-Passw0rd!"})
+	if err != nil {
+		k.t.Fatalf("marshaling the sign-in body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/v1/session", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	k.inst.Router.ServeHTTP(rec, req)
+	cookie, err := http.ParseSetCookie(rec.Header().Get("Set-Cookie"))
+	if rec.Code != http.StatusNoContent || err != nil {
+		k.t.Fatalf("signing in = %d %v (%v), want 204 with a session cookie", rec.Code, rec.Header(), err)
+	}
+	return cookie
+}
+
+// TestDataAPI_PersonalTokensOnly checks the Data API on an instance accepting personal tokens alone, as bdb serve
+// does: a key lists its formula and runs it, a preflight is answered, and the owner's browser session, which the REST
+// API accepts, is refused on the Data API for want of a key.
+func TestDataAPI_PersonalTokensOnly(t *testing.T) {
+	// An owner with a bdb, one formula, and a key allowed to run it.
+	k := newKeyInstanceWith(t, instance.PersonalTokensOnly())
+	ownerID, owner := k.user("owner")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Notes", "all-notes")
+	_, key := k.createKey(owner, bdbID, "app", formulas[0])
+	list, run := dataAPIPath(bdbID, "/formulas"), dataAPIPath(bdbID, "/formulas/"+formulas[0]+"/run")
+
+	// The key is accepted in this mode: it lists its formula and runs it.
+	status, resp, _ := k.dataCall(http.MethodGet, list, key, nil, nil)
+	if listed, _ := resp["formulas"].([]any); status != http.StatusOK || len(listed) != 1 {
+		t.Errorf("listing the key's formulas = %d %v, want its one formula", status, resp)
+	}
+	if status, resp, _ = k.dataCall(http.MethodPost, run, key, nil, nil); status != http.StatusOK {
+		t.Errorf("running the key's formula = %d %v, want 200", status, resp)
+	}
+
+	// A browser's preflight is answered, from any origin.
+	status, _, headers := k.dataCall(http.MethodOptions, run, "", nil, map[string]string{
+		"Origin":                        "http://localhost:5173",
+		"Access-Control-Request-Method": "POST",
+	})
+	if status != http.StatusNoContent || headers.Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("preflight = %d %v, want 204 allowing any origin", status, headers)
+	}
+
+	// A browser session works on the REST API, but not on the Data API, which reads no cookie.
+	session := k.browserSession(ownerID)
+	sessionCookie := session.Name + "=" + session.Value
+	if status := k.getWithCookie("/api/bdbs/v1/bdbs", sessionCookie); status != http.StatusOK {
+		t.Fatalf("listing bdbs with the browser session = %d, want 200", status)
+	}
+	status, resp, _ = k.dataCall(http.MethodGet, list, "", nil, map[string]string{"Cookie": sessionCookie})
+	if status != http.StatusUnauthorized || errorCode(resp) != "missing_key" {
+		t.Errorf("the Data API with the browser session = %d %v, want 401 missing_key", status, resp)
 	}
 }

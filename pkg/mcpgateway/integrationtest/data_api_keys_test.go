@@ -36,8 +36,14 @@ type keyInstance struct {
 // newKeyInstance composes every app with OAuth and personal tokens on, after clearing the suite's store.
 func newKeyInstance(t *testing.T) *keyInstance {
 	t.Helper()
+	return newKeyInstanceWith(t, instance.OAuth(true))
+}
+
+// newKeyInstanceWith composes every app authenticating requests with auth, after clearing the suite's store.
+func newKeyInstanceWith(t *testing.T, auth instance.Authentication) *keyInstance {
+	t.Helper()
 	truncateAll(t)
-	return &keyInstance{t: t, inst: newJWTInstance(t, instance.OAuth(true))}
+	return &keyInstance{t: t, inst: newJWTInstance(t, auth)}
 }
 
 // user creates a user and returns their ID with a personal token of theirs.
