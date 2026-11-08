@@ -535,6 +535,33 @@ func (s *FormulaService) listFormulas(
 	return formulas, nil
 }
 
+// ListFormulasForDataAPIKey returns the formulas the Data API key keyID of the bdb bdbID may run, in the bdb's listing
+// order, as the user userID who created the key sees them: none on a soft-deleted bdb. A formula on the key that no
+// longer exists is left out.
+func (s *FormulaService) ListFormulasForDataAPIKey(
+	ctx context.Context, userID, keyID, bdbID uuid.UUID,
+) ([]*domain.Formula, error) {
+	keyFormulaIDs, err := s.dbSvc.ListDataAPIKeyFormulaIDs(ctx, keyID, bdbID)
+	if err != nil {
+		return nil, err
+	}
+	if len(keyFormulaIDs) == 0 {
+		return []*domain.Formula{}, nil
+	}
+	formulas, err := s.ListFormulasIncludingHidden(ctx, userID, bdbID)
+	if err != nil {
+		return nil, err
+	}
+	onKey := make(map[string]struct{}, len(keyFormulaIDs))
+	for _, id := range keyFormulaIDs {
+		onKey[id] = struct{}{}
+	}
+	return slices.DeleteFunc(formulas, func(f *domain.Formula) bool {
+		_, ok := onKey[f.ID.String()]
+		return !ok
+	}), nil
+}
+
 // DeleteFormula removes the formula resolved by name or UUID. Attached actions are
 // removed via FK cascade. Returns ErrFormulaNotFound if it does not exist.
 //

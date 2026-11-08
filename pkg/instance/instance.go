@@ -214,6 +214,7 @@ func New(ctx context.Context, cfg config.Config, logger zerolog.Logger, opts Opt
 	}
 	opts.Bdbs.RequireToken = requireToken
 	opts.Databases.RequireToken = requireToken
+	opts.Databases.DataAPIKeyChecker = inst.Auth.DataAPIKeyChecker
 
 	// With personal tokens on, every JWT validator built below accepts them too, checked in-process.
 	var validatorOpts []authhttp.ValidatorOption

@@ -33,6 +33,10 @@ func (denyAllBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ 
 	return nil
 }
 
+func (denyAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 func (denyAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	return uuid.Nil, []authz.Role{authz.RoleUser}, nil
 }

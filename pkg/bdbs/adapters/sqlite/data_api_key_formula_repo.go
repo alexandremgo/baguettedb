@@ -93,6 +93,34 @@ func (r *DataAPIKeyFormulaRepo) ListByBdb(
 	return formulas, nil
 }
 
+// ListByKey returns the formula IDs of the key keyID of the bdb bdbID, in the order they were added.
+func (r *DataAPIKeyFormulaRepo) ListByKey(
+	ctx context.Context, bdbID, keyID uuid.UUID,
+) (_ []string, err error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT formula_id FROM data_api_key_formulas WHERE bdb_id = $1 AND key_id = $2
+		 ORDER BY created_at, formula_id`,
+		bdbID, keyID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing a data API key's formulas: %w", err)
+	}
+	defer database.CloseRows(rows, &err)
+
+	var formulaIDs []string
+	for rows.Next() {
+		var formulaID string
+		if err := rows.Scan(&formulaID); err != nil {
+			return nil, fmt.Errorf("scanning a data API key's formula: %w", err)
+		}
+		formulaIDs = append(formulaIDs, formulaID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("listing a data API key's formulas: %w", err)
+	}
+	return formulaIDs, nil
+}
+
 // HasFormula reports whether the key keyID of the bdb bdbID may run formulaID.
 func (r *DataAPIKeyFormulaRepo) HasFormula(
 	ctx context.Context, bdbID, keyID uuid.UUID, formulaID string,

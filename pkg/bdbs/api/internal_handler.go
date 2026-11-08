@@ -52,6 +52,17 @@ type checkDataAPIKeyFormulaRequest struct {
 	FormulaID string `json:"formula_id"`
 }
 
+// dataAPIKeyFormulasRequest holds the JSON body for listing a Data API key's formulas.
+type dataAPIKeyFormulasRequest struct {
+	KeyID string `json:"key_id"`
+	BdbID string `json:"bdb_id"`
+}
+
+// dataAPIKeyFormulasResponse holds the IDs of the formulas a Data API key may run.
+type dataAPIKeyFormulasResponse struct {
+	FormulaIDs []string `json:"formula_ids"`
+}
+
 // forgetDataAPIKeyFormulaRequest holds the JSON body for forgetting a formula of every Data API key of a bdb.
 type forgetDataAPIKeyFormulaRequest struct {
 	BdbID     string `json:"bdb_id"`
@@ -216,4 +227,37 @@ func (h *InternalHandler) ForgetDataAPIKeyFormula(w http.ResponseWriter, r *http
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListDataAPIKeyFormulas handles POST /internal/api/bdbs/v1/data-api-key-formulas.
+// Returns the IDs of the formulas the Data API key may run, none on a soft-deleted bdb.
+func (h *InternalHandler) ListDataAPIKeyFormulas(w http.ResponseWriter, r *http.Request) {
+	var req dataAPIKeyFormulasRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	keyID, err := uuid.Parse(req.KeyID)
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid key_id"})
+		return
+	}
+	bdbID, err := uuid.Parse(req.BdbID)
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid bdb_id"})
+		return
+	}
+
+	formulaIDs, err := h.authChecker.ListDataAPIKeyFormulaIDs(r.Context(), keyID, bdbID)
+	if err != nil {
+		h.logger.Error().Err(err).Str("bdb_id", bdbID.String()).Msg("failed to list a data API key's formulas")
+		httputil.RespondJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+		return
+	}
+	if formulaIDs == nil {
+		formulaIDs = []string{}
+	}
+
+	httputil.RespondJSON(w, http.StatusOK, dataAPIKeyFormulasResponse{FormulaIDs: formulaIDs})
 }

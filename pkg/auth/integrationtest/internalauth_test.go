@@ -28,6 +28,7 @@ func TestInternalRoutes_RequireSecret(t *testing.T) {
 		"/internal/api/auth/v1/user-profiles",
 		"/internal/api/auth/v1/data-api-keys",
 		"/internal/api/auth/v1/data-api-keys/create",
+		"/internal/api/auth/v1/data-api-keys/check",
 		"/internal/api/auth/v1/data-api-keys/revoke",
 		"/internal/api/auth/v1/data-api-keys/revoke-all",
 		"/internal/api/auth/v1/data-api-keys/revoke-member",

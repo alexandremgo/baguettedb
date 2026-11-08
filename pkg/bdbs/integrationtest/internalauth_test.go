@@ -28,6 +28,7 @@ func TestInternalRoutes_RequireSecret(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, path := range []string{
 				"/internal/api/bdbs/v1/check-permission",
+				"/internal/api/bdbs/v1/data-api-key-formulas",
 				"/internal/api/bdbs/v1/data-api-key-formulas/check",
 				"/internal/api/bdbs/v1/data-api-key-formulas/forget",
 			} {

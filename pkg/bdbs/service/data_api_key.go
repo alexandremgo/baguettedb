@@ -28,6 +28,9 @@ type dataAPIKeyFormulaRepository interface {
 	// order they were added.
 	ListByBdb(ctx context.Context, bdbID uuid.UUID) (map[uuid.UUID][]string, error)
 
+	// ListByKey returns the formula IDs of the key keyID of the bdb bdbID, in the order they were added.
+	ListByKey(ctx context.Context, bdbID, keyID uuid.UUID) ([]string, error)
+
 	// HasFormula reports whether the key keyID of the bdb bdbID may run formulaID.
 	HasFormula(ctx context.Context, bdbID, keyID uuid.UUID, formulaID string) (bool, error)
 
@@ -217,6 +220,26 @@ func (s *DataAPIKeyService) KeyMayRunFormula(
 		return false, fmt.Errorf("checking the data API key's formula: %w", err)
 	}
 	return found, nil
+}
+
+// KeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, in the order they were
+// added: none on a bdb that doesn't exist or is soft-deleted, whatever formulas a key still has there.
+func (s *DataAPIKeyService) KeyFormulaIDs(ctx context.Context, bdbID, keyID uuid.UUID) ([]string, error) {
+	bdb, err := s.bdbs.FindByID(ctx, bdbID)
+	if errors.Is(err, domain.ErrBdbNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("finding bdb: %w", err)
+	}
+	if bdb.IsSoftDeleted() {
+		return nil, nil
+	}
+	formulaIDs, err := s.formulas.ListByKey(ctx, bdbID, keyID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the data API key's formulas: %w", err)
+	}
+	return formulaIDs, nil
 }
 
 // ForgetFormula forgets the formula formulaID for every Data API key of the bdb bdbID, the formula being gone.

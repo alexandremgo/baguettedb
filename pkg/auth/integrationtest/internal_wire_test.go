@@ -26,8 +26,9 @@ var updateGolden = flag.Bool("update", false, "rewrite the internal-wire golden 
 var wireTimestamp = regexp.MustCompile(`"(created_at|last_used_at)":"[^"]*"`)
 
 // TestInternalDataAPIKeyEndpoints_WireFormat pins the exact JSON of the internal Data API key endpoints — the bytes
-// the bdbs module's HTTP AuthApp adapter decodes in split deployment — against golden files: a key created, the
-// bdb's list holding it, the 422 of an empty name, and the 404 of revoking a key the bdb doesn't have.
+// the bdbs and databases modules' HTTP adapters decode in split deployment — against golden files: a key created, the
+// bdb's list holding it, the 422 of an empty name, the 404 of revoking a key the bdb doesn't have, and the check of a
+// key, accepted and refused.
 // Run with -update to regenerate the goldens after an intentional wire change.
 func TestInternalDataAPIKeyEndpoints_WireFormat(t *testing.T) {
 	truncateAll(t)
@@ -75,6 +76,10 @@ func TestInternalDataAPIKeyEndpoints_WireFormat(t *testing.T) {
 			map[string]string{"user_id": userID, "bdb_id": bdbID, "name": " "}, http.StatusUnprocessableEntity)},
 		{"data-api-keys-revoke-unknown", postInternalWire(t, router, "/internal/api/auth/v1/data-api-keys/revoke",
 			map[string]string{"bdb_id": bdbID, "key_id": uuid.NewString()}, http.StatusNotFound)},
+		{"data-api-keys-check", postInternalWire(t, router, "/internal/api/auth/v1/data-api-keys/check",
+			map[string]string{"key": fields.Value}, http.StatusOK)},
+		{"data-api-keys-check-refused", postInternalWire(t, router, "/internal/api/auth/v1/data-api-keys/check",
+			map[string]string{"key": "bdbdk_unknown"}, http.StatusUnauthorized)},
 	} {
 		t.Run(tt.golden, func(t *testing.T) {
 			assertGolden(t, filepath.Join("testdata", "internal_wire", tt.golden+".json"), stable(tt.got))

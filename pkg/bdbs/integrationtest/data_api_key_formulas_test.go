@@ -14,9 +14,9 @@ import (
 )
 
 // TestInternalDataAPIKeyFormulas checks the internal endpoints the databases app calls for Data API keys. The check
-// allows a formula on the key and no other, and no formula once the bdb is soft-deleted, even with its link still
-// stored. Forgetting a formula removes it from every key of the bdb, and is not an error for a formula no key has. A
-// malformed ID is a 400.
+// allows a formula on the key and no other, and the list gives the key's formulas; neither gives any once the bdb is
+// soft-deleted, even with its links still stored. Forgetting a formula removes it from every key of the bdb, and is not
+// an error for a formula no key has. A malformed ID is a 400.
 func TestInternalDataAPIKeyFormulas(t *testing.T) {
 	truncateAll(t)
 	router := setupRouter(t)
@@ -51,8 +51,28 @@ func TestInternalDataAPIKeyFormulas(t *testing.T) {
 		return got
 	}
 
+	listed := func(key string) []any {
+		t.Helper()
+		status, resp := testutil.DoRequest(t, router, http.MethodPost, "/internal/api/bdbs/v1/data-api-key-formulas",
+			"", map[string]string{"key_id": key, "bdb_id": bdbID})
+		if status != http.StatusOK {
+			t.Fatalf("list = %d %v, want 200", status, resp)
+		}
+		ids, ok := resp["formula_ids"].([]any)
+		if !ok {
+			t.Fatalf("list = %v, want a formula_ids array", resp)
+		}
+		return ids
+	}
+
 	link(keyID)
 	link(otherKeyID)
+	if ids := listed(keyID); len(ids) != 1 || ids[0] != formulaID {
+		t.Errorf("listed formulas of the key = %v, want its one formula", ids)
+	}
+	if ids := listed(uuid.NewString()); len(ids) != 0 {
+		t.Errorf("listed formulas of a key without any = %v, want none", ids)
+	}
 	if !allowed(keyID, formulaID) {
 		t.Error("a formula on the key is refused")
 	}
@@ -83,8 +103,8 @@ func TestInternalDataAPIKeyFormulas(t *testing.T) {
 		nil); status != http.StatusNoContent {
 		t.Fatalf("soft-deleting the bdb = %d %v, want 204", status, resp)
 	}
-	if allowed(keyID, formulaID) {
-		t.Error("a formula is allowed on a soft-deleted bdb")
+	if allowed(keyID, formulaID) || len(listed(keyID)) != 0 {
+		t.Error("a formula is allowed, or listed, on a soft-deleted bdb")
 	}
 
 	for _, body := range []map[string]string{

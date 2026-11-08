@@ -49,6 +49,10 @@ func (a *ownedSetBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID
 	return nil
 }
 
+func (a *ownedSetBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 func (a *ownedSetBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	return a.ownerID, a.ownerRoles, nil
 }

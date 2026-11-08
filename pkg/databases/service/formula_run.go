@@ -190,8 +190,8 @@ func (s *FormulaService) RunFormula(
 
 // RunFormulaAsDataAPIKey runs the formula formulaID as RunFormula does, for the Data API key keyID of the bdb bdbID
 // acting as the user userID who created it. The formula is named by its ID alone, and must be among the key's formulas
-// on a bdb that isn't soft-deleted, or the run is a domain.ErrAccessDenied. The run then goes as userID's, so a key
-// never does more than its creator: a viewer's key can't run an action.
+// on a bdb that isn't soft-deleted, or the run is a domain.ErrFormulaNotOnDataAPIKey. The run then goes as userID's, so
+// a key never does more than its creator: a viewer's key can't run an action.
 //
 // A formula on the key that no longer exists is a domain.ErrFormulaNotFound, and its links to Data API keys are
 // forgotten, a failure to forget them only logged.

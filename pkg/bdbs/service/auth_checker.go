@@ -32,6 +32,10 @@ type dataAPIKeyFormulaChecker interface {
 	// false on a bdb that doesn't exist or is soft-deleted.
 	KeyMayRunFormula(ctx context.Context, bdbID, keyID uuid.UUID, formulaID string) (bool, error)
 
+	// KeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a bdb that
+	// doesn't exist or is soft-deleted.
+	KeyFormulaIDs(ctx context.Context, bdbID, keyID uuid.UUID) ([]string, error)
+
 	// ForgetFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
 	ForgetFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
 }
@@ -63,6 +67,15 @@ func (c *BdbAuthChecker) CheckDataAPIKeyFormula(
 		return false, nil
 	}
 	return c.dataAPIKeys.KeyMayRunFormula(ctx, bdbID, keyID, formulaID)
+}
+
+// ListDataAPIKeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a
+// soft-deleted bdb.
+func (c *BdbAuthChecker) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error) {
+	if c.dataAPIKeys == nil {
+		return nil, nil
+	}
+	return c.dataAPIKeys.KeyFormulaIDs(ctx, bdbID, keyID)
 }
 
 // ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.

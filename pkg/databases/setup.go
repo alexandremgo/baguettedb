@@ -26,6 +26,7 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/databases/adapters/s3store"
 	"github.com/alexandremgo/baguettedb/pkg/databases/adapters/sqlitelocal"
 	dbapi "github.com/alexandremgo/baguettedb/pkg/databases/api"
+	"github.com/alexandremgo/baguettedb/pkg/databases/dataapi"
 	dbmcp "github.com/alexandremgo/baguettedb/pkg/databases/mcp"
 	dbrunner "github.com/alexandremgo/baguettedb/pkg/databases/runner"
 	"github.com/alexandremgo/baguettedb/pkg/databases/service"
@@ -68,6 +69,9 @@ type SetupOptions struct {
 	// IncludeMCPRoutes controls whether the module mounts its own MCP SSE routes.
 	// Set to true in standalone mode. In monolith mode, the MCP gateway handles SSE.
 	IncludeMCPRoutes bool
+
+	// DataAPIKeyChecker checks the Data API key of a Data API request. When nil, the Data API is not mounted.
+	DataAPIKeyChecker authhttp.DataAPIKeyChecker
 
 	// QuotaResolver overrides the default quota resolver built from config.
 	// If nil, the module uses quota.Fixed over the config values.
@@ -404,6 +408,13 @@ func Setup(
 	router := dbapi.NewRouter(
 		handler, skillHandler, formulaHandler, exportHandler, internalHandler, shardRouter,
 		requireToken, opts.Policy, sseServer, cfg.MaxRequestBodySize, cfg.InternalAPISecret)
+	if opts.DataAPIKeyChecker != nil {
+		var routeToOwner func(http.Handler) http.Handler
+		if shardRouter != nil {
+			routeToOwner = shardRouter.Middleware
+		}
+		dataapi.Register(router, formulaSvc, opts.DataAPIKeyChecker, routeToOwner, cfg.MaxRequestBodySize, logger)
+	}
 
 	cleanup := func() {
 		// Stops the boot migration pass and the backup runner first, and waits for both to drain, before

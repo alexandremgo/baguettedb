@@ -190,6 +190,10 @@ type BdbsApp interface {
 	// which no key may on a soft-deleted bdb. Whether the key's creator may run the formula is not checked here.
 	CheckDataAPIKeyFormula(ctx context.Context, keyID, bdbID uuid.UUID, formulaID string) (bool, error)
 
+	// ListDataAPIKeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on
+	// a soft-deleted bdb.
+	ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error)
+
 	// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
 	ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
 }

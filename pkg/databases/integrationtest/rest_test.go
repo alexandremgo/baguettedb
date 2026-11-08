@@ -53,6 +53,10 @@ func (a *allowAllBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID
 	return nil
 }
 
+func (a *allowAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
 func (a *allowAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	if a.ownerRoles != nil {
 		return uuid.Nil, a.ownerRoles, nil
@@ -82,6 +86,10 @@ func (a *roleAwareBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.U
 
 func (a *roleAwareBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
+}
+
+func (a *roleAwareBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
 }
 
 func (a *roleAwareBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {

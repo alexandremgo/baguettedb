@@ -290,8 +290,8 @@ func (s *DatabaseService) CheckDatabasePermission(
 }
 
 // CheckDataAPIKeyFormula verifies that the Data API key keyID of the bdb bdbID may run the formula formulaID. Returns
-// domain.ErrAccessDenied if not, which every formula is on a soft-deleted bdb. Whether the key's creator may run the
-// formula is not checked here.
+// domain.ErrFormulaNotOnDataAPIKey if not, which every formula is on a soft-deleted bdb. Whether the key's creator may
+// run the formula is not checked here.
 func (s *DatabaseService) CheckDataAPIKeyFormula(
 	ctx context.Context, keyID, bdbID uuid.UUID, formulaID string,
 ) error {
@@ -300,9 +300,19 @@ func (s *DatabaseService) CheckDataAPIKeyFormula(
 		return fmt.Errorf("checking the data API key's formula: %w", err)
 	}
 	if !allowed {
-		return domain.ErrAccessDenied
+		return domain.ErrFormulaNotOnDataAPIKey
 	}
 	return nil
+}
+
+// ListDataAPIKeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a
+// soft-deleted bdb.
+func (s *DatabaseService) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error) {
+	formulaIDs, err := s.bdbsApp.ListDataAPIKeyFormulaIDs(ctx, keyID, bdbID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the data API key's formulas: %w", err)
+	}
+	return formulaIDs, nil
 }
 
 // ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.

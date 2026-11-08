@@ -91,6 +91,7 @@ func NewRouter(
 		r.Post("/internal/api/auth/v1/user-profiles", internalHandler.GetUserProfiles)
 		r.Post("/internal/api/auth/v1/data-api-keys", internalHandler.ListDataAPIKeys)
 		r.Post("/internal/api/auth/v1/data-api-keys/create", internalHandler.CreateDataAPIKey)
+		r.Post("/internal/api/auth/v1/data-api-keys/check", internalHandler.CheckDataAPIKey)
 		r.Post("/internal/api/auth/v1/data-api-keys/revoke", internalHandler.RevokeDataAPIKey)
 		r.Post("/internal/api/auth/v1/data-api-keys/revoke-all", internalHandler.RevokeAllDataAPIKeys)
 		r.Post("/internal/api/auth/v1/data-api-keys/revoke-member", internalHandler.RevokeMemberDataAPIKeys)

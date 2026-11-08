@@ -1,5 +1,6 @@
-// Package databaseshttp adapts the databases service's bdbs port (member permission checks and bdb ownership lookups)
-// to internal HTTP calls on the bdbs service, for deployments running the modules as separate services.
+// Package databaseshttp adapts the databases service's ports to internal HTTP calls on the other services, for
+// deployments running the modules as separate services: the bdbs port (member permission checks, bdb ownership
+// lookups, and the formulas of Data API keys) on the bdbs service, and the Data API key check on the auth service.
 package databaseshttp
 
 import (
@@ -47,6 +48,15 @@ type checkDataAPIKeyFormulaRequest struct {
 	KeyID     string `json:"key_id"`
 	BdbID     string `json:"bdb_id"`
 	FormulaID string `json:"formula_id"`
+}
+
+type dataAPIKeyFormulasRequest struct {
+	KeyID string `json:"key_id"`
+	BdbID string `json:"bdb_id"`
+}
+
+type dataAPIKeyFormulasResponse struct {
+	FormulaIDs []string `json:"formula_ids"`
 }
 
 type forgetDataAPIKeyFormulaRequest struct {
@@ -213,6 +223,16 @@ func (a *BdbsApp) CheckDataAPIKeyFormula(
 		return false, err
 	}
 	return result.Allowed, nil
+}
+
+// ListDataAPIKeyFormulaIDs calls the bdbs service's internal endpoint listing the formulas a Data API key may run.
+func (a *BdbsApp) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error) {
+	var result dataAPIKeyFormulasResponse
+	if err := a.postInternal(ctx, "/internal/api/bdbs/v1/data-api-key-formulas",
+		dataAPIKeyFormulasRequest{KeyID: keyID.String(), BdbID: bdbID.String()}, http.StatusOK, &result); err != nil {
+		return nil, err
+	}
+	return result.FormulaIDs, nil
 }
 
 // ForgetDataAPIKeyFormula calls the bdbs service's internal endpoint forgetting a formula of every Data API key.

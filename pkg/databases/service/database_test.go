@@ -202,6 +202,10 @@ func (m *mockBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.UUID, 
 func (m *mockBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
+
+func (m *mockBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
 func (m *mockBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	return uuid.Nil, m.ownerRoles, m.rolesErr
 }

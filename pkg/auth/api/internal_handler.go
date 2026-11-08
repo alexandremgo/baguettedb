@@ -282,3 +282,43 @@ func parseInternalID(w http.ResponseWriter, raw, field string) (uuid.UUID, bool)
 	}
 	return id, true
 }
+
+type checkDataAPIKeyRequest struct {
+	Key string `json:"key"`
+}
+
+type checkDataAPIKeyResponse struct {
+	UserID uuid.UUID `json:"user_id"`
+	Roles  []string  `json:"roles"`
+	KeyID  uuid.UUID `json:"key_id"`
+	BdbID  uuid.UUID `json:"bdb_id"`
+}
+
+// CheckDataAPIKey handles POST /internal/api/auth/v1/data-api-keys/check: what a Data API key authenticates, the user
+// who created it with their roles, the key and its bdb. A value that authenticates nothing is a 401. Whether the key
+// may run a given formula is not checked here.
+func (h *InternalHandler) CheckDataAPIKey(w http.ResponseWriter, r *http.Request) {
+	var req checkDataAPIKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.RespondJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	identity, err := h.tokens.CheckDataAPIKey(r.Context(), req.Key)
+	if errors.Is(err, domain.ErrInvalidAccessToken) {
+		httputil.RespondJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid data API key"})
+		return
+	}
+	if err != nil {
+		httputil.RespondJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+		return
+	}
+
+	roles := make([]string, len(identity.Roles))
+	for i, role := range identity.Roles {
+		roles[i] = string(role)
+	}
+	httputil.RespondJSON(w, http.StatusOK, checkDataAPIKeyResponse{
+		UserID: identity.UserID, Roles: roles, KeyID: identity.KeyID, BdbID: identity.BdbID,
+	})
+}
