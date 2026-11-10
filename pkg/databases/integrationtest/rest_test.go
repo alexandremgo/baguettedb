@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authhttp"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
@@ -57,6 +58,13 @@ func (a *allowAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.
 	return nil, nil
 }
 
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *allowAllBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
 func (a *allowAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	if a.ownerRoles != nil {
 		return uuid.Nil, a.ownerRoles, nil
@@ -89,6 +97,13 @@ func (a *roleAwareBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUI
 }
 
 func (a *roleAwareBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *roleAwareBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
 	return nil, nil
 }
 

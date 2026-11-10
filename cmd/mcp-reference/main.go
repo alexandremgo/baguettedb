@@ -63,7 +63,7 @@ func run(dir string) error {
 // exposes.
 func collectTools() []mcplib.Tool {
 	logger := zerolog.Nop()
-	bdbsServer := bdbsmcp.NewServer(nil, nil, bdbsmcp.Options{}, logger)
+	bdbsServer := bdbsmcp.NewServer(nil, nil, nil, bdbsmcp.Options{}, logger)
 	startersmcp.RegisterTools(bdbsServer, nil, logger)
 	databasesServer := databasesmcp.NewServer(nil, nil, nil, nil, logger)
 

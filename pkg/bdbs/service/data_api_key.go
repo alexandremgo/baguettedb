@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexandremgo/baguettedb/pkg/bdbs/domain"
 	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
+	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 )
 
 // dataAPIKeyFormulaRepository stores the formulas each Data API key of a bdb may run.
@@ -240,6 +241,49 @@ func (s *DataAPIKeyService) KeyFormulaIDs(ctx context.Context, bdbID, keyID uuid
 		return nil, fmt.Errorf("listing the data API key's formulas: %w", err)
 	}
 	return formulaIDs, nil
+}
+
+// FormulaKeys returns the bdb bdbID's Data API keys that are not revoked by the IDs of the formulas each may run, a
+// formula's keys newest first, to a member userID who may write the bdb's database: its owner or an editor. Anyone else
+// gets none, and so does everyone on a bdb that doesn't exist or is soft-deleted.
+func (s *DataAPIKeyService) FormulaKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	bdb, err := s.bdbs.FindByID(ctx, bdbID)
+	if errors.Is(err, domain.ErrBdbNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("finding bdb: %w", err)
+	}
+	member := bdb.FindMember(userID)
+	if bdb.IsSoftDeleted() || member == nil || !authz.BdbRoleHasDatabasePermission(member.Role, authz.DBPermWrite) {
+		return nil, nil
+	}
+
+	keys, err := s.authApp.ListDataAPIKeys(ctx, bdbID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the bdb's data API keys: %w", err)
+	}
+	formulaIDsByKey, err := s.formulas.ListByBdb(ctx, bdbID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the data API keys' formulas: %w", err)
+	}
+	return keysByFormula(keys, formulaIDsByKey), nil
+}
+
+// keysByFormula returns keys by the IDs of the formulas each may run, from formulaIDsByKey, each key's formula IDs by
+// key ID: a formula's keys come in the order of keys, and the formula IDs of a key not in keys are left out.
+func keysByFormula(
+	keys []apptypes.DataAPIKey, formulaIDsByKey map[uuid.UUID][]string,
+) map[string][]apptypes.DataAPIKey {
+	byFormula := make(map[string][]apptypes.DataAPIKey)
+	for _, key := range keys {
+		for _, formulaID := range formulaIDsByKey[key.ID] {
+			byFormula[formulaID] = append(byFormula[formulaID], key)
+		}
+	}
+	return byFormula
 }
 
 // ForgetFormula forgets the formula formulaID for every Data API key of the bdb bdbID, the formula being gone.

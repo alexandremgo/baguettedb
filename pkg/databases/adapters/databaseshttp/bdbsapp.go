@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authhttp"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 )
@@ -57,6 +58,15 @@ type dataAPIKeyFormulasRequest struct {
 
 type dataAPIKeyFormulasResponse struct {
 	FormulaIDs []string `json:"formula_ids"`
+}
+
+type formulaDataAPIKeysRequest struct {
+	UserID string `json:"user_id"`
+	BdbID  string `json:"bdb_id"`
+}
+
+type formulaDataAPIKeysResponse struct {
+	Formulas map[string][]apptypes.DataAPIKey `json:"formulas"`
 }
 
 type forgetDataAPIKeyFormulaRequest struct {
@@ -239,6 +249,19 @@ func (a *BdbsApp) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uui
 func (a *BdbsApp) ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
 	return a.postInternal(ctx, "/internal/api/bdbs/v1/data-api-key-formulas/forget",
 		forgetDataAPIKeyFormulaRequest{BdbID: bdbID.String(), FormulaID: formulaID}, http.StatusNoContent, nil)
+}
+
+// ListFormulaDataAPIKeys calls the bdbs service's internal endpoint listing a bdb's Data API keys by formula, as the
+// member userID may see them.
+func (a *BdbsApp) ListFormulaDataAPIKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	var result formulaDataAPIKeysResponse
+	if err := a.postInternal(ctx, "/internal/api/bdbs/v1/formula-data-api-keys",
+		formulaDataAPIKeysRequest{UserID: userID.String(), BdbID: bdbID.String()}, http.StatusOK, &result); err != nil {
+		return nil, err
+	}
+	return result.Formulas, nil
 }
 
 // postInternal POSTs body as JSON to the bdbs service's internal endpoint path, with the internal API secret. An

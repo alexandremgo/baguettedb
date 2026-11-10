@@ -153,6 +153,13 @@ func (a *allowAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.
 	return nil, nil
 }
 
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *allowAllBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
 func (a *allowAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	return uuid.Nil, []authz.Role{authz.RoleUser}, nil
 }
@@ -208,7 +215,7 @@ func setupGatewayMCPClient(
 	// Bdbs MCP server.
 	bdbSvc := newBdbService(&gatewayTestAuthApp{}, quota.Fixed(quota.Limits{MaxBdbs: 100, MaxMembersPerBdb: 100}))
 	dbRef := &bdbsmcp.DatabasesAppRef{}
-	bdbsMCPServer := bdbsmcp.NewServer(bdbSvc, dbRef, bdbsmcp.Options{}, testLogger)
+	bdbsMCPServer := bdbsmcp.NewServer(bdbSvc, dbRef, nil, bdbsmcp.Options{}, testLogger)
 
 	// Databases MCP server. Shares KEK provider and sqlitelocal client across
 	// all setupGatewayMCPClient calls within this test so multi-client tests

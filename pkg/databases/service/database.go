@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/quota"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
@@ -313,6 +314,18 @@ func (s *DatabaseService) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, b
 		return nil, fmt.Errorf("listing the data API key's formulas: %w", err)
 	}
 	return formulaIDs, nil
+}
+
+// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+// userID who may write the bdb's database, and none to anyone else.
+func (s *DatabaseService) ListFormulaDataAPIKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	keys, err := s.bdbsApp.ListFormulaDataAPIKeys(ctx, userID, bdbID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the data API keys by formula: %w", err)
+	}
+	return keys, nil
 }
 
 // ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 )
@@ -533,6 +534,14 @@ func (s *FormulaService) listFormulas(
 		formulas = append(formulas, formula)
 	}
 	return formulas, nil
+}
+
+// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+// userID who may write the bdb's database, its owner or an editor, and none to anyone else.
+func (s *FormulaService) ListFormulaDataAPIKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return s.dbSvc.ListFormulaDataAPIKeys(ctx, userID, bdbID)
 }
 
 // ListFormulasForDataAPIKey returns the formulas the Data API key keyID of the bdb bdbID may run, in the bdb's listing

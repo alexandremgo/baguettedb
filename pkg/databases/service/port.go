@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 )
@@ -196,6 +197,10 @@ type BdbsApp interface {
 
 	// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
 	ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
+
+	// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+	// userID who may write the bdb's database, and none to anyone else.
+	ListFormulaDataAPIKeys(ctx context.Context, userID, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
 }
 
 // DatabaseRepository defines persistence operations for database metadata.

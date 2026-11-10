@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/alexandremgo/baguettedb/pkg/bdbs/domain"
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 )
 
@@ -35,6 +36,10 @@ type dataAPIKeyFormulaChecker interface {
 	// KeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a bdb that
 	// doesn't exist or is soft-deleted.
 	KeyFormulaIDs(ctx context.Context, bdbID, keyID uuid.UUID) ([]string, error)
+
+	// FormulaKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member userID who
+	// may write the bdb's database, and none to anyone else.
+	FormulaKeys(ctx context.Context, userID, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
 
 	// ForgetFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
 	ForgetFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
@@ -76,6 +81,17 @@ func (c *BdbAuthChecker) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bd
 		return nil, nil
 	}
 	return c.dataAPIKeys.KeyFormulaIDs(ctx, bdbID, keyID)
+}
+
+// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+// userID who may write the bdb's database, its owner or an editor, and none to anyone else.
+func (c *BdbAuthChecker) ListFormulaDataAPIKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	if c.dataAPIKeys == nil {
+		return nil, nil
+	}
+	return c.dataAPIKeys.FormulaKeys(ctx, userID, bdbID)
 }
 
 // ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.

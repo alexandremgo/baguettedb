@@ -31,6 +31,7 @@ func TestInternalRoutes_RequireSecret(t *testing.T) {
 				"/internal/api/bdbs/v1/data-api-key-formulas",
 				"/internal/api/bdbs/v1/data-api-key-formulas/check",
 				"/internal/api/bdbs/v1/data-api-key-formulas/forget",
+				"/internal/api/bdbs/v1/formula-data-api-keys",
 			} {
 				req := httptest.NewRequest(http.MethodPost, path, nil)
 				tt.setHeader(req.Header)

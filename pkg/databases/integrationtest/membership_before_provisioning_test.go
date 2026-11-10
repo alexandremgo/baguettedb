@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/testutil"
 )
@@ -34,6 +35,13 @@ func (denyAllBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ 
 }
 
 func (denyAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (denyAllBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
 	return nil, nil
 }
 

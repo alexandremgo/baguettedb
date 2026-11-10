@@ -358,6 +358,19 @@ type formulaDetail struct {
 	DisplayOrder        int                   `json:"display_order"`
 	CreatedAt           time.Time             `json:"created_at"`
 	UpdatedAt           time.Time             `json:"updated_at"`
+	DataAPIKeys         []formulaDataAPIKey   `json:"data_api_keys,omitempty"`
+}
+
+// formulaDataAPIKey names a Data API key an app runs the formula with, never its value.
+type formulaDataAPIKey struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// updatedFormula is update_formula's answer: the formula, with a note when apps run it with Data API keys.
+type updatedFormula struct {
+	formulaDetail
+	Note string `json:"note,omitempty"`
 }
 
 // formulaDisplayDetail is a view's display config in MCP formula payloads; absent = the plain
@@ -462,6 +475,18 @@ func toFormulaDetail(f *domain.Formula) formulaDetail {
 }
 
 // toFormulaDetails converts a list of domain formulas to their MCP DTOs.
+// toFormulaDataAPIKeys names keys, none when there are none.
+func toFormulaDataAPIKeys(keys []apptypes.DataAPIKey) []formulaDataAPIKey {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make([]formulaDataAPIKey, len(keys))
+	for i, key := range keys {
+		out[i] = formulaDataAPIKey{ID: key.ID.String(), Name: key.Name}
+	}
+	return out
+}
+
 func toFormulaDetails(formulas []*domain.Formula) []formulaDetail {
 	out := make([]formulaDetail, len(formulas))
 	for i, f := range formulas {

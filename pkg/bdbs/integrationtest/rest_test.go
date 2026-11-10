@@ -38,8 +38,14 @@ func setupRouter(t *testing.T) chi.Router {
 // setupRouterWithLimits wires up the bdbs HTTP stack with the given quota limits.
 func setupRouterWithLimits(t *testing.T, limits quota.Resolver) chi.Router {
 	t.Helper()
+	return setupRouterWithAuth(t, limits, &testAuthApp{})
+}
 
-	testAuth := &testAuthApp{}
+// setupRouterWithAuth wires up the bdbs HTTP stack with the given quota limits, answering for the auth app with
+// testAuth.
+func setupRouterWithAuth(t *testing.T, limits quota.Resolver, testAuth *testAuthApp) chi.Router {
+	t.Helper()
+
 	bdbSvc := newBdbService(testAuth, limits)
 	inviteSvc := newInviteService(testAuth, limits)
 	authChecker := newAuthChecker(nil)
@@ -58,8 +64,10 @@ func setupRouterWithLimits(t *testing.T, limits quota.Resolver) chi.Router {
 		handler, inviteHandler, internalHandler, tv.RequireToken(), 1024*1024, testutil.InternalAPISecret)
 }
 
-// testAuthApp implements service.AuthApp for tests.
-type testAuthApp struct{}
+// testAuthApp implements service.AuthApp for tests. Its dataAPIKeys are every bdb's Data API keys.
+type testAuthApp struct {
+	dataAPIKeys []apptypes.DataAPIKey
+}
 
 func (a *testAuthApp) GetUserRoles(_ context.Context, _ uuid.UUID) ([]authz.Role, error) {
 	return []authz.Role{"user"}, nil
@@ -79,7 +87,8 @@ func (a *testAuthApp) GetUserProfiles(
 	return out, nil
 }
 
-// CreateDataAPIKey and the other Data API key methods do nothing, since these tests manage no keys.
+// CreateDataAPIKey and the revocations do nothing, and ListDataAPIKeys lists dataAPIKeys, since these tests manage
+// no keys.
 func (a *testAuthApp) CreateDataAPIKey(
 	_ context.Context, _, _ uuid.UUID, _ string,
 ) (apptypes.CreatedDataAPIKey, error) {
@@ -87,7 +96,7 @@ func (a *testAuthApp) CreateDataAPIKey(
 }
 
 func (a *testAuthApp) ListDataAPIKeys(_ context.Context, _ uuid.UUID) ([]apptypes.DataAPIKey, error) {
-	return nil, nil
+	return a.dataAPIKeys, nil
 }
 
 func (a *testAuthApp) RevokeDataAPIKey(_ context.Context, _, _ uuid.UUID) error { return nil }

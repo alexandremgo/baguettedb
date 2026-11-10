@@ -136,7 +136,7 @@ func Setup(
 
 	// Creates MCP server with deferred databases app injection.
 	dbRef := &bdbsmcp.DatabasesAppRef{}
-	mcpSrv := bdbsmcp.NewServer(bdbSvc, dbRef, bdbsmcp.Options{
+	mcpSrv := bdbsmcp.NewServer(bdbSvc, dbRef, st.dataAPIKeySvc, bdbsmcp.Options{
 		SkillBodyBudgetBytes: cfg.MCPDescribeBdbSkillBodyBudgetBytes,
 		SchemaTableLimit:     cfg.MCPDescribeBdbSchemaTableLimit,
 	}, logger)
