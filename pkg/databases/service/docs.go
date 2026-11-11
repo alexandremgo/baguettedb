@@ -97,6 +97,7 @@ func manualData(limits quota.Limits, name Namer) map[string]any {
 		"ToolGetFormula":           name(mcputil.ToolGetFormula),
 		"ToolDescribeBdb":          name(mcputil.ToolDescribeBdb),
 		"ToolListFormulas":         name(mcputil.ToolListFormulas),
+		"ToolDeleteFormula":        name(mcputil.ToolDeleteFormula),
 		"ToolExecuteQuery":         name(mcputil.ToolExecuteQuery),
 		"ToolExecuteData":          name(mcputil.ToolExecuteData),
 		"ToolExecuteSchema":        name(mcputil.ToolExecuteSchema),
