@@ -54,6 +54,7 @@ export function MultiSelect({
   const [term, setTerm] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const allValues = options.map((o) => o.value);
   const checked = values ?? defaultValues ?? [];
@@ -120,6 +121,7 @@ export function MultiSelect({
   return (
     <div className={[styles.root, className ?? ""].filter(Boolean).join(" ")} ref={rootRef}>
       <button
+        ref={triggerRef}
         id={id}
         type="button"
         aria-haspopup="dialog"
@@ -141,7 +143,22 @@ export function MultiSelect({
       </button>
 
       {open && (
-        <div className={styles.panel} ref={panelRef} popover="manual" role="dialog">
+        <div
+          className={styles.panel}
+          ref={panelRef}
+          popover="manual"
+          role="dialog"
+          onKeyDown={(e) => {
+            // Escape from any control in the panel, a checkbox as much as the filter, closes the panel alone and hands
+            // focus back to the trigger: preventDefault keeps a surrounding native <dialog> from treating it as its
+            // own cancel.
+            if (e.key === "Escape") {
+              e.preventDefault();
+              closePanel();
+              triggerRef.current?.focus();
+            }
+          }}
+        >
           <div className={styles.header}>
             {/* "All" enumerates the loaded page, so a truncated page hides it — it could not mean
                 everything. "None" is always exact. */}
@@ -164,12 +181,6 @@ export function MultiSelect({
               onChange={(e) => {
                 setTerm(e.target.value);
                 onSearchChange?.(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  closePanel();
-                }
               }}
             />
           )}
