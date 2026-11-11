@@ -311,8 +311,8 @@ Note: deletion is only available via the web UI — ask the user to delete the s
 
 ### get_docs
 
-Returns the full built-in reference documentation for one topic: 'formulas' — the formula-authoring manual (naming, params and their sources, display modes, slots, nested details); 'sql' — SQL capabilities and engine rules (identifier rules, the reserved '_' prefix, JSON1/JSONB, FTS5, change-log semantics including the no-BLOB rule, statement limits). Fetch a topic once per conversation, before the first call that needs it.
+Returns the full built-in reference documentation for one topic: 'formulas' — the formula-authoring manual (naming, params and their sources, display modes, slots, nested details); 'sql' — SQL capabilities and engine rules (identifier rules, the reserved '_' prefix, JSON1/JSONB, FTS5, change-log semantics including the no-BLOB rule, statement limits); 'data-api' — the Data API an app calls with a Data API key to run a bdb's formulas (endpoints, the key, cross-origin calls, parameter values, answers, error codes, limits). Fetch a topic once per conversation, before the first call that needs it.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `topic` | string | yes | Documentation topic to fetch. One of `formulas`, `sql`. |
+| `topic` | string | yes | Documentation topic to fetch. One of `data-api`, `formulas`, `sql`. |

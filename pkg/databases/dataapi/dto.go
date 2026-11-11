@@ -18,6 +18,9 @@ type formulaResponse struct {
 	Description string          `json:"description"`
 	Kind        string          `json:"kind"`
 	Params      []paramResponse `json:"params"`
+
+	// Columns are a view's result columns, the keys of each of its rows; an action has none.
+	Columns []string `json:"columns,omitempty"`
 }
 
 // paramResponse is a parameter of a formula. Required is false for a parameter the run supplies when omitted, such as
@@ -65,8 +68,8 @@ type actionResponse struct {
 	LastInsertRowID  *int64 `json:"last_insert_row_id,omitempty"`
 }
 
-// toFormulaResponse converts a formula to its Data API shape.
-func toFormulaResponse(f *domain.Formula) formulaResponse {
+// toFormulaResponse converts a formula, a view with its result columns, to its Data API shape.
+func toFormulaResponse(f *domain.Formula, columns []string) formulaResponse {
 	return formulaResponse{
 		ID:          f.ID.String(),
 		Name:        f.Name,
@@ -74,6 +77,7 @@ func toFormulaResponse(f *domain.Formula) formulaResponse {
 		Description: f.Description,
 		Kind:        string(f.Kind),
 		Params:      toParamResponses(f.Params),
+		Columns:     columns,
 	}
 }
 

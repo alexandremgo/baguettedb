@@ -19,9 +19,10 @@ func registerDocsTool(s *mcpserver.MCPServer, docsSvc *service.DocsService) {
 				"'formulas' — the formula-authoring manual (naming, params and their sources, display modes, "+
 				"slots, nested details); 'sql' — SQL capabilities and engine rules (identifier rules, the "+
 				"reserved '_' prefix, JSON1/JSONB, FTS5, change-log semantics including the no-BLOB rule, "+
-				"statement limits). Fetch a "+
-				"topic once per conversation, before the first call that needs it."),
-			mcplib.WithString("topic", mcplib.Required(), mcplib.Enum("formulas", "sql"),
+				"statement limits); 'data-api' — the Data API an app calls with a Data API key to run a bdb's "+
+				"formulas (endpoints, the key, cross-origin calls, parameter values, answers, error codes, "+
+				"limits). Fetch a topic once per conversation, before the first call that needs it."),
+			mcplib.WithString("topic", mcplib.Required(), mcplib.Enum("data-api", "formulas", "sql"),
 				mcplib.Description("Documentation topic to fetch.")),
 		),
 		getDocsHandler(docsSvc),

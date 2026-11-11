@@ -556,6 +556,9 @@ type formulaResponse struct {
 	DisplayOrder        int                    `json:"display_order"`
 	CreatedAt           time.Time              `json:"created_at"`
 	UpdatedAt           time.Time              `json:"updated_at"`
+
+	// ResultColumns are a view's result columns, present only when the listing asked for them.
+	ResultColumns []string `json:"result_columns,omitempty"`
 }
 
 // toOptionsResponse converts a domain option set into its response entries.
@@ -672,10 +675,12 @@ func toFormulaResponse(f *domain.Formula) formulaResponse {
 	}
 }
 
-func toFormulaResponses(formulas []*domain.Formula) []formulaResponse {
+// toFormulaResponses converts formulas, each view with its result columns from columns when there are any.
+func toFormulaResponses(formulas []*domain.Formula, columns map[string][]string) []formulaResponse {
 	result := make([]formulaResponse, len(formulas))
 	for i, f := range formulas {
 		result[i] = toFormulaResponse(f)
+		result[i].ResultColumns = columns[f.ID.String()]
 	}
 	return result
 }

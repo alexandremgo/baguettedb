@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -84,8 +85,9 @@ func errorCode(resp map[string]any) string {
 }
 
 // TestDataAPI_ListAndRun checks the Data API with a key: listing gives the key's formulas alone, with their
-// parameters; an action answers how many rows it changed and the rowid it inserted; a view answers its rows as objects
-// by column; and a paginated view answers a page at a time with the cursor of the next one.
+// parameters and a view's columns; an action answers how many rows it changed and the rowid it inserted; a view
+// answers its rows as objects by column; and a paginated view answers a page at a time with the cursor of the next
+// one.
 func TestDataAPI_ListAndRun(t *testing.T) {
 	k := newKeyInstance(t)
 	_, owner := k.user("owner")
@@ -101,6 +103,7 @@ func TestDataAPI_ListAndRun(t *testing.T) {
 	listed, _ := resp["formulas"].([]any)
 	var ids []string
 	var pagedParams []any
+	wantColumns := map[string]string{formulas[0]: "[body]", paged: "[rowid body]", action: "[]"}
 	for _, raw := range listed {
 		f, _ := raw.(map[string]any)
 		id, _ := f["id"].(string)
@@ -110,6 +113,10 @@ func TestDataAPI_ListAndRun(t *testing.T) {
 		}
 		if _, hasSQL := f["sql"]; hasSQL {
 			t.Errorf("listed formula %v carries its SQL", f)
+		}
+		columns, _ := f["columns"].([]any)
+		if got := fmt.Sprint(columns); got != wantColumns[id] {
+			t.Errorf("listed formula %v's columns = %s, want %s", f["name"], got, wantColumns[id])
 		}
 	}
 	slices.Sort(ids)

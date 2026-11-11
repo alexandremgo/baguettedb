@@ -28,7 +28,8 @@ import {
   useRemoveDataAPIKeyFormula,
   useRevokeDataAPIKey,
 } from "../../hooks/useDataAPIKeys";
-import { useFormulas } from "../../hooks/useFormulas";
+import { useFormulas, useFormulasWithColumns } from "../../hooks/useFormulas";
+import { useManual } from "../../hooks/useManual";
 import { dataAPIBaseURL, dataAPIInstructions } from "../../utils/dataApi";
 import { formatDate } from "../../utils/date";
 import styles from "./DataAPIKeysSection.module.css";
@@ -53,6 +54,10 @@ export function DataAPIKeysSection({ bdbId, bdbName }: DataAPIKeysSectionProps) 
   const { toast } = useToast();
   const { data: keys } = useDataAPIKeys(bdbId);
   const { data: formulas = [] } = useFormulas(bdbId);
+  // The instructions carry the Data API manual and a view's columns: fetched with the section, so copying stays a
+  // direct response to the click, which a browser asks of a clipboard write.
+  const manual = useManual("data-api");
+  const { data: formulasWithColumns } = useFormulasWithColumns(bdbId);
   const createKey = useCreateDataAPIKey();
   const revokeKey = useRevokeDataAPIKey();
   const addFormula = useAddDataAPIKeyFormula();
@@ -70,6 +75,10 @@ export function DataAPIKeysSection({ bdbId, bdbName }: DataAPIKeysSectionProps) 
 
   const formulasById = useMemo(() => new Map(formulas.map((f) => [f.id, f])), [formulas]);
   const titles = useMemo(() => distinctFormulaTitles(formulas), [formulas]);
+  const columnsById = useMemo(
+    () => new Map((formulasWithColumns ?? []).map((f) => [f.id, f.result_columns])),
+    [formulasWithColumns],
+  );
   const formulaOptions = useMemo(
     () =>
       formulas
@@ -89,8 +98,13 @@ export function DataAPIKeysSection({ bdbId, bdbName }: DataAPIKeysSectionProps) 
   }
 
   function copyInstructions(key: { name: string; formula_ids: string[] }) {
+    if (manual.data === undefined) {
+      toast(manual.isError ? "Couldn't load the Data API manual" : "The instructions are still loading", "error");
+      return;
+    }
+    const withColumns = keyFormulas(key).map((f) => ({ ...f, result_columns: columnsById.get(f.id) }));
     navigator.clipboard
-      .writeText(dataAPIInstructions(bdbId, bdbName, key.name, keyFormulas(key)))
+      .writeText(dataAPIInstructions(bdbId, bdbName, key.name, withColumns, manual.data, formulas))
       .then(
         () => toast("Instructions copied: paste them to your coding agent.", "success"),
         () => toast("Couldn't copy the instructions", "error"),

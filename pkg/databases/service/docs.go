@@ -21,6 +21,12 @@ import (
 //go:embed manuals/formulas.md
 var formulasManual string
 
+// dataAPIManual is the Data API reference for an app using a bdb with a Data API key: the endpoints, the key, the
+// cross-origin rules, the parameters and their values, the answers, the errors and the limits.
+//
+//go:embed manuals/data-api.md
+var dataAPIManual string
+
 // sqlManual is the SQL capabilities reference: identifier rules, the reserved `_` prefix, JSON1/JSONB and FTS5
 // support, change-log semantics, and the statement limits.
 //
@@ -31,6 +37,7 @@ var sqlManual string
 // parse is a build defect); rendering happens per reader, whose names and limits differ. An unresolved placeholder
 // surfaces as a render error, which this package's tests catch.
 var manualTemplates = map[string]*template.Template{
+	"data-api": template.Must(template.New("data-api").Option("missingkey=error").Parse(dataAPIManual)),
 	"formulas": template.Must(template.New("formulas").Option("missingkey=error").Parse(formulasManual)),
 	"sql":      template.Must(template.New("sql").Option("missingkey=error").Parse(sqlManual)),
 }

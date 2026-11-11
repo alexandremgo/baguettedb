@@ -1,0 +1,110 @@
+# Data API manual
+
+The Data API lets an app use a bdb as its database, with no need for a backend: a web page, a mobile app or a script
+calls it directly. The app sends a **Data API key**, which belongs to one bdb and runs only the formulas its owner
+picked for it, acting as the member who created it: what that member may not do, the key may not either.
+
+Keys are created, changed and revoked in BaguetteDB's web app, in the bdb's Access tab, never by an agent. To the
+bdb's owner and editors, `{{.ToolGetFormula}}` and `{{.ToolListFormulas}}` name the keys a formula is on
+(`data_api_keys`). An app runs a formula as it is when it calls: changing a formula's SQL, parameters or result
+columns changes what the app gets from its next call, and deleting it stops the app from running it.
+
+## Endpoints
+
+Every path starts with the API's origin, then `/api/data/v1/bdbs/{bdb_id}`: the origin of the hosted service's API,
+or the address `bdb serve` listens on. Two endpoints:
+
+- `GET …/formulas` lists the formulas the key runs:
+  `{"formulas": [{"id", "name", "label", "description", "kind", "params", "columns"}]}`. `kind` is `view` (it
+  reads) or `action` (it writes); a view's `columns` are the keys each of its rows has.
+- `POST …/formulas/{formula_id}/run` runs one, with the JSON body `{"params": {"name": value}}`, or no body when it
+  takes no parameter.
+
+## Authentication
+
+Every request sends the key as a bearer token: `Authorization: Bearer bdbdk_…`. Cookies are never read, so a signed-in
+browser session authenticates nothing here. A key sent to another bdb's path is refused.
+
+Keep the key, and the base URL, in the app's configuration (an environment variable, a build-time setting), never in
+its repository. A key in front-end code can be read by anyone who loads the app: it only runs its formulas, but it
+runs all of them, actions included.
+
+## Cross-origin calls
+
+A browser may call the Data API from any origin: every answer allows any origin, and a preflight request is answered
+before any key is checked and may be cached for two hours. Credentials are never allowed, so don't set `credentials:
+"include"`. Native apps, scripts and servers aren't subject to CORS.
+
+## Parameters
+
+A formula's `params` describe what the run's `params` object takes, by name. Each has a `type`, whether it is
+`required`, and a `source` saying where its value comes from:
+
+- `prompt`, `lookup`: a value the app supplies. A lookup's value is one of the values of a table's column, which the
+  app knows only through a formula listing them.
+- `selection-single`: the `rowid` of one row, as a view answered it (the view selects a `rowid` column).
+- `selection-bulk`: an array of rowids.
+- `reorder`: an array of rowids, in their new order.
+- `pagination`: `cursor` and `limit`, both optional; see Answers.
+- `window`: a bound of a date range, `YYYY-MM-DD`.
+
+Values are JSON, by type: `text` a string; `integer` and `float` a number; `boolean` `true` or `false`; `date`
+`"YYYY-MM-DD"`; `datetime` `"YYYY-MM-DD HH:MM:SS"` (`"YYYY-MM-DDTHH:MM"` is accepted too); `time` `"HH:MM:SS"` or
+`"HH:MM"`. A parameter with `multiple` takes an array of values, one with `options` only one of their `value`s, and a
+`group` parameter an array of objects keyed by its `fields`. An optional parameter left out binds its `default`, or
+null when it has none.
+
+## Answers
+
+- A view answers `{"rows": [{"column": value}]}`, one object per row, keyed by the view's `columns`.
+  {{- if .MaxQueryResultRows}}
+  At most {{.MaxQueryResultRows}} rows: a larger result is refused, so page it.
+  {{- end}}
+- A paged view, one declaring the `cursor` and `limit` parameters, adds `"pagination": {"has_more": true,
+  "next_cursor": 42}`: run it again with `cursor` set to `next_cursor` for the next page, until `has_more` is false.
+- An action answers `{"affected_row_count": 1, "last_insert_row_id": 7}`, the rowid present when it inserted.
+
+Values come as plain JSON: text a string, a number a number, a blob a base64 string, an empty value `null`.
+JavaScript loses precision on integers beyond 2^53.
+
+## Errors
+
+An error answers `{"error": "a message for people", "code": "a_stable_code"}`. Branch on the code; the message may
+change.
+
+| Status | Code | Meaning |
+|---|---|---|
+| 401 | `missing_key` | No key was sent as a bearer token. |
+| 401 | `invalid_key` | The key is unknown or revoked. |
+| 403 | `key_not_for_bdb` | The key belongs to another bdb. |
+| 403 | `formula_not_on_key` | The key doesn't run this formula. |
+| 403 | `access_denied` | The key's creator may not run it (an action needs an editor or the owner). |
+| 404 | `formula_not_found` | No such formula. |
+| 400 | `invalid_request` | The body isn't `{"params": {…}}`. |
+| 400 | `invalid_params` | A parameter is missing, unknown or of the wrong type; the message names it. |
+| 413 | `request_too_large`, `result_too_large` | The body, or the view's answer, is too large. |
+| 422 | `query_failed` | The formula's SQL failed, such as on a constraint. |
+| 429 | `rate_limited` | Too many runs at once; retry after the `Retry-After` header's seconds. |
+| 503 | `unavailable` | The bdb is briefly unavailable; retry shortly. |
+| 504 | `timeout` | The formula took too long to run. |
+| 500 | `internal_error` | Something failed on the server. |
+
+## Limits
+
+- Runs under a key count as its creator's: at most {{.MaxConcurrentQueries}} of their queries and runs at the same
+  time, any more refused with `rate_limited`.
+{{- if .MaxRowsPerRequest}}
+- An action changes at most {{.MaxRowsPerRequest}} rows.
+{{- end}}
+{{- if .MaxStatementsPerRequest}}
+- A formula runs at most {{.MaxStatementsPerRequest}} statements.
+{{- end}}
+
+## Writing an app
+
+- Look formulas up by `name` in `GET …/formulas` rather than hard-coding their IDs: the same formulas get other IDs
+  in another bdb or on another instance, and the app then works with any of them.
+- Read a view's rows by its `columns`, and an action's outcome by `affected_row_count`.
+- Handle `formula_not_on_key`: the owner can take a formula off the key, or delete it, at any time.
+- Agents with BaguetteDB's MCP tools or command line can read a formula's SQL and parameters with
+  `{{.ToolGetFormula}}`, and a whole bdb with `{{.ToolDescribeBdb}}`.

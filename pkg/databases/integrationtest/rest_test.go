@@ -410,10 +410,13 @@ func setupStackWithOptions(t *testing.T, opts stackOptions) (chi.Router, *sqlite
 	formulaHandler := dbapi.NewFormulaHandler(formulaSvc, testLogger)
 	exportHandler := dbapi.NewExportHandler(exportSvc, testLogger)
 	internalHandler := dbapi.NewInternalHandler(querySvc, skillSvc, formulaSvc, dbSvc, nil, testLogger)
-	return dbapi.NewRouter(
+	router := dbapi.NewRouter(
 		handler, skillHandler, formulaHandler, exportHandler, internalHandler, nil, tv.RequireToken(), authz.Policy{},
 		sseServer, 1024*1024, testutil.InternalAPISecret,
-	), sqliteClient
+	)
+	docsHandler := dbapi.NewDocsHandler(service.NewDocsService(querySvc), testLogger)
+	dbapi.RegisterDocsRoutes(router, docsHandler, tv.RequireToken())
+	return router, sqliteClient
 }
 
 // userToken builds a JWT with user role for the given user ID.

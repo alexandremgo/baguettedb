@@ -25,6 +25,7 @@ func TestMCP_GetDocs_Topics(t *testing.T) {
 		{topic: "formulas", heading: "# Formula authoring manual", rule: "rowid AS rowid"},
 		{topic: "formulas", heading: "### Calendar mode", rule: "day IS NULL"},
 		{topic: "formulas", heading: "### Calendar mode", rule: "week_start"},
+		{topic: "data-api", heading: "# Data API manual", rule: "formula_not_on_key"},
 		{topic: "sql", heading: "# SQL capabilities and engine rules", rule: "json_valid"},
 		{topic: "sql", heading: "## Change log semantics", rule: "BLOB values cannot be stored"},
 		{topic: "sql", heading: "## Change log semantics", rule: "recorded as the equivalent"},

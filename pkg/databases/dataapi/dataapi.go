@@ -27,6 +27,10 @@ type formulaRunner interface {
 	// created the key sees them.
 	ListFormulasForDataAPIKey(ctx context.Context, userID, keyID, bdbID uuid.UUID) ([]*domain.Formula, error)
 
+	// ViewColumns returns the result columns of each view among formulas of the bdb bdbID, by formula ID, as the user
+	// userID reads them.
+	ViewColumns(ctx context.Context, userID, bdbID uuid.UUID, formulas []*domain.Formula) (map[string][]string, error)
+
 	// RunFormulaAsDataAPIKey runs the formula formulaID for the key keyID of the bdb bdbID, acting as userID. A formula
 	// not on the key is a domain.ErrFormulaNotOnDataAPIKey.
 	RunFormulaAsDataAPIKey(
@@ -69,7 +73,8 @@ type handler struct {
 	logger   zerolog.Logger
 }
 
-// listFormulas handles GET /api/data/v1/bdbs/{bdbID}/formulas: the formulas the key may run, with their parameters.
+// listFormulas handles GET /api/data/v1/bdbs/{bdbID}/formulas: the formulas the key may run, with their parameters,
+// and a view's columns.
 func (h *handler) listFormulas(w http.ResponseWriter, r *http.Request) {
 	key, bdbID, ok := h.keyAndBdb(w, r)
 	if !ok {
@@ -80,9 +85,14 @@ func (h *handler) listFormulas(w http.ResponseWriter, r *http.Request) {
 		h.respondFormulaError(w, key, err)
 		return
 	}
+	columns, err := h.formulas.ViewColumns(r.Context(), key.UserID, bdbID, formulas)
+	if err != nil {
+		h.respondFormulaError(w, key, err)
+		return
+	}
 	resp := formulaListResponse{Formulas: make([]formulaResponse, len(formulas))}
 	for i, f := range formulas {
-		resp.Formulas[i] = toFormulaResponse(f)
+		resp.Formulas[i] = toFormulaResponse(f, columns[f.ID.String()])
 	}
 	httputil.RespondJSON(w, http.StatusOK, resp)
 }

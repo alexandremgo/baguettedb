@@ -27,7 +27,8 @@ func NewFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Logger
 }
 
 // ListFormulas handles GET /api/databases/v1/bdbs/{bdbID}/formulas.
-// Visible to viewer+ roles; permission is enforced inside FormulaService.
+// Visible to viewer+ roles; permission is enforced inside FormulaService. With ?columns=true, each view carries its
+// result columns.
 func (h *FormulaHandler) ListFormulas(w http.ResponseWriter, r *http.Request) {
 	userID, bdbID, ok := parseIDs(w, r)
 	if !ok {
@@ -39,8 +40,15 @@ func (h *FormulaHandler) ListFormulas(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, userID, err)
 		return
 	}
+	var columns map[string][]string
+	if r.URL.Query().Get("columns") == "true" {
+		if columns, err = h.formulaSvc.ViewColumns(r.Context(), userID, bdbID, formulas); err != nil {
+			h.respondError(w, userID, err)
+			return
+		}
+	}
 
-	httputil.RespondJSON(w, http.StatusOK, toFormulaResponses(formulas))
+	httputil.RespondJSON(w, http.StatusOK, toFormulaResponses(formulas, columns))
 }
 
 // GetFormula handles GET /api/databases/v1/bdbs/{bdbID}/formulas/{ref}.

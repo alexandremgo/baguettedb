@@ -408,6 +408,7 @@ func Setup(
 	router := dbapi.NewRouter(
 		handler, skillHandler, formulaHandler, exportHandler, internalHandler, shardRouter,
 		requireToken, opts.Policy, sseServer, cfg.MaxRequestBodySize, cfg.InternalAPISecret)
+	dbapi.RegisterDocsRoutes(router, dbapi.NewDocsHandler(docsSvc, logger), requireToken)
 	if opts.DataAPIKeyChecker != nil {
 		var routeToOwner func(http.Handler) http.Handler
 		if shardRouter != nil {

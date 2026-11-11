@@ -536,6 +536,35 @@ func (s *FormulaService) listFormulas(
 	return formulas, nil
 }
 
+// ViewColumns returns the result columns of each view among formulas, by formula ID: the keys of its rows, worked out
+// from its SQL against the bdb bdbID's schema without running it, for a user userID who may read the bdb. A view whose
+// SQL no longer prepares, such as one reading a dropped table, is left out, and so is every action.
+func (s *FormulaService) ViewColumns(
+	ctx context.Context, userID, bdbID uuid.UUID, formulas []*domain.Formula,
+) (map[string][]string, error) {
+	db, err := s.dbSvc.AuthorizeAndResolveDatabase(ctx, userID, bdbID, authz.DBPermRead)
+	if err != nil {
+		return nil, err
+	}
+	columns := make(map[string][]string)
+	if err := s.executor.WithConn(ctx, db.ID.String(), func(h ParseHandle) error {
+		for _, f := range formulas {
+			if f.Kind != domain.FormulaKindView {
+				continue
+			}
+			stmts, err := s.classifier.Classify(h, f.SQL)
+			if err != nil || len(stmts) == 0 {
+				continue
+			}
+			columns[f.ID.String()] = stmts[0].ResultColumns
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("working out the views' columns: %w", err)
+	}
+	return columns, nil
+}
+
 // ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
 // userID who may write the bdb's database, its owner or an editor, and none to anyone else.
 func (s *FormulaService) ListFormulaDataAPIKeys(

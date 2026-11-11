@@ -106,8 +106,8 @@ func TestFormulasDoc_CoversAuthoringSections(t *testing.T) {
 // limits, and an unknown or empty topic errors with a deterministic, alphabetically ordered list of
 // valid topics.
 func TestDocsForTopic(t *testing.T) {
-	if len(manualTemplates) != 2 {
-		t.Fatalf("expected 2 registered doc topics, got %d", len(manualTemplates))
+	if len(manualTemplates) != 3 {
+		t.Fatalf("expected 3 registered doc topics, got %d", len(manualTemplates))
 	}
 
 	tests := []struct {
@@ -116,6 +116,7 @@ func TestDocsForTopic(t *testing.T) {
 		want      string
 		wantError bool
 	}{
+		{name: "data-api topic", topic: "data-api", want: renderDoc(t, "data-api")},
 		{name: "formulas topic", topic: "formulas", want: renderDoc(t, "formulas")},
 		{name: "sql topic", topic: "sql", want: renderDoc(t, "sql")},
 		{name: "unknown topic", topic: "recipes", wantError: true},
@@ -128,7 +129,7 @@ func TestDocsForTopic(t *testing.T) {
 				if err == nil {
 					t.Fatalf("renderManual(%q): expected an error, got none", tt.topic)
 				}
-				if !strings.Contains(err.Error(), "'formulas', 'sql'") {
+				if !strings.Contains(err.Error(), "'data-api', 'formulas', 'sql'") {
 					t.Errorf("renderManual(%q) error %q should list the valid topics in alphabetical order",
 						tt.topic, err.Error())
 				}
@@ -141,6 +142,23 @@ func TestDocsForTopic(t *testing.T) {
 				t.Errorf("renderManual(%q) returned the wrong document", tt.topic)
 			}
 		})
+	}
+}
+
+// TestDataAPIDoc_CoversTheContract guards the embedded Data API reference: its sections, and the facts an app's
+// code depends on, the endpoints, the key header, the error codes and the parameter value formats.
+func TestDataAPIDoc_CoversTheContract(t *testing.T) {
+	doc := renderDoc(t, "data-api")
+	for _, want := range []string{
+		"## Endpoints", "## Authentication", "## Cross-origin calls", "## Parameters", "## Answers", "## Errors",
+		"## Limits", "/api/data/v1/bdbs/{bdb_id}", "…/formulas/{formula_id}/run", "Authorization: Bearer",
+		"missing_key", "invalid_key", "key_not_for_bdb", "formula_not_on_key", "access_denied", "formula_not_found",
+		"invalid_request", "invalid_params", "request_too_large", "result_too_large", "query_failed", "rate_limited",
+		"unavailable", "timeout", "internal_error", `"YYYY-MM-DD"`, "next_cursor", "columns",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the Data API doc lacks %q", want)
+		}
 	}
 }
 

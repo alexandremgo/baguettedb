@@ -1,5 +1,5 @@
 /** The Data API as an app sees it: where it is called, and the instructions a coding agent needs to write an app that
- *  calls it with a key. */
+ *  calls it with a key. The contract itself is described by the Data API manual, which the instructions carry. */
 
 import type { Formula, FormulaParam } from "../api/formulas";
 import { getConfig } from "../config";
@@ -7,19 +7,44 @@ import { getConfig } from "../config";
 /** Name the instructions suggest for the setting holding the key's value, which never goes into them. */
 const KEY_SETTING = "BAGUETTEDB_DATA_API_KEY";
 
+/** The text form a value of each date and time type takes. */
+const formats: Partial<Record<FormulaParam["type"], string>> = {
+  date: "YYYY-MM-DD",
+  datetime: "YYYY-MM-DD HH:MM:SS",
+  time: "HH:MM:SS",
+};
+
 /** Returns the Data API's base URL on this instance: on the API's origin, which is the page's own when it serves both. */
 export function dataAPIBaseURL(): string {
   return `${getConfig().apiUrl || window.location.origin}/api/data/v1`;
 }
 
-/** Returns how the instructions describe the parameter p: its type, whether it is required, and what it accepts. */
-function describeParam(p: FormulaParam): string {
-  const facts: string[] = [p.multiple ? `list of ${p.type}` : p.type];
-  if (p.source === "pagination") {
-    facts.push("optional, pagination");
-  } else {
-    facts.push(p.optional ? "optional" : "required");
+/** Returns the type of the parameter p's value, by its source when that decides it, and what the value is when its
+ *  source says more than its type: the rowids a selection or a reorder takes, of the rows of view, the view the
+ *  formula is attached to, when there is one; a pagination control; a date bound. */
+function describeValue(p: FormulaParam, view?: Formula): { type: string; note?: string } {
+  const rowsOf = view ? `rows of the \`${view.name}\` view` : "rows a view answered";
+  switch (p.source) {
+    case "selection-single":
+      return { type: "integer", note: `the \`rowid\` of one of the ${rowsOf}` };
+    case "selection-bulk":
+      return { type: "array of integers", note: `the \`rowid\`s of ${rowsOf}` };
+    case "reorder":
+      return { type: "array of integers", note: `the \`rowid\`s of ${rowsOf}, in their new order` };
+    case "pagination":
+      return { type: p.type, note: "a pagination control, see the manual's Answers" };
+    case "window":
+      return { type: "date `YYYY-MM-DD`", note: "a bound of the date range" };
   }
+  const type = formats[p.type] ? `${p.type} \`${formats[p.type]}\`` : p.type;
+  return { type: p.multiple ? `array of ${type}` : type };
+}
+
+/** Returns how the instructions describe the parameter p, of a formula attached to view when it is: its type,
+ *  whether it is required, what it accepts, and what its value is. */
+function describeParam(p: FormulaParam, view?: Formula): string {
+  const { type, note } = describeValue(p, view);
+  const facts = [type, p.optional || p.source === "pagination" ? "optional" : "required"];
   if (p.default !== undefined) facts.push(`default ${JSON.stringify(p.default)}`);
   if (p.defaults !== undefined) facts.push(`default ${JSON.stringify(p.defaults)}`);
   if (p.options?.length) {
@@ -27,15 +52,17 @@ function describeParam(p: FormulaParam): string {
   }
   if (p.lookup) facts.push(`a value of ${p.lookup.table}.${p.lookup.value_column}`);
   let line = `\`${p.name}\` (${facts.join(", ")})`;
-  if (p.hint) line += `: ${p.hint}`;
+  const notes = [note, p.hint].filter(Boolean);
+  if (notes.length > 0) line += `: ${notes.join("; ")}`;
   if (p.fields?.length) {
-    line += `. Each row is an object with: ${p.fields.map(describeParam).join("; ")}`;
+    line += `. An array of objects, each with: ${p.fields.map((field) => describeParam(field)).join("; ")}`;
   }
   return line;
 }
 
-/** Returns the instructions section describing formula f: its name and ID, kind, description and parameters. */
-function describeFormula(f: Formula): string[] {
+/** Returns the instructions section describing formula f, attached to view when it is: its name and ID, kind,
+ *  description, parameters, and a view's columns. */
+function describeFormula(f: Formula, view?: Formula): string[] {
   const title = f.label ? `${f.name}: "${f.label}"` : f.name;
   const lines = [`### ${title} (${f.kind})`, "", `ID: ${f.id}`];
   if (f.description) lines.push("", f.description);
@@ -43,60 +70,52 @@ function describeFormula(f: Formula): string[] {
   if (f.params.length === 0) {
     lines.push("Takes no parameters.");
   } else {
-    lines.push("Parameters:", ...f.params.map((p) => `- ${describeParam(p)}`));
+    lines.push("Parameters:", ...f.params.map((p) => `- ${describeParam(p, view)}`));
+  }
+  if (f.kind === "view" && f.result_columns?.length) {
+    lines.push("", `Each row has: ${f.result_columns.map((c) => `\`${c}\``).join(", ")}.`);
   }
   return lines;
 }
 
 /**
  * Returns, as Markdown, what a coding agent needs to write an app using the bdb bdbId, named bdbName, with the Data
- * API key keyName: the base URL, how to send the key, the endpoints and their answers, the errors, and the formulas the
- * key runs with their parameters. The key's value is never in it: the app reads it from its configuration.
+ * API key keyName: first the key's specifics, its base URL and the formulas it runs with their parameters and a view's
+ * columns, then manual, the Data API manual. bdbFormulas are all the bdb's formulas, among which an attached formula's
+ * view is found, to say which view's rows its selection takes. The key's value is never in it: the app reads it from
+ * its configuration.
  */
-export function dataAPIInstructions(bdbId: string, bdbName: string, keyName: string, formulas: Formula[]): string {
+export function dataAPIInstructions(
+  bdbId: string,
+  bdbName: string,
+  keyName: string,
+  formulas: Formula[],
+  manual: string,
+  bdbFormulas: Formula[],
+): string {
+  const byId = new Map(bdbFormulas.map((f) => [f.id, f]));
   const base = `${dataAPIBaseURL()}/bdbs/${bdbId}`;
   const lines = [
-    `# BaguetteDB Data API: the "${bdbName}" bdb`,
+    `# The "${keyName}" Data API key of the "${bdbName}" bdb`,
     "",
-    `This app uses a BaguetteDB bdb as its database, through the Data API, with the Data API key "${keyName}". The key ` +
-      "runs the formulas listed below and nothing else: each is a named query or change with typed parameters, written " +
-      "by the bdb's owner.",
-    "",
-    "## Calling it",
+    `This app uses a BaguetteDB bdb as its database, through the Data API, with the Data API key "${keyName}": it ` +
+      "runs the formulas listed below and nothing else.",
     "",
     `- Base URL: ${base}`,
-    `- Every request sends the key: \`Authorization: Bearer <key>\`. Read the key from the app's configuration, such ` +
-      `as an environment variable named ${KEY_SETTING}, and never commit it. Anyone who loads a front-end app can ` +
-      "read its key, but the key only runs these formulas.",
-    "- A browser may call it from any origin, without cookies or credentials.",
-    `- \`GET ${base}/formulas\` lists the formulas the key runs, with their parameters.`,
-    `- \`POST ${base}/formulas/{formula_id}/run\` runs one, with the JSON body \`{"params": {"name": value}}\`, or ` +
-      "an empty body when it takes no parameters.",
-    '  - A view answers `{"rows": [{"column": value}]}`, one object per row. A paged view adds ' +
-      '`"pagination": {"has_more": true, "next_cursor": 42}`: run it again with the `cursor` parameter set to ' +
-      "`next_cursor` for the next page, and `limit` for its size.",
-    '  - An action answers `{"affected_row_count": 1, "last_insert_row_id": 7}`.',
-    "- JavaScript loses precision on integers beyond 2^53.",
+    `- The key goes in every request's \`Authorization: Bearer <key>\` header. Read it, and the base URL, from the ` +
+      `app's configuration, such as an environment variable named ${KEY_SETTING}, and never commit it.`,
+    "- An agent with BaguetteDB's MCP tools or command line can read the rest itself: `get_docs` (topic `data-api`) " +
+      "and `get_formula`, or `bdb docs data-api` and `bdb formulas show`. The Data API manual follows the formulas.",
     "",
-    "## Errors",
-    "",
-    'An error answers `{"error": "a message for people", "code": "a_stable_code"}`. Branch on the code:',
-    "",
-    "- 401 `missing_key`, `invalid_key`: no key was sent, or it is unknown or revoked.",
-    "- 403 `key_not_for_bdb`, `formula_not_on_key`, `access_denied`: the key may not run this formula here.",
-    "- 404 `formula_not_found`.",
-    "- 400 `invalid_request`, `invalid_params`: the body, or a parameter value, is wrong; the message says which.",
-    "- 413 `request_too_large`, `result_too_large`; 422 `query_failed`; 504 `timeout`.",
-    "- 429 `rate_limited`, 503 `unavailable`: retry later, after the `Retry-After` header's seconds when it is sent.",
-    "- 500 `internal_error`.",
-    "",
-    "## Formulas",
+    "## The key's formulas",
   ];
   if (formulas.length === 0) {
     lines.push("", "The key runs no formula yet: the bdb's owner adds them in BaguetteDB.");
   }
   for (const f of formulas) {
-    lines.push("", ...describeFormula(f));
+    const view = f.attached_to_formula_id ? byId.get(f.attached_to_formula_id) : undefined;
+    lines.push("", ...describeFormula(f, view));
   }
+  lines.push("", "---", "", manual.trimEnd());
   return lines.join("\n") + "\n";
 }
