@@ -1,8 +1,9 @@
 # Data API manual
 
-The Data API lets an app use a bdb as its database, with no need for a backend: a web page, a mobile app or a script
-calls it directly. The app sends a **Data API key**, which belongs to one bdb and runs only the formulas its owner
-picked for it, acting as the member who created it: what that member may not do, the key may not either.
+The Data API lets an app use a bdb as its database, with no need for a backend when the app is for you or people you
+trust: a web page, a mobile app or a script calls it directly. A public app may need one; see Where the key lives. The
+app sends a **Data API key**, which belongs to one bdb and runs only the formulas its owner picked for it, acting as
+the member who created it: what that member may not do, the key may not either.
 
 Keys are created, changed and revoked in BaguetteDB's web app, in the bdb's Access tab, never by an agent. To the
 bdb's owner and editors, `{{.ToolGetFormula}}` and `{{.ToolListFormulas}}` name the keys a formula is on
@@ -25,9 +26,20 @@ or the address `bdb serve` listens on. Two endpoints:
 Every request sends the key as a bearer token: `Authorization: Bearer bdbdk_…`. Cookies are never read, so a signed-in
 browser session authenticates nothing here. A key sent to another bdb's path is refused.
 
-Keep the key, and the base URL, in the app's configuration (an environment variable, a build-time setting), never in
-its repository. A key in front-end code can be read by anyone who loads the app: it only runs its formulas, but it
-runs all of them, actions included.
+## Where the key lives
+
+Anyone who can load an app can read the key in it, and run every formula on the key as its creator, actions included.
+So the key may sit in the app itself when everyone who loads the app could be trusted with those formulas:
+
+- a personal or local app, such as a page served from your machine, that only you open;
+- an app shared with people you trust, such as your family or a small team;
+- a public app whose key only runs views of data you would publish anyway.
+
+Otherwise, for a public app whose key runs actions or reads private data, keep the key in a backend, even a single
+serverless function: the app calls the backend, which checks its own users and calls the Data API with the key.
+
+Either way, keep the key, and the base URL, in configuration (an environment variable, a build-time setting), never
+in the app's repository.
 
 ## Cross-origin calls
 

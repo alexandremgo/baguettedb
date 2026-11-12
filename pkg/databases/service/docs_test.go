@@ -150,7 +150,8 @@ func TestDocsForTopic(t *testing.T) {
 func TestDataAPIDoc_CoversTheContract(t *testing.T) {
 	doc := renderDoc(t, "data-api")
 	for _, want := range []string{
-		"## Endpoints", "## Authentication", "## Cross-origin calls", "## Parameters", "## Answers", "## Errors",
+		"## Endpoints", "## Authentication", "## Where the key lives", "## Cross-origin calls", "## Parameters",
+		"## Answers", "## Errors",
 		"## Limits", "/api/data/v1/bdbs/{bdb_id}", "…/formulas/{formula_id}/run", "Authorization: Bearer",
 		"missing_key", "invalid_key", "key_not_for_bdb", "formula_not_on_key", "access_denied", "formula_not_found",
 		"invalid_request", "invalid_params", "request_too_large", "result_too_large", "query_failed", "rate_limited",

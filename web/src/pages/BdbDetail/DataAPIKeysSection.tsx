@@ -195,7 +195,10 @@ export function DataAPIKeysSection({ bdbId, bdbName }: DataAPIKeysSectionProps) 
         Apps of yours, such as a web page or a script, use this bdb as their database through the Data API at{" "}
         <CopyableCode text={dataAPIBaseURL()} />.
       </p>
-      <p className={styles.hint}>A key acts as you, and runs only the formulas you pick for it.</p>
+      <p className={styles.hint}>
+        A key acts as you, and runs only the formulas you pick for it. Anyone who can load an app can read its key: for a
+        public app, pick only formulas anyone may run, or keep the key in a backend.
+      </p>
 
       {keys === undefined && <SkeletonRows />}
       {keys && keys.length === 0 && <p className={styles.hint}>No keys yet.</p>}
@@ -274,7 +277,9 @@ export function DataAPIKeysSection({ bdbId, bdbName }: DataAPIKeysSectionProps) 
               noun="formulas"
               onChange={setNewFormulaIds}
             />
-            <span className={styles.hint}>You can add or remove formulas later.</span>
+            <span className={styles.hint}>
+              Anyone who loads an app with this key can run these formulas as you. You can add or remove them later.
+            </span>
           </div>
           {createError && <p className={styles.error}>{createError}</p>}
           <div className={styles.actions}>
