@@ -39,19 +39,24 @@ type formulaRunner interface {
 }
 
 // Register mounts the Data API on r under /api/data/v1/bdbs/{bdbID}: listing the key's formulas and running one. Each
-// request is let through from any origin, then authenticated by its key with check, passed through routeToOwner when
-// set, and limited to maxRequestBodySize.
+// request is passed through routeToOwner when set, then let through from any origin, authenticated by its key with
+// check, and limited to maxRequestBodySize.
+//
+// Routing comes first, needing only the path's bdb: a request reaching a pod that doesn't own the bdb is forwarded
+// untouched, and the owner alone answers it, so its cross-origin headers are set once, not once by each pod, and its
+// key is checked once, on the pod counting the key's in-flight slots. A request with a bad key costs one forward
+// before its refusal.
 func Register(
 	r chi.Router, formulas formulaRunner, check authhttp.DataAPIKeyChecker,
 	routeToOwner func(http.Handler) http.Handler, maxRequestBodySize int64, logger zerolog.Logger,
 ) {
 	h := &handler{formulas: formulas, logger: logger}
 	r.Route("/api/data/v1/bdbs/{bdbID}", func(r chi.Router) {
-		r.Use(allowAnyOrigin)
-		r.Use(requireKey(check, logger))
 		if routeToOwner != nil {
 			r.Use(routeToOwner)
 		}
+		r.Use(allowAnyOrigin)
+		r.Use(requireKey(check, logger))
 		r.Use(httputil.MaxBodySize(maxRequestBodySize))
 		// Each route has an OPTIONS twin, so a preflight request is routed like the request it precedes, wherever these
 		// routes are mounted, and allowAnyOrigin answers it.
