@@ -27,17 +27,17 @@ reverts your last one. Formulas and skills are not in that log: bdb formulas del
 is deleted in the web app (bdb serve). When the user wants to keep a workflow, a naming convention or a rule, offer
 to write it down as a skill (bdb skills create).
 
-Manuals: bdb docs sql, bdb docs formulas.
+Manuals: bdb docs sql, bdb docs formulas, bdb docs data-api (for an app using a bdb with a Data API key).
 `
 
 // newDocsCmd builds the docs command, which prints the guide for agents, or one of the built-in manuals.
 func newDocsCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	return &cobra.Command{
 		Use:   "docs [<topic>]",
-		Short: "Print the guide for agents, or a manual: sql or formulas",
+		Short: "Print the guide for agents, or a manual: sql, formulas or data-api",
 		Long: "docs, bare, prints what an agent should know before working in a bdb, and needs no data directory. " +
 			"With a topic it prints a built-in manual: sql, the SQL engine's rules, the change log and the limits in " +
-			"force; formulas, how to write a formula.",
+			"force; formulas, how to write a formula; data-api, how an app runs a bdb's formulas with a Data API key.",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {

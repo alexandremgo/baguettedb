@@ -123,6 +123,8 @@ type SetupResult struct {
 	// nil when SetupOptions.PersonalAccessTokens is off.
 	OpaqueTokenChecker  authhttp.OpaqueTokenChecker
 	OpaqueTokenPrefixes []string
+	// DataAPIKeyChecker checks a Data API key for the Data API, in the same process.
+	DataAPIKeyChecker authhttp.DataAPIKeyChecker
 	// Pool exposes the underlying connection pool so extensions can build
 	// transaction-scoped adapters against the same database. Nil on the SQLite instance store.
 	Pool *pgxpool.Pool
@@ -166,7 +168,7 @@ func setupCore(
 	if opts.UserResponseEnricher != nil {
 		handler.SetUserResponseEnricher(opts.UserResponseEnricher)
 	}
-	internalHandler := authapi.NewInternalHandler(roleSvc, userSvc)
+	internalHandler := authapi.NewInternalHandler(roleSvc, userSvc, st.tokenSvc)
 	router := authapi.NewRouter(handler, internalHandler, requireToken, opts.Policy, cfg.InternalAPISecret)
 	if opts.PersonalAccessTokens {
 		authapi.RegisterTokenRoutes(router, authapi.NewTokenHandler(st.tokenSvc, logger), requireToken)
@@ -184,7 +186,8 @@ func setupCore(
 }
 
 // opaqueTokenPrefixes lists the prefixes of the opaque token kinds a request may carry as its bearer token: personal
-// tokens and sessions.
+// tokens and sessions. The Data API key prefix is not among them: a key runs only the formulas picked for it, and is
+// checked on its own.
 var opaqueTokenPrefixes = []string{domain.AccessTokenPersonal.Prefix(), domain.AccessTokenSession.Prefix()}
 
 // opaqueTokenChecker adapts the token service's check to an auth middleware's: a token the service refuses is
@@ -202,6 +205,23 @@ func opaqueTokenChecker(tokens *service.TokenService) authhttp.OpaqueTokenChecke
 	}
 }
 
+// dataAPIKeyChecker adapts the token service's Data API key check to the Data API's: a key the service refuses is
+// authhttp.ErrInvalidToken.
+func dataAPIKeyChecker(tokens *service.TokenService) authhttp.DataAPIKeyChecker {
+	return func(ctx context.Context, key string) (authhttp.DataAPIKeyIdentity, error) {
+		identity, err := tokens.CheckDataAPIKey(ctx, key)
+		if errors.Is(err, domain.ErrInvalidAccessToken) {
+			return authhttp.DataAPIKeyIdentity{}, authhttp.ErrInvalidToken
+		}
+		if err != nil {
+			return authhttp.DataAPIKeyIdentity{}, err
+		}
+		return authhttp.DataAPIKeyIdentity{
+			UserID: identity.UserID, Roles: identity.Roles, KeyID: identity.KeyID, BdbID: identity.BdbID,
+		}, nil
+	}
+}
+
 // result assembles the setup result around c, with cleanup releasing everything the setup acquired.
 func (c *core) result(cleanup func()) *SetupResult {
 	res := &SetupResult{
@@ -213,6 +233,8 @@ func (c *core) result(cleanup func()) *SetupResult {
 		Pool:         c.store.pool,
 		OwnerSvc:     service.NewOwnerService(c.store.ownerTx),
 		Cleanup:      cleanup,
+
+		DataAPIKeyChecker: dataAPIKeyChecker(c.store.tokenSvc),
 	}
 	if c.personalTokens {
 		res.OpaqueTokenChecker = opaqueTokenChecker(c.store.tokenSvc)

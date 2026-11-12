@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/quota"
 	"github.com/alexandremgo/baguettedb/pkg/common/testutil"
@@ -38,6 +39,26 @@ func (a *ownedSetBdbsApp) CheckMemberPermission(
 	_ context.Context, _, _ uuid.UUID, _ authz.DatabasePermission,
 ) (bool, error) {
 	return true, nil
+}
+
+// CheckDataAPIKeyFormula and ForgetDataAPIKeyFormula do nothing, since these tests run formulas under no key.
+func (a *ownedSetBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}
+
+func (a *ownedSetBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+func (a *ownedSetBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *ownedSetBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return nil, nil
 }
 
 func (a *ownedSetBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {

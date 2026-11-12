@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/alexandremgo/baguettedb/pkg/bdbs/domain"
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 )
 
@@ -26,16 +27,79 @@ type bdbMembershipReader interface {
 	ListOwnedIDsByUser(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 }
 
+// dataAPIKeyFormulaChecker answers which formulas Data API keys may run, and forgets a formula that is gone.
+type dataAPIKeyFormulaChecker interface {
+	// KeyMayRunFormula reports whether the Data API key keyID of the bdb bdbID may run the formula formulaID, always
+	// false on a bdb that doesn't exist or is soft-deleted.
+	KeyMayRunFormula(ctx context.Context, bdbID, keyID uuid.UUID, formulaID string) (bool, error)
+
+	// KeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a bdb that
+	// doesn't exist or is soft-deleted.
+	KeyFormulaIDs(ctx context.Context, bdbID, keyID uuid.UUID) ([]string, error)
+
+	// FormulaKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member userID who
+	// may write the bdb's database, and none to anyone else.
+	FormulaKeys(ctx context.Context, userID, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
+
+	// ForgetFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
+	ForgetFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
+}
+
 // BdbAuthChecker resolves bdb membership to database permissions
 // and provides bdb owner role lookups.
 type BdbAuthChecker struct {
-	repo    bdbMembershipReader
-	authApp AuthApp
+	repo        bdbMembershipReader
+	authApp     AuthApp
+	dataAPIKeys dataAPIKeyFormulaChecker
 }
 
 // NewBdbAuthChecker creates a new BdbAuthChecker.
 func NewBdbAuthChecker(repo bdbMembershipReader, authApp AuthApp) *BdbAuthChecker {
 	return &BdbAuthChecker{repo: repo, authApp: authApp}
+}
+
+// SetDataAPIKeys injects what answers for Data API keys. When left unset no key may run anything.
+func (c *BdbAuthChecker) SetDataAPIKeys(keys dataAPIKeyFormulaChecker) {
+	c.dataAPIKeys = keys
+}
+
+// CheckDataAPIKeyFormula reports whether the Data API key keyID of the bdb bdbID may run the formula formulaID, which
+// no key may on a soft-deleted bdb. Whether the key's creator may run the formula is not checked here.
+func (c *BdbAuthChecker) CheckDataAPIKeyFormula(
+	ctx context.Context, keyID, bdbID uuid.UUID, formulaID string,
+) (bool, error) {
+	if c.dataAPIKeys == nil {
+		return false, nil
+	}
+	return c.dataAPIKeys.KeyMayRunFormula(ctx, bdbID, keyID, formulaID)
+}
+
+// ListDataAPIKeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a
+// soft-deleted bdb.
+func (c *BdbAuthChecker) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error) {
+	if c.dataAPIKeys == nil {
+		return nil, nil
+	}
+	return c.dataAPIKeys.KeyFormulaIDs(ctx, bdbID, keyID)
+}
+
+// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+// userID who may write the bdb's database, its owner or an editor, and none to anyone else.
+func (c *BdbAuthChecker) ListFormulaDataAPIKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	if c.dataAPIKeys == nil {
+		return nil, nil
+	}
+	return c.dataAPIKeys.FormulaKeys(ctx, userID, bdbID)
+}
+
+// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
+func (c *BdbAuthChecker) ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
+	if c.dataAPIKeys == nil {
+		return nil
+	}
+	return c.dataAPIKeys.ForgetFormula(ctx, bdbID, formulaID)
 }
 
 // CheckMemberPermission checks whether the user has the given database permission

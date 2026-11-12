@@ -24,6 +24,25 @@ type AuthApp interface {
 	// keyed by user ID. Unknown IDs are silently omitted. An empty input
 	// returns an empty map without hitting the underlying store.
 	GetUserProfiles(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]*apptypes.UserProfile, error)
+
+	// CreateDataAPIKey creates a Data API key named name for the user userID, bound to the bdb bdbID, and returns it
+	// with its plain value, which can't be read again. A name that is empty or too long is a
+	// domain.ErrInvalidDataAPIKeyName, wrapped with what is wrong with it.
+	CreateDataAPIKey(ctx context.Context, userID, bdbID uuid.UUID, name string) (apptypes.CreatedDataAPIKey, error)
+
+	// ListDataAPIKeys returns the bdb bdbID's Data API keys that are not revoked, newest first.
+	ListDataAPIKeys(ctx context.Context, bdbID uuid.UUID) ([]apptypes.DataAPIKey, error)
+
+	// RevokeDataAPIKey revokes the Data API key keyID of the bdb bdbID, which stops authenticating at once. A key the
+	// bdb doesn't have, or one already revoked, is a domain.ErrDataAPIKeyNotFound.
+	RevokeDataAPIKey(ctx context.Context, bdbID, keyID uuid.UUID) error
+
+	// RevokeDataAPIKeys revokes every Data API key of the bdb bdbID; a bdb without keys is not an error.
+	RevokeDataAPIKeys(ctx context.Context, bdbID uuid.UUID) error
+
+	// RevokeMemberDataAPIKeys revokes the Data API keys the user userID created for the bdb bdbID; a member without
+	// keys is not an error.
+	RevokeMemberDataAPIKeys(ctx context.Context, bdbID, userID uuid.UUID) error
 }
 
 // DatabasesApp defines the subset of the databases app needed by bdbs.

@@ -26,12 +26,20 @@ func TestInternalRoutes_RequireSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/internal/api/bdbs/v1/check-permission", nil)
-			tt.setHeader(req.Header)
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
-			if rec.Code != http.StatusUnauthorized {
-				t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+			for _, path := range []string{
+				"/internal/api/bdbs/v1/check-permission",
+				"/internal/api/bdbs/v1/data-api-key-formulas",
+				"/internal/api/bdbs/v1/data-api-key-formulas/check",
+				"/internal/api/bdbs/v1/data-api-key-formulas/forget",
+				"/internal/api/bdbs/v1/formula-data-api-keys",
+			} {
+				req := httptest.NewRequest(http.MethodPost, path, nil)
+				tt.setHeader(req.Header)
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				if rec.Code != http.StatusUnauthorized {
+					t.Errorf("POST %s: status = %d, want %d", path, rec.Code, http.StatusUnauthorized)
+				}
 			}
 		})
 	}

@@ -1,4 +1,5 @@
-/** Bdb detail page with members list, invite management, and database tables viewer. */
+/** Bdb detail page: its formulas, tables and skills, and its Access tab with the members, the invites and, for the
+ *  owner, the Data API keys. */
 
 import { useState } from "react";
 import { useParams } from "react-router-dom";
@@ -14,7 +15,7 @@ import { useToast } from "../../components/Toast";
 import { EmptyState } from "../../components/EmptyState";
 import { SchemaList } from "../../components/SchemaList";
 import { Skeleton, SkeletonRows } from "../../components/Skeleton";
-import { BookOpen, SquareKanban, Table2, Users, X } from "../../components/icons";
+import { BookOpen, ShieldCheck, SquareKanban, Table2, X } from "../../components/icons";
 import { TruncatedCell } from "../../components/TruncatedCell/TruncatedCell";
 import { bdbCanWrite } from "../../api/bdbs";
 import { useBdb } from "../../hooks/useBdb";
@@ -24,6 +25,7 @@ import { useRestoreBdb, useUpdateMemberRole, useRemoveMember } from "../../hooks
 import { useTables, useTableSchema, useTableData } from "../../hooks/useTables";
 import { formatCellValue, isNullValue } from "../../utils/cellValue";
 import { formatPurgeDate } from "../../utils/date";
+import { DataAPIKeysSection } from "./DataAPIKeysSection";
 import { DeleteBdbModal } from "./DeleteBdbModal";
 import { EditBdbModal } from "./EditBdbModal";
 import { FormulasTab } from "./FormulasTab";
@@ -45,7 +47,7 @@ function formatExpiration(expiresAt: string): string {
   return `expires in ${days}d`;
 }
 
-type TabId = "tables" | "formulas" | "skills" | "members";
+type TabId = "tables" | "formulas" | "skills" | "access";
 
 export function BdbDetail() {
   const { id } = useParams<{ id: string }>();
@@ -239,7 +241,7 @@ export function BdbDetail() {
             { id: "formulas", label: "Formulas", Icon: SquareKanban },
             { id: "tables", label: "Tables", Icon: Table2 },
             { id: "skills", label: "Skills", Icon: BookOpen },
-            { id: "members", label: "Members", Icon: Users },
+            { id: "access", label: "Access", Icon: ShieldCheck },
           ] as { id: TabId; label: string; Icon: typeof SquareKanban }[]
         ).map((tab) => (
           <button
@@ -254,7 +256,7 @@ export function BdbDetail() {
       </div>
 
       <div className={styles.sections}>
-        {activeTab === "members" && (
+        {activeTab === "access" && (
           <>
         {/* Members */}
         <section>
@@ -355,6 +357,8 @@ export function BdbDetail() {
             />
               </section>
             )}
+
+            {canManage && id && <DataAPIKeysSection bdbId={id} bdbName={bdb.name} />}
           </>
         )}
 

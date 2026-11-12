@@ -68,11 +68,14 @@ func run(logger zerolog.Logger) error {
 		}
 	}()
 
-	// In standalone mode, calls bdbs service over HTTP for permission checks.
+	// In standalone mode, calls the bdbs service over HTTP for permission checks, and the auth service for the Data
+	// API's key checks.
 	bdbsHTTP := databaseshttp.NewBdbsApp(cfg.BdbsURL, cfg.InternalAPISecret)
+	authHTTP := databaseshttp.NewAuthApp(cfg.AuthURL, cfg.InternalAPISecret)
 
 	dbResult, err := dbmodule.Setup(ctx, cfg, logger, bdbsHTTP, dbmodule.SetupOptions{
-		IncludeMCPRoutes: true,
+		IncludeMCPRoutes:  true,
+		DataAPIKeyChecker: authHTTP.CheckDataAPIKey,
 	})
 	if err != nil {
 		return fmt.Errorf("setting up databases module: %w", err)

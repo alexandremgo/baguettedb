@@ -70,6 +70,8 @@
 - **DTOs** (Data Transfer Objects) live in the API layer (`pkg/*/api/dto.go`) and handle serialization. They have `json` tags and conversion functions from/to domain types.
 - When adding a new domain type that will be exposed via REST or MCP, create a corresponding DTO in `api/dto.go` with a `to*Response` conversion function.
 - The MCP layer (`pkg/*/mcp/`) should also convert domain types to DTOs (or reuse the REST DTOs) before marshaling to JSON.
+- The Data API (`pkg/databases/dataapi/`) is a versioned contract apps depend on: its request and response types are its
+  own, kept backward compatible, never REST's or MCP's.
 - Shapes that cross an app boundary through an `*App` port live once in `pkg/common/apptypes` (tagged, behavior-free); the
   providing app converts to them in its `appconv` package, and api/mcp layers (the provider's, or a consumer's that
   answers with exactly what the provider hands it) may reuse them for responses that are shape-identical to the

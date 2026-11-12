@@ -12,3 +12,20 @@ import (
 func UserProfile(p *domain.UserProfile) apptypes.UserProfile {
 	return apptypes.UserProfile{UserID: p.ID, Email: p.Email, FirstName: p.FirstName, LastName: p.LastName}
 }
+
+// DataAPIKey maps a Data API key without its value. A token bound to no bdb, which no Data API key is, maps to the nil
+// bdb ID.
+func DataAPIKey(t *domain.AccessToken) apptypes.DataAPIKey {
+	key := apptypes.DataAPIKey{
+		ID:          t.ID,
+		UserID:      t.UserID,
+		Name:        t.Name,
+		TokenPrefix: t.TokenPrefix,
+		CreatedAt:   t.CreatedAt,
+		LastUsedAt:  t.LastUsedAt,
+	}
+	if t.BdbID != nil {
+		key.BdbID = *t.BdbID
+	}
+	return key
+}

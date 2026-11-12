@@ -30,7 +30,7 @@ Creates a new bdb for the user, either blank or seeded from a starter. With `sta
 
 ### describe_bdb
 
-Describes a single bdb: tables with their column schemas (columns and foreign keys), skills with their full bodies inlined (bdb-level and table-targeted alike), and formulas (name, description and kind — 'view' or 'action' — their SQL and parameters live in get_formula). When a bdb is too large, schemas or table-targeted skill bodies fall back to summaries and the `omitted` field says what to call instead. Always call this orientation tool once you have decided which bdb to work in — right after picking it from list_bdbs or being pointed at it by the user, and before querying, mutating, or running formulas there. If the bdb has `deleted_at` set, it has been soft-deleted by its owner and will be permanently purged on or after `purge_at`. Warn the user before working in this bdb and tell them they can restore it from the web UI before the purge date.
+Describes a single bdb: tables with their column schemas (columns and foreign keys), skills with their full bodies inlined (bdb-level and table-targeted alike), and formulas (name, description and kind — 'view' or 'action' — their SQL and parameters live in get_formula; `data_api_keys` names the Data API keys apps run a formula with, for the owner and editors). When a bdb is too large, schemas or table-targeted skill bodies fall back to summaries and the `omitted` field says what to call instead. Always call this orientation tool once you have decided which bdb to work in — right after picking it from list_bdbs or being pointed at it by the user, and before querying, mutating, or running formulas there. If the bdb has `deleted_at` set, it has been soft-deleted by its owner and will be permanently purged on or after `purge_at`. Warn the user before working in this bdb and tell them they can restore it from the web UI before the purge date.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -144,7 +144,7 @@ Owner-only: re-applies the most recently undone change in this bdb regardless of
 
 ### list_formulas
 
-Lists every formula in the bdb (name, description, kind, SQL, parameter schema, display config, hidden flag), ordered by display position then name. Hidden formulas are included — hiding only trims the members' app listing, never this tool.
+Lists every formula in the bdb (name, description, kind, SQL, parameter schema, display config, hidden flag), ordered by display position then name. Hidden formulas are included — hiding only trims the members' app listing, never this tool. `data_api_keys` names the Data API keys apps run a formula with, as in get_formula.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -152,7 +152,7 @@ Lists every formula in the bdb (name, description, kind, SQL, parameter schema, 
 
 ### get_formula
 
-Fetches a single formula (with its SQL and parameter schema) by name or UUID. Useful to re-read a formula's definition before running or updating it.
+Fetches a single formula (with its SQL and parameter schema) by name or UUID. Useful to re-read a formula's definition before running or updating it. When apps run it with Data API keys, `data_api_keys` names them (ID and name, never the value), for the bdb's owner and editors; keys are created and changed in the web app only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -229,7 +229,7 @@ Creates a formula: a named, parameterized SQL artifact members run from the app 
 
 ### update_formula
 
-Updates an existing formula resolved by name or UUID. Pass only the fields to change; omitted fields are left untouched. Same conventions as create_formula — call get_docs(topic: 'formulas') before authoring. Changing `sql` re-derives the kind and verb; `params` replaces the whole schema. `display` is tri-state: omit = unchanged, null = clear, an object = replace — this is where slots are set (refs by name or UUID).
+Updates an existing formula resolved by name or UUID. Pass only the fields to change; omitted fields are left untouched. Same conventions as create_formula — call get_docs(topic: 'formulas') before authoring. Changing `sql` re-derives the kind and verb; `params` replaces the whole schema. `display` is tri-state: omit = unchanged, null = clear, an object = replace — this is where slots are set (refs by name or UUID). When apps run the formula with Data API keys, the answer's `note` says so: they run the new version from their next call.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -246,7 +246,7 @@ Updates an existing formula resolved by name or UUID. Pass only the fields to ch
 
 ### delete_formula
 
-Deletes a formula resolved by name or UUID. Formulas attached to a deleted view (its row/bulk actions and row detail) are removed with it.
+Deletes a formula resolved by name or UUID. Formulas attached to a deleted view (its row/bulk actions and row detail) are removed with it. When apps ran it with Data API keys, the answer names the keys, which can no longer run it.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -311,8 +311,8 @@ Note: deletion is only available via the web UI — ask the user to delete the s
 
 ### get_docs
 
-Returns the full built-in reference documentation for one topic: 'formulas' — the formula-authoring manual (naming, params and their sources, display modes, slots, nested details); 'sql' — SQL capabilities and engine rules (identifier rules, the reserved '_' prefix, JSON1/JSONB, FTS5, change-log semantics including the no-BLOB rule, statement limits). Fetch a topic once per conversation, before the first call that needs it.
+Returns the full built-in reference documentation for one topic: 'formulas' — the formula-authoring manual (naming, params and their sources, display modes, slots, nested details); 'sql' — SQL capabilities and engine rules (identifier rules, the reserved '_' prefix, JSON1/JSONB, FTS5, change-log semantics including the no-BLOB rule, statement limits); 'data-api' — the Data API an app calls with a Data API key to run a bdb's formulas (endpoints, the key, cross-origin calls, parameter values, answers, error codes, limits). Fetch a topic once per conversation, before the first call that needs it.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `topic` | string | yes | Documentation topic to fetch. One of `formulas`, `sql`. |
+| `topic` | string | yes | Documentation topic to fetch. One of `data-api`, `formulas`, `sql`. |

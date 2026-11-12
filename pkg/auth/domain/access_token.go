@@ -20,10 +20,14 @@ const (
 	// AccessTokenSession is the token a user's browser or app holds once signed in: it lasts a while and signing out
 	// revokes it. A browser sends it in the session cookie, an app as a bearer token.
 	AccessTokenSession AccessTokenKind = "session"
+
+	// AccessTokenDataAPIKey is a key bound to one bdb that lets an app of the user's run the formulas picked for it,
+	// acting as the user who created it. It never expires.
+	AccessTokenDataAPIKey AccessTokenKind = "data_api_key"
 )
 
 // Prefix returns the characters every token of the kind starts with: "bdb", a short code for the kind, and "_"
-// ("bdbp_" for a personal token, "bdbsn_" for a session), or "" for an unknown kind. A
+// ("bdbp_" for a personal token, "bdbsn_" for a session, "bdbdk_" for a Data API key), or "" for an unknown kind. A
 // bearer token tells itself apart from a JWT by its prefix, a leaked one is recognizable in a log or a secret scan, and
 // a token presented as another kind is refused before any lookup.
 func (k AccessTokenKind) Prefix() string {
@@ -32,6 +36,8 @@ func (k AccessTokenKind) Prefix() string {
 		return "bdbp_"
 	case AccessTokenSession:
 		return "bdbsn_"
+	case AccessTokenDataAPIKey:
+		return "bdbdk_"
 	default:
 		return ""
 	}
@@ -62,21 +68,39 @@ type AccessToken struct {
 	ExpiresAt  *time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
+
+	// BdbID is the bdb a Data API key is bound to, and nil for every other kind.
+	BdbID *uuid.UUID
 }
 
-// ValidateAccessTokenName returns name trimmed of surrounding spaces, or an ErrInvalidAccessTokenName when it is empty
-// or longer than AccessTokenNameMaxLen.
+// ValidateAccessTokenName returns name trimmed of surrounding spaces, or an InvalidAccessTokenNameError when it is
+// empty or longer than AccessTokenNameMaxLen.
 func ValidateAccessTokenName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", fmt.Errorf("%w: the name is empty", ErrInvalidAccessTokenName)
+		return "", InvalidAccessTokenNameError{Problem: "the name is empty"}
 	}
 	if len(name) > AccessTokenNameMaxLen {
-		return "", fmt.Errorf("%w: the name is longer than %d characters", ErrInvalidAccessTokenName,
-			AccessTokenNameMaxLen)
+		return "", InvalidAccessTokenNameError{
+			Problem: fmt.Sprintf("the name is longer than %d characters", AccessTokenNameMaxLen),
+		}
 	}
 	return name, nil
 }
+
+// InvalidAccessTokenNameError reports a name ValidateAccessTokenName refuses, with what is wrong with it. It unwraps
+// to ErrInvalidAccessTokenName.
+type InvalidAccessTokenNameError struct {
+	// Problem says what is wrong with the name, such as "the name is empty".
+	Problem string
+}
+
+func (e InvalidAccessTokenNameError) Error() string {
+	return ErrInvalidAccessTokenName.Error() + ": " + e.Problem
+}
+
+// Unwrap ties the typed error to the ErrInvalidAccessTokenName sentinel.
+func (e InvalidAccessTokenNameError) Unwrap() error { return ErrInvalidAccessTokenName }
 
 // AccessTokenWithUser is an access token with what checking it needs about its user: whether the account is active,
 // and its roles.

@@ -214,6 +214,7 @@ func New(ctx context.Context, cfg config.Config, logger zerolog.Logger, opts Opt
 	}
 	opts.Bdbs.RequireToken = requireToken
 	opts.Databases.RequireToken = requireToken
+	opts.Databases.DataAPIKeyChecker = inst.Auth.DataAPIKeyChecker
 
 	// With personal tokens on, every JWT validator built below accepts them too, checked in-process.
 	var validatorOpts []authhttp.ValidatorOption
@@ -224,7 +225,7 @@ func New(ctx context.Context, cfg config.Config, logger zerolog.Logger, opts Opt
 	opts.Bdbs.TokenValidatorOptions = append(opts.Bdbs.TokenValidatorOptions, validatorOpts...)
 	opts.Databases.TokenValidatorOptions = append(opts.Databases.TokenValidatorOptions, validatorOpts...)
 
-	authApp := bdbsintra.NewAuthApp(inst.Auth.RoleSvc, inst.Auth.UserSvc)
+	authApp := bdbsintra.NewAuthApp(inst.Auth.RoleSvc, inst.Auth.UserSvc, inst.Auth.TokenSvc)
 	inst.Bdbs, err = bdbsmodule.Setup(ctx, cfg, logger, authApp, opts.Bdbs)
 	if err != nil {
 		return nil, fmt.Errorf("setting up bdbs app: %w", err)

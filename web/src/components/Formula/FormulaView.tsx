@@ -7,7 +7,7 @@
  * Mount this with `key={formula.id}` so switching formulas starts fresh.
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { bdbCanWrite } from "../../api/bdbs";
 import { ApiError } from "../../api/client";
@@ -17,7 +17,7 @@ import { Badge } from "../Badge";
 import { Button } from "../Button";
 import { ChevronDown, ChevronRight, Columns3, Info, Rows3 } from "../icons";
 import { ExportFormulaDialog } from "../Export";
-import { Menu } from "../Menu";
+import { Menu, type MenuItem } from "../Menu";
 import { Skeleton } from "../Skeleton";
 import { QueryResultTable } from "../QueryResultTable";
 import { formulaTitle } from "./selectors";
@@ -54,12 +54,18 @@ interface FormulaViewProps {
    *  carries the name), the description behind an info toggle, Export CSV in an overflow menu, and no row
    *  counter unless more rows are loadable. Defaults to the browser shell's "full" layout. */
   chrome?: "full" | "compact";
+  /** Actions the full layout's menu offers after the formula's own, such as the caller's sharing actions. */
+  menuItems?: MenuItem[];
+  /** A line the full layout shows under the header, such as what the formula is shared with. */
+  annotation?: ReactNode;
 }
 
 export function FormulaView({
   bdbId,
   formula,
   chrome = "full",
+  menuItems = [],
+  annotation,
 }: FormulaViewProps) {
   const compact = chrome === "compact";
   const promptParams = formula.params.filter(
@@ -284,14 +290,13 @@ export function FormulaView({
         )}
       </button>
     ) : null;
-  const actionsMenu = isView ? (
-    <Menu
-      aria-label="Formula actions"
-      items={[
-        { label: "Export CSV", onSelect: () => setExportDialogOpen(true) },
-      ]}
-    />
-  ) : null;
+  // The caller's items join the full layout's menu only: the compact one keeps to the formula's own actions.
+  const menuActions = [
+    ...(isView ? [{ label: "Export CSV", onSelect: () => setExportDialogOpen(true) }] : []),
+    ...(compact ? [] : menuItems),
+  ];
+  const actionsMenu =
+    menuActions.length > 0 ? <Menu aria-label="Formula actions" items={menuActions} /> : null;
 
   // Shared by both layouts: the full layout boxes it with the open filter panel, the compact one
   // seats it in the toolbar row so controls share a single line.
@@ -341,6 +346,7 @@ export function FormulaView({
           {actionsMenu}
         </div>
       )}
+      {!compact && annotation}
       {formula.description && (!isView || infoOpen) && (
         <p className={styles.description}>{formula.description}</p>
       )}

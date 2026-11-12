@@ -188,6 +188,33 @@ func (s *FormulaService) RunFormula(
 	return runResult, nil
 }
 
+// RunFormulaAsDataAPIKey runs the formula formulaID as RunFormula does, for the Data API key keyID of the bdb bdbID
+// acting as the user userID who created it. The formula is named by its ID alone, and must be among the key's formulas
+// on a bdb that isn't soft-deleted, or the run is a domain.ErrFormulaNotOnDataAPIKey. The run then goes as userID's, so
+// a key never does more than its creator: a viewer's key can't run an action. Only its in-flight slot is the key's own,
+// so an app can't use up its creator's slots.
+//
+// A formula on the key that no longer exists is a domain.ErrFormulaNotFound, and its links to Data API keys are
+// forgotten, a failure to forget them only logged.
+func (s *FormulaService) RunFormulaAsDataAPIKey(
+	ctx context.Context, userID, keyID, bdbID uuid.UUID, formulaID string, input FormulaRunInput,
+) (*FormulaRunResult, error) {
+	if err := s.dbSvc.CheckDataAPIKeyFormula(ctx, keyID, bdbID, formulaID); err != nil {
+		return nil, err
+	}
+	result, err := s.RunFormula(withDataAPIKeyRun(ctx, keyID), userID, bdbID, formulaID, input)
+	if errors.Is(err, domain.ErrFormulaNotFound) {
+		if forgetErr := s.dbSvc.ForgetDataAPIKeyFormula(ctx, bdbID, formulaID); forgetErr != nil {
+			s.logger.Error().
+				Err(forgetErr).
+				Str("bdb_id", bdbID.String()).
+				Str("formula_id", formulaID).
+				Msg("failed to forget a missing formula's data API key links")
+		}
+	}
+	return result, err
+}
+
 // paginateResult turns an over-fetched view result into the returned page plus its metadata: it
 // trims the surplus row used to detect a next page, sets HasMore, and reads NextCursor from the
 // last returned row's rowid. A paginated view that returns no usable integer "rowid" column cannot

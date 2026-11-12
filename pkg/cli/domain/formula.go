@@ -35,6 +35,7 @@ const (
 
 // FormulaDetail is a formula with what running it takes: its parameters, and the SQL it runs.
 type FormulaDetail struct {
+	ID          string
 	Name        string
 	Label       string
 	Description string
@@ -45,6 +46,15 @@ type FormulaDetail struct {
 	Hidden bool
 	SQL    string
 	Params []FormulaParam
+
+	// DataAPIKeys names the Data API keys apps run the formula with, as the account may see them.
+	DataAPIKeys []DataAPIKey
+}
+
+// DataAPIKey names a Data API key an app runs a bdb's formulas with, never its value.
+type DataAPIKey struct {
+	ID   string
+	Name string
 }
 
 // FormulaParam is one parameter a formula declares.

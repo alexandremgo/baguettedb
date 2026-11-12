@@ -34,9 +34,10 @@ type Options struct {
 
 // NewServer creates an MCP server with all bdbs tools registered.
 // The dbRef parameter holds a lazily-injected reference to the databases module.
-// The App field is populated after the databases module is set up.
+// The App field is populated after the databases module is set up. The keys parameter lists the Data API keys of a
+// bdb's formulas; nil shows none.
 func NewServer(
-	bdbSvc *service.BdbService, dbRef *DatabasesAppRef, opts Options, logger zerolog.Logger,
+	bdbSvc *service.BdbService, dbRef *DatabasesAppRef, keys formulaKeyLister, opts Options, logger zerolog.Logger,
 ) *mcpserver.MCPServer {
 	if opts.SkillBodyBudgetBytes <= 0 {
 		opts.SkillBodyBudgetBytes = defaultSkillBodyBudgetBytes
@@ -50,7 +51,7 @@ func NewServer(
 		"1.0.0",
 	)
 
-	registerBdbTools(s, bdbSvc, dbRef, opts, logger)
+	registerBdbTools(s, bdbSvc, dbRef, keys, opts, logger)
 	registerUpdateBdbTool(s, bdbSvc, logger)
 
 	return s

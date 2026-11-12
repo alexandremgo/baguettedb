@@ -206,6 +206,8 @@ export interface Formula {
   display_order: number;
   created_at: string;
   updated_at: string;
+  /** A view's result columns, the keys of its rows: present only in a listing that asked for them. */
+  result_columns?: string[];
 }
 
 /** Keyset-pagination metadata returned for a paginated view run. */
@@ -236,6 +238,11 @@ function basePath(bdbId: string): string {
 
 export function listFormulas(bdbId: string): Promise<Formula[]> {
   return get<Formula[]>(basePath(bdbId));
+}
+
+/** Lists the bdb's formulas as listFormulas does, each view with its result columns. */
+export function listFormulasWithColumns(bdbId: string): Promise<Formula[]> {
+  return get<Formula[]>(`${basePath(bdbId)}?columns=true`);
 }
 
 export function getFormula(bdbId: string, ref: string): Promise<Formula> {

@@ -117,6 +117,22 @@ func TestTokenService_Check(t *testing.T) {
 	}
 }
 
+// TestTokenService_CheckDataAPIKey_BoundToNoBdb checks that a Data API key the store returns bound to no bdb, which
+// the schema forbids, fails the check with an error of its own: not ErrInvalidAccessToken, which would pass a broken
+// store off as a bad key.
+func TestTokenService_CheckDataAPIKey_BoundToNoBdb(t *testing.T) {
+	plain := domain.AccessTokenDataAPIKey.Prefix() + "data-api-key"
+	repo := &checkTokenRepo{byHash: map[string]*domain.AccessTokenWithUser{
+		hashToken(plain): withUser(domain.AccessTokenDataAPIKey, true, nil, nil, nil),
+	}}
+	svc := NewTokenService(repo, &separateUserReads{}, nil)
+
+	got, err := svc.CheckDataAPIKey(context.Background(), plain)
+	if err == nil || errors.Is(err, domain.ErrInvalidAccessToken) {
+		t.Errorf("CheckDataAPIKey = %+v, %v; want an error other than ErrInvalidAccessToken", got, err)
+	}
+}
+
 // withUser returns a stored token of kind with its user's active flag, last use, expiry and revocation.
 func withUser(
 	kind domain.AccessTokenKind, active bool, lastUsedAt, expiresAt, revokedAt *time.Time,
@@ -130,8 +146,8 @@ func withUser(
 }
 
 // checkTokenRepo serves tokens with their user by hash, or fails every such read with findErr when set, counts the
-// reads of a token on its own, and records the uses written. Check calls none of the methods left to the embedded nil
-// interface.
+// reads of a token on its own, and records the uses written. Check and CheckDataAPIKey call none of the methods left
+// to the embedded nil interface.
 type checkTokenRepo struct {
 	accessTokenRepository
 	byHash        map[string]*domain.AccessTokenWithUser

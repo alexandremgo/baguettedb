@@ -23,11 +23,12 @@ import (
 // cfg.InstanceSQLitePath when it is set.
 type store struct {
 	// pool is the Postgres pool, nil on SQLite.
-	pool        *pgxpool.Pool
-	bdbSvc      *service.BdbService
-	inviteSvc   *service.InviteService
-	authChecker *service.BdbAuthChecker
-	close       func()
+	pool          *pgxpool.Pool
+	bdbSvc        *service.BdbService
+	inviteSvc     *service.InviteService
+	authChecker   *service.BdbAuthChecker
+	dataAPIKeySvc *service.DataAPIKeyService
+	close         func()
 }
 
 // openStore migrates the selected instance store and wires the bdbs services over its repositories. close
@@ -56,14 +57,21 @@ func openStore(
 		m := bdbpg.NewMembershipTxRepo(tx)
 		return service.InviteAcceptTx{Bdbs: m, Members: m, Invites: m}
 	})
+	dataAPIKeySvc := service.NewDataAPIKeyService(bdbRepo, bdbpg.NewDataAPIKeyFormulaRepo(pool), authApp, logger)
 	bdbSvc := service.NewBdbService(bdbRepo, membershipTx, authApp, qr, logger)
 	bdbSvc.SetPurgeLock(bdbpg.NewPurgeLock(pool, logger))
+	bdbSvc.SetDataAPIKeys(dataAPIKeySvc)
+	authChecker := service.NewBdbAuthChecker(bdbRepo, authApp)
+	authChecker.SetDataAPIKeys(dataAPIKeySvc)
 	return &store{
-		pool:        pool,
-		bdbSvc:      bdbSvc,
-		inviteSvc:   service.NewInviteService(bdbpg.NewInviteRepo(pool), bdbRepo, inviteAcceptTx, qr, authApp, logger),
-		authChecker: service.NewBdbAuthChecker(bdbRepo, authApp),
-		close:       pool.Close,
+		pool:   pool,
+		bdbSvc: bdbSvc,
+		inviteSvc: service.NewInviteService(
+			bdbpg.NewInviteRepo(pool), bdbRepo, inviteAcceptTx, qr, authApp, logger,
+		),
+		authChecker:   authChecker,
+		dataAPIKeySvc: dataAPIKeySvc,
+		close:         pool.Close,
 	}, nil
 }
 
@@ -89,14 +97,19 @@ func openSQLiteStore(
 		m := bdbsqlite.NewMembershipTxRepo(tx)
 		return service.InviteAcceptTx{Bdbs: m, Members: m, Invites: m}
 	})
+	dataAPIKeySvc := service.NewDataAPIKeyService(bdbRepo, bdbsqlite.NewDataAPIKeyFormulaRepo(db), authApp, logger)
 	bdbSvc := service.NewBdbService(bdbRepo, membershipTx, authApp, qr, logger)
 	bdbSvc.SetPurgeLock(bdbsqlite.NewPurgeLock(path, logger))
+	bdbSvc.SetDataAPIKeys(dataAPIKeySvc)
+	authChecker := service.NewBdbAuthChecker(bdbRepo, authApp)
+	authChecker.SetDataAPIKeys(dataAPIKeySvc)
 	return &store{
 		bdbSvc: bdbSvc,
 		inviteSvc: service.NewInviteService(
 			bdbsqlite.NewInviteRepo(db), bdbRepo, inviteAcceptTx, qr, authApp, logger,
 		),
-		authChecker: service.NewBdbAuthChecker(bdbRepo, authApp),
+		authChecker:   authChecker,
+		dataAPIKeySvc: dataAPIKeySvc,
 		close: func() {
 			if err := db.Close(); err != nil {
 				logger.Warn().Err(err).Msg("bdbs: closing the sqlite store")

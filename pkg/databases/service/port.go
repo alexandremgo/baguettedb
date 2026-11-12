@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 )
@@ -185,6 +186,21 @@ type BdbsApp interface {
 	// GetOwnedBdbIDs returns the IDs of every bdb the given user owns, including soft-deleted bdbs
 	// still awaiting purge (their storage remains allocated until the purge removes it).
 	GetOwnedBdbIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+
+	// CheckDataAPIKeyFormula reports whether the Data API key keyID of the bdb bdbID may run the formula formulaID,
+	// which no key may on a soft-deleted bdb. Whether the key's creator may run the formula is not checked here.
+	CheckDataAPIKeyFormula(ctx context.Context, keyID, bdbID uuid.UUID, formulaID string) (bool, error)
+
+	// ListDataAPIKeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on
+	// a soft-deleted bdb.
+	ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error)
+
+	// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
+	ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error
+
+	// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+	// userID who may write the bdb's database, and none to anyone else.
+	ListFormulaDataAPIKeys(ctx context.Context, userID, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
 }
 
 // DatabaseRepository defines persistence operations for database metadata.

@@ -44,6 +44,8 @@ func TestRun_Docs_Manuals(t *testing.T) {
 			tools: []string{"`execute_data`", "`undo_last_change_anyone`"}},
 		{topic: "formulas", commands: []string{"`bdb formulas update`", "`bdb formulas show`", "`bdb formulas run`"},
 			tools: []string{"`update_formula`", "`get_formula`", "`run_formula`"}},
+		{topic: "data-api", commands: []string{"`bdb formulas show`", "`bdb bdbs describe`"},
+			tools: []string{"`get_formula`", "`describe_bdb`"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.topic, func(t *testing.T) {

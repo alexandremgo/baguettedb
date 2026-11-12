@@ -118,7 +118,8 @@ func newBdbsDescribeCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		Short: "Describe a bdb: its tables, skills and formulas",
 		Long: "describe prints what to read before working in a bdb: its tables with their columns and foreign keys, " +
 			"its skills in full (the bdb-level ones first), which say how the bdb is meant to be used, and its " +
-			"formulas, whose parameters and SQL formulas show prints. " + bdbArgHelp,
+			"formulas, whose parameters and SQL formulas show prints, with, to the bdb's owner and editors, the " +
+			"Data API keys apps run each with. " + bdbArgHelp,
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLocal(cmd, flags, open, func(l *local) error {
@@ -126,10 +127,14 @@ func newBdbsDescribeCmd(flags *globalFlags, open localOpener) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if asJSON {
-					return writeJSON(cmd.OutOrStdout(), toBdbDescriptionJSON(d))
+				var keysByFormula map[string][]domain.DataAPIKey
+				if len(d.Formulas) > 0 {
+					keysByFormula = dataAPIKeys(cmd, l, d.Bdb)
 				}
-				return printDescription(cmd.OutOrStdout(), d)
+				if asJSON {
+					return writeJSON(cmd.OutOrStdout(), toBdbDescriptionJSON(d, keysByFormula))
+				}
+				return printDescription(cmd.OutOrStdout(), d, keysByFormula)
 			})
 		},
 	}
@@ -138,8 +143,9 @@ func newBdbsDescribeCmd(flags *globalFlags, open localOpener) *cobra.Command {
 }
 
 // printDescription writes d to w: a heading with the account's role, the description and the owner, then a section
-// each for the tables with their columns and foreign keys, the skills in full, and the formulas.
-func printDescription(w io.Writer, d domain.BdbDescription) error {
+// each for the tables with their columns and foreign keys, the skills in full, and the formulas with their Data API
+// keys from keysByFormula.
+func printDescription(w io.Writer, d domain.BdbDescription, keysByFormula map[string][]domain.DataAPIKey) error {
 	var out strings.Builder
 	fmt.Fprintf(&out, "%s  (%s)\n", d.Name, d.Role)
 	if d.Description != "" {
@@ -189,7 +195,7 @@ func printDescription(w io.Writer, d domain.BdbDescription) error {
 	out.WriteString("\nFORMULAS\n")
 	if len(d.Formulas) == 0 {
 		out.WriteString("No formulas.\n")
-	} else if err := writeFormulaList(&out, d.Formulas); err != nil {
+	} else if err := writeFormulaList(&out, d.Formulas, keysByFormula); err != nil {
 		return err
 	}
 	_, err := io.WriteString(w, out.String())
