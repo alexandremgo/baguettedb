@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"sync"
 	"time"
@@ -14,22 +15,35 @@ import (
 // under that slot instead of taking a second one.
 type slotHeldKey struct{}
 
-// acquireSlot takes one of userID's in-flight slots for the rest of the request and returns the ctx to run it under
-// plus the release; a ctx that already carries a slot is returned as-is with a no-op release. At the user's cap it
-// returns a QueryRateLimitedError with nothing to release.
+// dataAPIKeyRunKey marks a ctx whose request runs under a Data API key, holding the key's ID.
+type dataAPIKeyRunKey struct{}
+
+// withDataAPIKeyRun returns ctx marking its request as run under the Data API key keyID, whose in-flight slots are its
+// own rather than its creator's.
+func withDataAPIKeyRun(ctx context.Context, keyID uuid.UUID) context.Context {
+	return context.WithValue(ctx, dataAPIKeyRunKey{}, keyID)
+}
+
+// acquireSlot takes one of the in-flight slots of userID, or of the Data API key ctx's request runs under, for the rest
+// of the request, and returns the ctx to run it under plus the release; a ctx that already carries a slot is returned
+// as-is with a no-op release. At the cap, the same for a key as for its creator, it returns a QueryRateLimitedError
+// with nothing to release.
 func (s *QueryService) acquireSlot(ctx context.Context, userID uuid.UUID) (context.Context, func(), error) {
 	if held, _ := ctx.Value(slotHeldKey{}).(bool); held {
 		return ctx, func() {}, nil
 	}
-	release, ok := s.gate.acquire(userID, s.Limits(ctx).MaxConcurrentQueries)
+	// A run under a Data API key takes the key's slots, so an app can't use up its owner's; keyID is uuid.Nil, the zero
+	// value cmp.Or skips, for any other request.
+	keyID, _ := ctx.Value(dataAPIKeyRunKey{}).(uuid.UUID)
+	release, ok := s.gate.acquire(cmp.Or(keyID, userID), s.Limits(ctx).MaxConcurrentQueries)
 	if !ok {
 		return ctx, nil, &domain.QueryRateLimitedError{RetryAfter: time.Second}
 	}
 	return context.WithValue(ctx, slotHeldKey{}, true), release, nil
 }
 
-// inFlightGate counts the SQL requests each user has in flight in this process and refuses new ones past a per-user
-// limit, so one caller cannot queue unbounded work on the per-database connection slots.
+// inFlightGate counts the SQL requests each user, or Data API key, has in flight in this process and refuses new ones
+// past a limit for each, so one caller cannot queue unbounded work on the per-database connection slots.
 type inFlightGate struct {
 	mu     sync.Mutex
 	counts map[uuid.UUID]int

@@ -103,8 +103,8 @@ change.
 
 ## Limits
 
-- Runs under a key count as its creator's: at most {{.MaxConcurrentQueries}} of their queries and runs at the same
-  time, any more refused with `rate_limited`.
+- Runs under a key take in-flight slots of their own, apart from its creator's: at most {{.MaxConcurrentQueries}}
+  at the same time, any more refused with `rate_limited`.
 {{- if .MaxRowsPerRequest}}
 - An action changes at most {{.MaxRowsPerRequest}} rows.
 {{- end}}

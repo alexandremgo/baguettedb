@@ -16,6 +16,7 @@ import (
 	authdomain "github.com/alexandremgo/baguettedb/pkg/auth/domain"
 	bdbsdomain "github.com/alexandremgo/baguettedb/pkg/bdbs/domain"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
+	"github.com/alexandremgo/baguettedb/pkg/common/config"
 	"github.com/alexandremgo/baguettedb/pkg/common/testutil"
 	dbdomain "github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	dbsvc "github.com/alexandremgo/baguettedb/pkg/databases/service"
@@ -39,11 +40,12 @@ func newKeyInstance(t *testing.T) *keyInstance {
 	return newKeyInstanceWith(t, instance.OAuth(true))
 }
 
-// newKeyInstanceWith composes every app authenticating requests with auth, after clearing the suite's store.
-func newKeyInstanceWith(t *testing.T, auth instance.Authentication) *keyInstance {
+// newKeyInstanceWith composes every app authenticating requests with auth, its configuration changed by tune, after
+// clearing the suite's store.
+func newKeyInstanceWith(t *testing.T, auth instance.Authentication, tune ...func(*config.Config)) *keyInstance {
 	t.Helper()
 	truncateAll(t)
-	return &keyInstance{t: t, inst: newJWTInstance(t, auth)}
+	return &keyInstance{t: t, inst: newJWTInstance(t, auth, tune...)}
 }
 
 // user creates a user and returns their ID with a personal token of theirs.

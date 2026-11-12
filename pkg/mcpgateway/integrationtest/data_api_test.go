@@ -11,11 +11,14 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/alexandremgo/baguettedb/pkg/common/authhttp"
+	"github.com/alexandremgo/baguettedb/pkg/common/config"
 	"github.com/alexandremgo/baguettedb/pkg/instance"
 )
 
@@ -353,4 +356,55 @@ func TestDataAPI_PersonalTokensOnly(t *testing.T) {
 	if status != http.StatusUnauthorized || errorCode(resp) != "missing_key" {
 		t.Errorf("the Data API with the browser session = %d %v, want 401 missing_key", status, resp)
 	}
+}
+
+// runawaySQL is a query that only a time budget ends.
+const runawaySQL = "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r) SELECT COUNT(*) AS n FROM r"
+
+// TestDataAPI_KeyHasItsOwnSlots checks that runs through a key take in-flight slots of their own, as many as its
+// owner's: with one slot each, the key runs while its owner holds theirs with a runaway query, and while the key holds
+// its own with a runaway view, a second run through it is refused with 429 rate_limited and its owner still queries.
+func TestDataAPI_KeyHasItsOwnSlots(t *testing.T) {
+	k := newKeyInstanceWith(t, instance.OAuth(true), func(cfg *config.Config) {
+		cfg.QuotaMaxConcurrentQueries = 1
+		cfg.DatabasesMaxQueryDuration = 2 * time.Second
+		cfg.DatabasesFormulaRunTimeout = 2 * time.Second
+	})
+	_, owner := k.user("owner")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Notes", "all-notes")
+	status, resp := k.do(http.MethodPost, "/api/databases/v1/bdbs/"+bdbID+"/formulas", owner, map[string]any{
+		"name": "runaway", "description": "Counts forever", "sql": runawaySQL, "params": []any{},
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("creating the runaway view = %d %v, want 201", status, resp)
+	}
+	runaway, _ := resp["id"].(string)
+	_, key := k.createKey(owner, bdbID, "app", formulas[0], runaway)
+	query := "/api/databases/v1/bdbs/" + bdbID + "/database/query"
+
+	// hold runs do in the background, long enough for it to take its slot, and returns the wait for its end.
+	hold := func(do func()) func() {
+		var wg sync.WaitGroup
+		wg.Go(do)
+		time.Sleep(300 * time.Millisecond)
+		return wg.Wait
+	}
+
+	wait := hold(func() { k.do(http.MethodPost, query, owner, map[string]string{"sql": runawaySQL}) })
+	status, resp, _ = k.dataCall(http.MethodPost, dataAPIPath(bdbID, "/formulas/"+formulas[0]+"/run"), key, nil, nil)
+	if status != http.StatusOK {
+		t.Errorf("a run through the key while its owner holds their slot = %d %v, want 200", status, resp)
+	}
+	wait()
+
+	wait = hold(func() { k.dataCall(http.MethodPost, dataAPIPath(bdbID, "/formulas/"+runaway+"/run"), key, nil, nil) })
+	status, resp, _ = k.dataCall(http.MethodPost, dataAPIPath(bdbID, "/formulas/"+formulas[0]+"/run"), key, nil, nil)
+	if status != http.StatusTooManyRequests || errorCode(resp) != "rate_limited" {
+		t.Errorf("a second run through the key while it holds its slot = %d %v, want 429 rate_limited", status, resp)
+	}
+	status, resp = k.do(http.MethodPost, query, owner, map[string]string{"sql": "SELECT 1"})
+	if status != http.StatusOK {
+		t.Errorf("the owner's query while the key holds its slot = %d %v, want 200", status, resp)
+	}
+	wait()
 }

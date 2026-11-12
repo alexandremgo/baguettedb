@@ -103,8 +103,8 @@ change.
 
 ## Limits
 
-- Runs under a key count as its creator's: at most 4 of their queries and runs at the same
-  time, any more refused with `rate_limited`.
+- Runs under a key take in-flight slots of their own, apart from its creator's: at most 4
+  at the same time, any more refused with `rate_limited`.
 - An action changes at most 1000 rows.
 - A formula runs at most 100 statements.
 

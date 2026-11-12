@@ -153,8 +153,8 @@ func TestInstance_PersonalAccessTokensOff(t *testing.T) {
 
 // newJWTInstance composes every app on the suite's instance store with auth, an OAuth Authentication: JWTs checked
 // against the suite's JWKS standing in for Hydra, a preset web client so no Hydra admin call is made, and bdb files in
-// a temporary directory keyed by a KEK generated on the spot.
-func newJWTInstance(t *testing.T, auth instance.Authentication) *instance.Instance {
+// a temporary directory keyed by a KEK generated on the spot. Each of tune then changes the configuration.
+func newJWTInstance(t *testing.T, auth instance.Authentication, tune ...func(*config.Config)) *instance.Instance {
 	t.Helper()
 	cfg, err := config.Load()
 	if err != nil {
@@ -169,6 +169,9 @@ func newJWTInstance(t *testing.T, auth instance.Authentication) *instance.Instan
 	backups := false
 	cfg.DatabasesBackupEnabled = &backups
 	testDB.Configure(&cfg)
+	for _, f := range tune {
+		f(&cfg)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
