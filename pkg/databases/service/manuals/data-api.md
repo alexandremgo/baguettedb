@@ -97,7 +97,7 @@ change.
 | 413 | `request_too_large`, `result_too_large` | The body, or the view's answer, is too large. |
 | 422 | `query_failed` | The formula's SQL failed, such as on a constraint. |
 | 429 | `rate_limited` | Too many runs at once; retry after the `Retry-After` header's seconds. |
-| 503 | `unavailable` | The bdb is briefly unavailable; retry shortly. |
+| 503 | `unavailable` | The bdb is briefly unavailable; retry after the `Retry-After` header's seconds. |
 | 504 | `timeout` | The formula took too long to run. |
 | 500 | `internal_error` | Something failed on the server. |
 
@@ -114,8 +114,9 @@ change.
 
 ## Writing an app
 
-- Look formulas up by `name` in `GET …/formulas` rather than hard-coding their IDs: the same formulas get other IDs
-  in another bdb or on another instance, and the app then works with any of them.
+- An app for one bdb calls its formulas by their IDs, written in its code: a formula keeps its ID when it is renamed,
+  so the app needs no `GET …/formulas` call. Only an app meant to work with several bdbs or instances, where the same
+  formulas get other IDs, looks them up by `name` in `GET …/formulas`.
 - Read a view's rows by its `columns`, and an action's outcome by `affected_row_count`.
 - Handle `formula_not_on_key`: the owner can take a formula off the key, or delete it, at any time.
 - Agents with BaguetteDB's MCP tools or command line can read a formula's SQL and parameters with
