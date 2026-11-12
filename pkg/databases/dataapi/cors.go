@@ -8,7 +8,8 @@ const preflightMaxAge = "7200"
 
 // allowAnyOrigin lets a page of any origin call the Data API from a browser. Every response allows any origin
 // (Access-Control-Allow-Origin "*"), the GET and POST methods, and the Authorization and Content-Type request headers,
-// but never credentials: a key in the Authorization header, not a cookie, authenticates a request.
+// but never credentials: a key in the Authorization header, not a cookie, authenticates a request. It also exposes the
+// Retry-After response header, which a page could not read otherwise.
 //
 // A preflight request, an OPTIONS, is answered here with a 204 No Content, before any key is checked, and the browser
 // may reuse that answer for preflightMaxAge.
@@ -18,6 +19,7 @@ func allowAnyOrigin(next http.Handler) http.Handler {
 		h.Set("Access-Control-Allow-Origin", "*")
 		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		h.Set("Access-Control-Allow-Methods", "GET, POST")
+		h.Set("Access-Control-Expose-Headers", "Retry-After")
 		h.Set("Access-Control-Max-Age", preflightMaxAge)
 
 		if r.Method == http.MethodOptions {

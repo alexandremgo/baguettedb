@@ -252,8 +252,8 @@ func TestDataAPI_KeyBoundToItsBdb(t *testing.T) {
 
 // TestDataAPI_AnyOriginMayCall checks the Data API's cross-origin answers: a preflight from any origin is answered
 // with a 204 allowing any origin and the Authorization header, with a max age for the browser to reuse it, before any
-// key is asked for; an answer, a refusal included, allows any origin so the page can read it; and credentials are never
-// allowed.
+// key is asked for; an answer, a refusal included, allows any origin so the page can read it, and exposes the
+// Retry-After header to it; and credentials are never allowed.
 func TestDataAPI_AnyOriginMayCall(t *testing.T) {
 	k := newKeyInstance(t)
 	_, owner := k.user("owner")
@@ -279,6 +279,9 @@ func TestDataAPI_AnyOriginMayCall(t *testing.T) {
 		_, _, headers = k.dataCall(http.MethodGet, dataAPIPath(bdbID, "/formulas"), call, nil, origin)
 		if headers.Get("Access-Control-Allow-Origin") != "*" || headers.Get("Access-Control-Allow-Credentials") != "" {
 			t.Errorf("%s's headers = %v, want any origin allowed and no credentials", name, headers)
+		}
+		if exposed := headers.Get("Access-Control-Expose-Headers"); exposed != "Retry-After" {
+			t.Errorf("%s's Access-Control-Expose-Headers = %q, want Retry-After", name, exposed)
 		}
 	}
 }
