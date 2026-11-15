@@ -29,10 +29,10 @@ type PurgeStats struct {
 	Failed  int
 }
 
-// PurgeExpired hard-deletes bdbs whose grace period has expired as of now. For each purgeable bdb the per-bdb
-// database file is removed first, then the bdb row, so a transient file-delete failure leaves the row in place for
-// the next pass instead of orphaning the file. Per-bdb errors are logged and counted in PurgeStats.Failed but never
-// abort the sweep.
+// PurgeExpired hard-deletes bdbs whose grace period has expired as of now. For each purgeable bdb its Data API keys
+// still valid are revoked first, then the per-bdb database file is removed, then the bdb row, so a transient failure
+// of either earlier step leaves the row in place for the next pass instead of orphaning a key or the file. Per-bdb
+// errors are logged and counted in PurgeStats.Failed but never abort the sweep.
 func (s *BdbService) PurgeExpired(ctx context.Context, now time.Time) (PurgeStats, error) {
 	ctx, span := tracer.Start(ctx, "BdbService.PurgeExpired",
 		trace.WithAttributes(attribute.String("now", now.Format(time.RFC3339))),
@@ -67,6 +67,15 @@ func (s *BdbService) PurgeExpired(ctx context.Context, now time.Time) (PurgeStat
 	stats := PurgeStats{Scanned: len(ids)}
 
 	for _, id := range ids {
+		if s.dataAPIKeys != nil {
+			if err := s.dataAPIKeys.RevokeBdbKeys(ctx, id); err != nil {
+				stats.Failed++
+				s.logger.Error().Err(err).
+					Str("bdb_id", id.String()).
+					Msg("Purge: failed to revoke the bdb's data API keys; keeping row for retry")
+				continue
+			}
+		}
 		if err := s.dbApp.DeleteDatabase(ctx, id); err != nil {
 			stats.Failed++
 			s.logger.Error().Err(err).

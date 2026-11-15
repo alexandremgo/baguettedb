@@ -98,15 +98,25 @@ type memberWriter interface {
 	ApplyMemberChanges(ctx context.Context, bdbID uuid.UUID, added, changed, removed []domain.Member) error
 }
 
+// dataAPIKeyRevoker revokes the Data API keys of a bdb, or those one of its members created.
+type dataAPIKeyRevoker interface {
+	// RevokeBdbKeys revokes every Data API key of the bdb bdbID and forgets their formulas.
+	RevokeBdbKeys(ctx context.Context, bdbID uuid.UUID) error
+
+	// RevokeMemberKeys revokes the Data API keys the user userID created for the bdb bdbID.
+	RevokeMemberKeys(ctx context.Context, bdbID, userID uuid.UUID) error
+}
+
 // BdbService handles bdb lifecycle and membership operations.
 type BdbService struct {
-	repo      bdbRepository
-	inTx      RunInTx[MembershipTx]
-	authApp   AuthApp
-	limits    quota.Resolver
-	logger    zerolog.Logger
-	dbApp     DatabasesApp
-	purgeLock purgeLock
+	repo        bdbRepository
+	inTx        RunInTx[MembershipTx]
+	authApp     AuthApp
+	limits      quota.Resolver
+	logger      zerolog.Logger
+	dbApp       DatabasesApp
+	purgeLock   purgeLock
+	dataAPIKeys dataAPIKeyRevoker
 }
 
 // NewBdbService creates a new BdbService reading and saving bdbs through repo, and changing their members through
@@ -142,6 +152,12 @@ func (s *BdbService) CountActiveBdbs(ctx context.Context) (int64, error) {
 // which is correct for a single-replica deployment where there is no contender.
 func (s *BdbService) SetPurgeLock(lock purgeLock) {
 	s.purgeLock = lock
+}
+
+// SetDataAPIKeys injects what revokes Data API keys when a bdb is deleted or a member removed. When left unset no key
+// is revoked, which is correct where no key can be created.
+func (s *BdbService) SetDataAPIKeys(keys dataAPIKeyRevoker) {
+	s.dataAPIKeys = keys
 }
 
 // CreateBdb creates a new bdb and adds the creator as owner.
@@ -247,6 +263,9 @@ func (s *BdbService) UpdateBdb(
 // starting the GracePeriod window during which RestoreBdb can revert it.
 // Only the owner can delete. Returns ErrBdbAlreadyDeleted if the bdb is
 // already soft-deleted.
+//
+// The bdb's Data API keys are revoked once it is soft-deleted, so a restored bdb starts with none. A failure to revoke
+// them is only logged, the bdb staying deleted: the purge revokes what is left before removing it.
 func (s *BdbService) DeleteBdb(ctx context.Context, userID, bdbID uuid.UUID) error {
 	bdb, err := s.repo.FindByID(ctx, bdbID)
 	if err != nil {
@@ -263,6 +282,12 @@ func (s *BdbService) DeleteBdb(ctx context.Context, userID, bdbID uuid.UUID) err
 
 	if err := s.repo.SoftDelete(ctx, bdbID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("soft-deleting bdb: %w", err)
+	}
+	if s.dataAPIKeys != nil {
+		if err := s.dataAPIKeys.RevokeBdbKeys(ctx, bdbID); err != nil {
+			s.logger.Error().Err(err).Str("bdb_id", bdbID.String()).
+				Msg("failed to revoke a soft-deleted bdb's data API keys; the purge revokes them")
+		}
 	}
 
 	s.logger.Info().
@@ -362,6 +387,9 @@ func (s *BdbService) AddMember(
 }
 
 // RemoveMember removes a user from a bdb. Only the owner can remove members.
+//
+// The Data API keys the removed member created for the bdb are revoked. A failure to revoke them is only logged: a key
+// acts as the user who created it, who is no longer a member, so it is refused wherever membership is checked.
 func (s *BdbService) RemoveMember(
 	ctx context.Context, requestingUserID, bdbID, targetUserID uuid.UUID,
 ) (*domain.Bdb, error) {
@@ -372,9 +400,19 @@ func (s *BdbService) RemoveMember(
 		),
 	)
 	defer span.End()
-	return s.changeMembers(ctx, bdbID, func(bdb *domain.Bdb) error {
+	bdb, err := s.changeMembers(ctx, bdbID, func(bdb *domain.Bdb) error {
 		return bdb.RemoveMember(requestingUserID, targetUserID)
 	})
+	if err != nil {
+		return nil, err
+	}
+	if s.dataAPIKeys != nil {
+		if err := s.dataAPIKeys.RevokeMemberKeys(ctx, bdbID, targetUserID); err != nil {
+			s.logger.Error().Err(err).Str("bdb_id", bdbID.String()).Str("user_id", targetUserID.String()).
+				Msg("failed to revoke a removed member's data API keys")
+		}
+	}
+	return bdb, nil
 }
 
 // UpdateMemberRole changes a member's role. Only the owner can change roles.

@@ -115,8 +115,8 @@ func TestHasOpaquePrefix(t *testing.T) {
 		want     bool
 	}{
 		{"bdbp_x", []string{"bdbp_"}, true},
-		{"bdbk_x", []string{"bdbp_", "bdbk_"}, true},
-		{"bdbl_x", []string{"bdbp_", "bdbk_"}, false},
+		{"bdbdk_x", []string{"bdbp_", "bdbdk_"}, true},
+		{"bdbl_x", []string{"bdbp_", "bdbdk_"}, false},
 		{"anything", []string{""}, false},
 		{"bdbp_x", []string{"", "bdbp_"}, true},
 		{"bdbp_x", nil, false},

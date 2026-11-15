@@ -96,6 +96,16 @@ func newAuthChecker(authApp service.AuthApp) *service.BdbAuthChecker {
 	return service.NewBdbAuthChecker(bdbpg.NewBdbRepo(testDB.Pool), authApp)
 }
 
+// newDataAPIKeyService returns a DataAPIKeyService over the instance store the suite runs on.
+func newDataAPIKeyService(authApp service.AuthApp) *service.DataAPIKeyService {
+	if testDB.SQLite != nil {
+		return service.NewDataAPIKeyService(bdbsqlite.NewBdbRepo(testDB.SQLite),
+			bdbsqlite.NewDataAPIKeyFormulaRepo(testDB.SQLite), authApp, testLogger)
+	}
+	return service.NewDataAPIKeyService(bdbpg.NewBdbRepo(testDB.Pool), bdbpg.NewDataAPIKeyFormulaRepo(testDB.Pool),
+		authApp, testLogger)
+}
+
 // purgeLocker is the purge lock as the suite drives it, on either store.
 type purgeLocker interface {
 	TryAcquire(ctx context.Context) (acquired bool, release func(context.Context), err error)

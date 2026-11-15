@@ -16,7 +16,8 @@ import (
 )
 
 // accessTokenColumns lists the columns scanAccessToken reads, in its order.
-const accessTokenColumns = `id, user_id, kind, name, token_prefix, created_at, expires_at, last_used_at, revoked_at`
+const accessTokenColumns = `id, user_id, kind, name, token_prefix, created_at, expires_at, last_used_at, revoked_at,
+	bdb_id`
 
 // AccessTokenRepo persists access tokens in SQLite. Times are written in UTC, so they compare as stored.
 type AccessTokenRepo struct {
@@ -31,10 +32,10 @@ func NewAccessTokenRepo(db database.SQLiteDBTX) *AccessTokenRepo {
 // Create persists token, whose plain value hashes to hash.
 func (r *AccessTokenRepo) Create(ctx context.Context, token *domain.AccessToken, hash string) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO access_tokens (id, user_id, kind, name, token_prefix, token_hash, created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO access_tokens (id, user_id, kind, name, token_prefix, token_hash, created_at, expires_at, bdb_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		token.ID, token.UserID, string(token.Kind), token.Name, token.TokenPrefix, hash, token.CreatedAt.UTC(),
-		utcOrNil(token.ExpiresAt),
+		utcOrNil(token.ExpiresAt), token.BdbID,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting access token: %w", err)
@@ -64,7 +65,7 @@ func (r *AccessTokenRepo) FindWithUserByHash(ctx context.Context, hash string) (
 	var roles string
 	err := r.db.QueryRowContext(ctx,
 		`SELECT t.id, t.user_id, t.kind, t.name, t.token_prefix, t.created_at, t.expires_at, t.last_used_at,
-		        t.revoked_at, u.is_active, COALESCE(group_concat(ur.role, ',' ORDER BY ur.role), '')
+		        t.revoked_at, t.bdb_id, u.is_active, COALESCE(group_concat(ur.role, ',' ORDER BY ur.role), '')
 		 FROM access_tokens t
 		 JOIN users u ON u.id = t.user_id
 		 LEFT JOIN user_roles ur ON ur.user_id = t.user_id
@@ -72,7 +73,7 @@ func (r *AccessTokenRepo) FindWithUserByHash(ctx context.Context, hash string) (
 		 GROUP BY t.id`,
 		hash,
 	).Scan(&t.ID, &t.UserID, &kind, &t.Name, &t.TokenPrefix, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt, &t.RevokedAt,
-		&found.UserActive, &roles)
+		&t.BdbID, &found.UserActive, &roles)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrAccessTokenNotFound
 	}
@@ -118,12 +119,15 @@ func (r *AccessTokenRepo) ListByUser(
 	return tokens, nil
 }
 
-// Revoke sets the revocation time of the user's token id to at. Returns domain.ErrAccessTokenNotFound when the user
-// has no such token, or it is already revoked.
-func (r *AccessTokenRepo) Revoke(ctx context.Context, userID, id uuid.UUID, at time.Time) error {
+// Revoke sets the revocation time of the user's token id of kind to at. Returns domain.ErrAccessTokenNotFound when the
+// user has no such token of kind, or it is already revoked.
+func (r *AccessTokenRepo) Revoke(
+	ctx context.Context, userID, id uuid.UUID, kind domain.AccessTokenKind, at time.Time,
+) error {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE access_tokens SET revoked_at = $1 WHERE id = $2 AND user_id = $3 AND revoked_at IS NULL`,
-		at.UTC(), id, userID,
+		`UPDATE access_tokens SET revoked_at = $1
+		 WHERE id = $2 AND user_id = $3 AND kind = $4 AND revoked_at IS NULL`,
+		at.UTC(), id, userID, string(kind),
 	)
 	if err != nil {
 		return fmt.Errorf("revoking access token: %w", err)
@@ -150,6 +154,77 @@ func (r *AccessTokenRepo) RevokeSessions(ctx context.Context, userID uuid.UUID, 
 	return nil
 }
 
+// ListByBdb returns the Data API keys bound to bdbID that are not revoked, newest first.
+func (r *AccessTokenRepo) ListByBdb(ctx context.Context, bdbID uuid.UUID) (_ []*domain.AccessToken, err error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+accessTokenColumns+` FROM access_tokens
+		 WHERE bdb_id = $1 AND revoked_at IS NULL
+		 ORDER BY created_at DESC, id`,
+		bdbID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing Data API keys: %w", err)
+	}
+	defer database.CloseRows(rows, &err)
+
+	var tokens []*domain.AccessToken
+	for rows.Next() {
+		token, err := scanAccessToken(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning Data API key: %w", err)
+		}
+		tokens = append(tokens, token)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("listing Data API keys: %w", err)
+	}
+	return tokens, nil
+}
+
+// RevokeInBdb sets the revocation time of the Data API key id bound to bdbID to at. Returns
+// domain.ErrAccessTokenNotFound when bdbID has no such key, or it is already revoked.
+func (r *AccessTokenRepo) RevokeInBdb(ctx context.Context, bdbID, id uuid.UUID, at time.Time) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE access_tokens SET revoked_at = $1 WHERE id = $2 AND bdb_id = $3 AND revoked_at IS NULL`,
+		at.UTC(), id, bdbID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoking Data API key: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("revoking Data API key: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrAccessTokenNotFound
+	}
+	return nil
+}
+
+// RevokeAllInBdb sets the revocation time of every Data API key bound to bdbID that is not revoked to at.
+func (r *AccessTokenRepo) RevokeAllInBdb(ctx context.Context, bdbID uuid.UUID, at time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE access_tokens SET revoked_at = $1 WHERE bdb_id = $2 AND revoked_at IS NULL`,
+		at.UTC(), bdbID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoking a bdb's Data API keys: %w", err)
+	}
+	return nil
+}
+
+// RevokeUserInBdb sets the revocation time of the Data API keys of userID bound to bdbID that are not revoked to at.
+func (r *AccessTokenRepo) RevokeUserInBdb(ctx context.Context, bdbID, userID uuid.UUID, at time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE access_tokens SET revoked_at = $1 WHERE bdb_id = $2 AND user_id = $3 AND revoked_at IS NULL`,
+		at.UTC(), bdbID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoking a member's Data API keys: %w", err)
+	}
+	return nil
+}
+
 // TouchLastUsed sets the last use of token id to at.
 func (r *AccessTokenRepo) TouchLastUsed(ctx context.Context, id uuid.UUID, at time.Time) error {
 	_, err := r.db.ExecContext(ctx,
@@ -172,7 +247,7 @@ func scanAccessToken(row rowScanner) (*domain.AccessToken, error) {
 	var t domain.AccessToken
 	var kind string
 	if err := row.Scan(&t.ID, &t.UserID, &kind, &t.Name, &t.TokenPrefix, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt,
-		&t.RevokedAt); err != nil {
+		&t.RevokedAt, &t.BdbID); err != nil {
 		return nil, err
 	}
 	t.Kind = domain.AccessTokenKind(kind)

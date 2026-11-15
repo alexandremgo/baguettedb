@@ -60,10 +60,10 @@ func toBdbJSON(b domain.Bdb) bdbJSON {
 // bdbDescriptionJSON is a bdb's description as --json prints it, with the keys of the describe_bdb MCP tool's result.
 type bdbDescriptionJSON struct {
 	bdbJSON
-	Owner    string             `json:"owner,omitempty"`
-	Tables   []tableDetailJSON  `json:"tables"`
-	Skills   []apptypes.Skill   `json:"skills"`
-	Formulas []apptypes.Formula `json:"formulas"`
+	Owner    string                `json:"owner,omitempty"`
+	Tables   []tableDetailJSON     `json:"tables"`
+	Skills   []apptypes.Skill      `json:"skills"`
+	Formulas []formulaListItemJSON `json:"formulas"`
 }
 
 // tableDetailJSON is a table in a bdb's description: its columns and foreign keys, or the error reading them.
@@ -76,14 +76,17 @@ type tableDetailJSON struct {
 	DescribeError string                 `json:"describe_error,omitempty"`
 }
 
-// toBdbDescriptionJSON converts d to its JSON shape, with empty arrays rather than null.
-func toBdbDescriptionJSON(d domain.BdbDescription) bdbDescriptionJSON {
+// toBdbDescriptionJSON converts d to its JSON shape, each formula with its Data API keys from keysByFormula, with empty
+// arrays rather than null.
+func toBdbDescriptionJSON(
+	d domain.BdbDescription, keysByFormula map[string][]domain.DataAPIKey,
+) bdbDescriptionJSON {
 	out := bdbDescriptionJSON{
 		bdbJSON:  toBdbJSON(d.Bdb),
 		Owner:    d.Owner,
 		Tables:   make([]tableDetailJSON, len(d.Tables)),
 		Skills:   d.Skills,
-		Formulas: d.Formulas,
+		Formulas: toFormulaListJSON(d.Formulas, keysByFormula),
 	}
 	for i, t := range d.Tables {
 		out.Tables[i] = tableDetailJSON{
@@ -93,9 +96,6 @@ func toBdbDescriptionJSON(d domain.BdbDescription) bdbDescriptionJSON {
 	}
 	if out.Skills == nil {
 		out.Skills = []apptypes.Skill{}
-	}
-	if out.Formulas == nil {
-		out.Formulas = []apptypes.Formula{}
 	}
 	return out
 }
@@ -303,6 +303,26 @@ type formulaDetailJSON struct {
 	Hidden      bool               `json:"hidden,omitempty"`
 	SQL         string             `json:"sql"`
 	Params      []formulaParamJSON `json:"params"`
+	DataAPIKeys []dataAPIKeyJSON   `json:"data_api_keys,omitempty"`
+}
+
+// dataAPIKeyJSON names a Data API key apps run a formula with, as --json prints it.
+type dataAPIKeyJSON struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// updatedFormulaJSON is what formulas update --json prints: the formula, with a note when apps run it with Data API
+// keys.
+type updatedFormulaJSON struct {
+	formulaDetailJSON
+	Note string `json:"note,omitempty"`
+}
+
+// formulaListItemJSON is a formula as formulas list --json prints it, with the Data API keys apps run it with.
+type formulaListItemJSON struct {
+	apptypes.Formula
+	DataAPIKeys []dataAPIKeyJSON `json:"data_api_keys,omitempty"`
 }
 
 // formulaParamJSON is a formula's parameter as --json prints it.
@@ -349,8 +369,32 @@ func toFormulaDetailJSON(f domain.FormulaDetail) formulaDetailJSON {
 	}
 	return formulaDetailJSON{
 		Name: f.Name, Label: f.Label, Description: f.Description, Kind: f.Kind, Verb: f.Verb, Hidden: f.Hidden,
-		SQL: f.SQL, Params: params,
+		SQL: f.SQL, Params: params, DataAPIKeys: toDataAPIKeysJSON(f.DataAPIKeys),
 	}
+}
+
+// toDataAPIKeysJSON converts keys to their JSON shape, nil when there are none.
+func toDataAPIKeysJSON(keys []domain.DataAPIKey) []dataAPIKeyJSON {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make([]dataAPIKeyJSON, len(keys))
+	for i, key := range keys {
+		out[i] = dataAPIKeyJSON(key)
+	}
+	return out
+}
+
+// toFormulaListJSON converts formulas to the JSON shape formulas list --json prints, each with its keys from
+// keysByFormula, an empty array rather than null when there are none.
+func toFormulaListJSON(
+	formulas []apptypes.Formula, keysByFormula map[string][]domain.DataAPIKey,
+) []formulaListItemJSON {
+	out := make([]formulaListItemJSON, len(formulas))
+	for i, f := range formulas {
+		out[i] = formulaListItemJSON{Formula: f, DataAPIKeys: toDataAPIKeysJSON(keysByFormula[f.ID])}
+	}
+	return out
 }
 
 // toFormulaParamsJSON converts params to their JSON shape, nil when there are none.

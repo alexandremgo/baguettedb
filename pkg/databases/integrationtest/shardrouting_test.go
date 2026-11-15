@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/alexandremgo/baguettedb/pkg/common/authhttp"
@@ -22,11 +23,15 @@ import (
 )
 
 // shardPod is one databases "pod": its own SQLite client + data dir (a distinct PVC), sharing the test's
-// Postgres metadata and KEK with every other pod, plus an HTTP router carrying the shard-routing middleware.
+// Postgres metadata and KEK with every other pod, plus an HTTP router carrying the shard-routing middleware. mux is
+// that router, for a test to mount more routes on, with formulaSvc and shardRouter to mount them with.
 type shardPod struct {
 	dbSvc        *service.DatabaseService
 	sqliteClient *sqlitelocal.Client
 	router       http.Handler
+	mux          chi.Router
+	formulaSvc   *service.FormulaService
+	shardRouter  *dbapi.ShardRouter
 }
 
 // newShardPod builds a pod at the given ordinal. peerURL maps a shard ordinal to the base URL of the pod owning
@@ -69,7 +74,10 @@ func newShardPod(
 		dbapi.NewInternalHandler(querySvc, skillSvc, formulaSvc, dbSvc, nil, testLogger),
 		shardRouter, tv.RequireToken(), authz.Policy{}, nil, 1024*1024, testutil.InternalAPISecret,
 	)
-	return &shardPod{dbSvc: dbSvc, sqliteClient: sqliteClient, router: router}
+	return &shardPod{
+		dbSvc: dbSvc, sqliteClient: sqliteClient, router: router, mux: router, formulaSvc: formulaSvc,
+		shardRouter: shardRouter,
+	}
 }
 
 // TestShardRouting_ForwardsToOwnerAndServesLocal verifies the following contract: a request for a bdb owned by

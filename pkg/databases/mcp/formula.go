@@ -3,11 +3,15 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/google/uuid"
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
 	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
@@ -70,7 +74,8 @@ func registerFormulaTools(s *mcpserver.MCPServer, formulaSvc *service.FormulaSer
 				" — call "+mcputil.ToolGetDocs+"(topic: 'formulas') before authoring. Changing `sql` re-derives "+
 				"the kind and verb; `params` replaces the whole schema. `display` is tri-state: omit = "+
 				"unchanged, null = clear, an object = replace — this is where slots are set (refs by name or "+
-				"UUID)."),
+				"UUID). When apps run the formula with Data API keys, the answer's `note` says so: they run the "+
+				"new version from their next call."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 			mcplib.WithString("ref", mcplib.Required(),
 				mcplib.Description("Formula reference: the name or the UUID.")),
@@ -96,7 +101,9 @@ func registerFormulaTools(s *mcpserver.MCPServer, formulaSvc *service.FormulaSer
 	s.AddTool(
 		mcplib.NewTool(mcputil.ToolGetFormula,
 			mcplib.WithDescription("Fetches a single formula (with its SQL and parameter schema) by name or UUID. "+
-				"Useful to re-read a formula's definition before running or updating it."),
+				"Useful to re-read a formula's definition before running or updating it. When apps run it with "+
+				"Data API keys, `data_api_keys` names them (ID and name, never the value), for the bdb's owner and "+
+				"editors; keys are created and changed in the web app only."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 			mcplib.WithString("ref", mcplib.Required(),
 				mcplib.Description("Formula reference: the name or the UUID.")),
@@ -108,7 +115,8 @@ func registerFormulaTools(s *mcpserver.MCPServer, formulaSvc *service.FormulaSer
 		mcplib.NewTool(mcputil.ToolListFormulas,
 			mcplib.WithDescription("Lists every formula in the bdb (name, description, kind, SQL, parameter "+
 				"schema, display config, hidden flag), ordered by display position then name. Hidden formulas "+
-				"are included — hiding only trims the members' app listing, never this tool."),
+				"are included — hiding only trims the members' app listing, never this tool. `data_api_keys` names "+
+				"the Data API keys apps run a formula with, as in "+mcputil.ToolGetFormula+"."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 		),
 		listFormulasHandler(formulaSvc, logger),
@@ -117,7 +125,8 @@ func registerFormulaTools(s *mcpserver.MCPServer, formulaSvc *service.FormulaSer
 	s.AddTool(
 		mcplib.NewTool(mcputil.ToolDeleteFormula,
 			mcplib.WithDescription("Deletes a formula resolved by name or UUID. Formulas attached to a deleted "+
-				"view (its row/bulk actions and row detail) are removed with it."),
+				"view (its row/bulk actions and row detail) are removed with it. When apps ran it with Data API "+
+				"keys, the answer names the keys, which can no longer run it."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 			mcplib.WithString("ref", mcplib.Required(),
 				mcplib.Description("Formula reference: the name or the UUID.")),
@@ -438,7 +447,13 @@ func updateFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Log
 				Str("ref", ref).Msg("MCP update_formula failed")
 			return formulaErrorResult("update", err), nil
 		}
-		return marshalToJSON(toFormulaDetail(formula))
+		resp := updatedFormula{formulaDetail: toFormulaDetail(formula)}
+		resp.DataAPIKeys = formulaDataAPIKeys(ctx, formulaSvc, userID, bdbID, resp.ID, logger)
+		if len(resp.DataAPIKeys) > 0 {
+			resp.Note = fmt.Sprintf("Apps run this formula with the Data API keys %s: they run the new version "+
+				"from their next call.", keyNames(resp.DataAPIKeys))
+		}
+		return marshalToJSON(resp)
 	}
 }
 
@@ -469,7 +484,9 @@ func getFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Logger
 				Str("ref", ref).Msg("MCP get_formula failed")
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to fetch formula: %v", err)), nil
 		}
-		return marshalToJSON(toFormulaDetail(formula))
+		detail := toFormulaDetail(formula)
+		detail.DataAPIKeys = formulaDataAPIKeys(ctx, formulaSvc, userID, bdbID, detail.ID, logger)
+		return marshalToJSON(detail)
 	}
 }
 
@@ -494,7 +511,12 @@ func listFormulasHandler(formulaSvc *service.FormulaService, logger zerolog.Logg
 				Msg("MCP list_formulas failed")
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to list formulas: %v", err)), nil
 		}
-		return marshalToJSON(toFormulaDetails(formulas))
+		details := toFormulaDetails(formulas)
+		keysByFormula := dataAPIKeysByFormula(ctx, formulaSvc, userID, bdbID, logger)
+		for i := range details {
+			details[i].DataAPIKeys = toFormulaDataAPIKeys(keysByFormula[details[i].ID])
+		}
+		return marshalToJSON(details)
 	}
 }
 
@@ -518,14 +540,69 @@ func deleteFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Log
 			return mcplib.NewToolResultError("ref is required"), nil
 		}
 
+		// The keys are looked up first: deleting the formula forgets them.
+		keys := formulaDataAPIKeysByRef(ctx, formulaSvc, userID, bdbID, ref, logger)
 		if err := formulaSvc.DeleteFormula(ctx, userID, bdbID, ref); err != nil {
 			logger.Error().Err(err).
 				Str("user_id", userID.String()).Str("bdb_id", bdbID.String()).
 				Str("ref", ref).Msg("MCP delete_formula failed")
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to delete formula: %v", err)), nil
 		}
+		if len(keys) > 0 {
+			return mcplib.NewToolResultText(fmt.Sprintf("formula %q deleted; the apps using the Data API keys %s "+
+				"can no longer run it", ref, keyNames(keys))), nil
+		}
 		return mcplib.NewToolResultText(fmt.Sprintf("formula %q deleted", ref)), nil
 	}
+}
+
+// dataAPIKeysByFormula returns the bdb bdbID's Data API keys by formula ID, as the user userID may see them. A lookup
+// that fails is logged and answers none, so a formula tool still answers without the keys.
+func dataAPIKeysByFormula(
+	ctx context.Context, formulaSvc *service.FormulaService, userID, bdbID uuid.UUID, logger zerolog.Logger,
+) map[string][]apptypes.DataAPIKey {
+	keysByFormula, err := formulaSvc.ListFormulaDataAPIKeys(ctx, userID, bdbID)
+	if err != nil {
+		logger.Warn().Err(err).Str("user_id", userID.String()).Str("bdb_id", bdbID.String()).
+			Msg("MCP: failed to look up the formulas' data API keys")
+		return nil
+	}
+	return keysByFormula
+}
+
+// formulaDataAPIKeys names the Data API keys of the formula formulaID of the bdb bdbID, as the user userID may see
+// them, none when a lookup fails.
+func formulaDataAPIKeys(
+	ctx context.Context, formulaSvc *service.FormulaService, userID, bdbID uuid.UUID, formulaID string,
+	logger zerolog.Logger,
+) []formulaDataAPIKey {
+	return toFormulaDataAPIKeys(dataAPIKeysByFormula(ctx, formulaSvc, userID, bdbID, logger)[formulaID])
+}
+
+// formulaDataAPIKeysByRef names the Data API keys of the formula ref of the bdb bdbID, as the user userID may see
+// them: none when the bdb has no key the user may see, when the formula isn't found, or when a lookup fails.
+func formulaDataAPIKeysByRef(
+	ctx context.Context, formulaSvc *service.FormulaService, userID, bdbID uuid.UUID, ref string,
+	logger zerolog.Logger,
+) []formulaDataAPIKey {
+	keysByFormula := dataAPIKeysByFormula(ctx, formulaSvc, userID, bdbID, logger)
+	if len(keysByFormula) == 0 {
+		return nil
+	}
+	formula, err := formulaSvc.GetFormula(ctx, userID, bdbID, ref)
+	if err != nil {
+		return nil
+	}
+	return toFormulaDataAPIKeys(keysByFormula[formula.ID.String()])
+}
+
+// keyNames quotes the names of keys, separated by commas.
+func keyNames(keys []formulaDataAPIKey) string {
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = strconv.Quote(key.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 func runFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {

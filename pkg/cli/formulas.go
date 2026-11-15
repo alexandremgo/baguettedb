@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -27,7 +28,8 @@ func newFormulasListCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		Use:   "list <bdb>",
 		Short: "List a bdb's formulas",
 		Long: "list prints a bdb's formulas: each one's name (what formulas run takes), kind (a view reads, an " +
-			"action writes), label and description, hidden ones included. " + bdbArgHelp,
+			"action writes), label and description, hidden ones included, and, to the bdb's owner and editors, the " +
+			"Data API keys apps run it with. " + bdbArgHelp,
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLocal(cmd, flags, open, func(l *local) error {
@@ -35,17 +37,18 @@ func newFormulasListCmd(flags *globalFlags, open localOpener) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				var keysByFormula map[string][]domain.DataAPIKey
+				if len(formulas) > 0 {
+					keysByFormula = dataAPIKeys(cmd, l, b)
+				}
 				if asJSON {
-					if formulas == nil {
-						formulas = []apptypes.Formula{}
-					}
-					return writeJSON(cmd.OutOrStdout(), formulas)
+					return writeJSON(cmd.OutOrStdout(), toFormulaListJSON(formulas, keysByFormula))
 				}
 				if len(formulas) == 0 {
 					cmd.PrintErrf("No formulas in %s.\n", b.Name)
 					return nil
 				}
-				return writeFormulaList(cmd.OutOrStdout(), formulas)
+				return writeFormulaList(cmd.OutOrStdout(), formulas, keysByFormula)
 			})
 		},
 	}
@@ -53,17 +56,59 @@ func newFormulasListCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	return cmd
 }
 
-// writeFormulaList writes formulas to w as a table of their names, kinds (hidden ones marked), labels and descriptions.
-func writeFormulaList(w io.Writer, formulas []apptypes.Formula) error {
+// writeFormulaList writes formulas to w as a table of their names, kinds (hidden ones marked), labels and descriptions,
+// with a KEYS column naming each one's Data API keys from keysByFormula when any formula has some.
+func writeFormulaList(w io.Writer, formulas []apptypes.Formula, keysByFormula map[string][]domain.DataAPIKey) error {
+	withKeys := false
+	for _, f := range formulas {
+		withKeys = withKeys || len(keysByFormula[f.ID]) > 0
+	}
 	rows := make([][]string, len(formulas))
 	for i, f := range formulas {
 		kind := f.Kind
 		if f.Hidden {
 			kind += ", hidden"
 		}
-		rows[i] = []string{f.Name, kind, f.Label, f.Description}
+		rows[i] = []string{f.Name, kind, f.Label}
+		if withKeys {
+			rows[i] = append(rows[i], dataAPIKeyNames(keysByFormula[f.ID]))
+		}
+		rows[i] = append(rows[i], f.Description)
+	}
+	if withKeys {
+		return writeTable(w, []string{"NAME", "KIND", "LABEL", "KEYS", "DESCRIPTION"}, rows)
 	}
 	return writeTable(w, []string{"NAME", "KIND", "LABEL", "DESCRIPTION"}, rows)
+}
+
+// dataAPIKeys returns the Data API keys apps run the bdb b's formulas with, by formula ID, as the account may see them.
+// Keys that can't be looked up are none, after a warning on stderr: the command still answers, and the warning tells
+// that no key shown doesn't mean a formula is on none.
+func dataAPIKeys(cmd *cobra.Command, l *local, b domain.Bdb) map[string][]domain.DataAPIKey {
+	keysByFormula, err := l.formulas.DataAPIKeys(cmd.Context(), b)
+	if err != nil {
+		cmd.PrintErrf("Couldn't look up the Data API keys apps run the formulas with: %v\n", err)
+		return nil
+	}
+	return keysByFormula
+}
+
+// dataAPIKeyNames lists the names of keys, separated by commas.
+func dataAPIKeyNames(keys []domain.DataAPIKey) string {
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = key.Name
+	}
+	return strings.Join(names, ", ")
+}
+
+// quotedDataAPIKeyNames lists the names of keys, quoted and separated by commas.
+func quotedDataAPIKeyNames(keys []domain.DataAPIKey) string {
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = strconv.Quote(key.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // newFormulasShowCmd builds the formulas show command, which prints one of a bdb's formulas: what it is, the
@@ -74,8 +119,8 @@ func newFormulasShowCmd(flags *globalFlags, open localOpener) *cobra.Command {
 		Use:   "show <bdb> <formula>",
 		Short: "Show a formula of a bdb and its parameters",
 		Long: "show prints a formula of a bdb, by name: its kind, label and description, each parameter formulas run " +
-			"takes (its type, whether it is required, its default and the values it accepts), and its SQL. " +
-			bdbArgHelp,
+			"takes (its type, whether it is required, its default and the values it accepts), its SQL, and, to the " +
+			"bdb's owner and editors, the Data API keys apps run it with. " + bdbArgHelp,
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLocal(cmd, flags, open, func(l *local) error {
@@ -83,6 +128,7 @@ func newFormulasShowCmd(flags *globalFlags, open localOpener) *cobra.Command {
 				if err != nil {
 					return formulaError(cmd, b, args[1], err)
 				}
+				f.DataAPIKeys = dataAPIKeys(cmd, l, b)[f.ID]
 				if asJSON {
 					return writeJSON(cmd.OutOrStdout(), toFormulaDetailJSON(f))
 				}
@@ -157,6 +203,17 @@ func printFormula(w io.Writer, f domain.FormulaDetail) error {
 	}
 
 	fmt.Fprintf(&out, "\nSQL\n%s\n", strings.TrimSuffix(f.SQL, "\n"))
+
+	if len(f.DataAPIKeys) > 0 {
+		rows := make([][]string, len(f.DataAPIKeys))
+		for i, key := range f.DataAPIKeys {
+			rows[i] = []string{key.Name, key.ID}
+		}
+		out.WriteString("\nDATA API KEYS (apps run this formula with them)\n")
+		if err := writeTable(&out, []string{"NAME", "ID"}, rows); err != nil {
+			return err
+		}
+	}
 	_, err := io.WriteString(w, out.String())
 	return err
 }
@@ -378,7 +435,24 @@ func newFormulasUpdateCmd(flags *globalFlags, open localOpener) *cobra.Command {
 				if err != nil {
 					return formulaError(cmd, b, args[1], err)
 				}
-				return printWrittenFormula(cmd, "Updated", b, f, asJSON)
+				f.DataAPIKeys = dataAPIKeys(cmd, l, b)[f.ID]
+				var note string
+				if len(f.DataAPIKeys) > 0 {
+					note = fmt.Sprintf("Apps run this formula with the Data API keys %s: they run the new version "+
+						"from their next call.", quotedDataAPIKeyNames(f.DataAPIKeys))
+				}
+				if asJSON {
+					return writeJSON(cmd.OutOrStdout(), updatedFormulaJSON{
+						formulaDetailJSON: toFormulaDetailJSON(f), Note: note,
+					})
+				}
+				if err := printWrittenFormula(cmd, "Updated", b, f, false); err != nil {
+					return err
+				}
+				if note != "" {
+					cmd.PrintErrln(note)
+				}
+				return nil
 			})
 		},
 	}
@@ -392,16 +466,29 @@ func newFormulasDeleteCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <bdb> <formula>",
 		Short: "Delete a formula of a bdb",
-		Long:  "delete deletes a formula of a bdb, by name. " + bdbArgHelp,
-		Args:  usageArgs(argsByUsage),
+		Long: "delete deletes a formula of a bdb, by name, saying on stderr which Data API keys apps ran it with. " +
+			bdbArgHelp,
+		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLocal(cmd, flags, open, func(l *local) error {
+				// The keys are looked up first: deleting the formula forgets them.
+				var keys []domain.DataAPIKey
+				if shown, f, err := l.formulas.Show(cmd.Context(), args[0], args[1]); err == nil {
+					keys = dataAPIKeys(cmd, l, shown)[f.ID]
+				}
 				b, err := l.formulas.Delete(cmd.Context(), args[0], args[1])
 				if err != nil {
 					return formulaError(cmd, b, args[1], err)
 				}
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Deleted formula %s from %s\n", args[1], b.Name)
-				return err
+				if err != nil {
+					return err
+				}
+				if len(keys) > 0 {
+					cmd.PrintErrf("The apps using the Data API keys %s can no longer run it.\n",
+						quotedDataAPIKeyNames(keys))
+				}
+				return nil
 			})
 		},
 	}

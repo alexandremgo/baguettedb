@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/alexandremgo/baguettedb/pkg/bdbs/domain"
+	"github.com/alexandremgo/baguettedb/pkg/bdbs/service"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 )
 
@@ -89,5 +90,53 @@ func toInviteDetailsResponse(inv *domain.Invite, bdb *domain.Bdb, creatorEmail s
 		Status:         string(inv.Status),
 		ExpiresAt:      inv.ExpiresAt,
 		CreatedByEmail: creatorEmail,
+	}
+}
+
+// createDataAPIKeyRequest holds the JSON body for creating a Data API key: its name, and the IDs of the formulas it may
+// run, which may be none.
+type createDataAPIKeyRequest struct {
+	Name       string   `json:"name"`
+	FormulaIDs []string `json:"formula_ids"`
+}
+
+// dataAPIKeyResponse is a Data API key as the API returns it: never its value, only the characters after its prefix
+// that tell it apart, with who created it and the IDs of the formulas it may run.
+type dataAPIKeyResponse struct {
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	TokenPrefix string     `json:"token_prefix"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	FormulaIDs  []string   `json:"formula_ids"`
+}
+
+// createdDataAPIKeyResponse is a Data API key just created, with its plain value: the only response that carries it.
+type createdDataAPIKeyResponse struct {
+	dataAPIKeyResponse
+	Token string `json:"token"`
+}
+
+// dataAPIKeyListResponse holds a bdb's Data API keys.
+type dataAPIKeyListResponse struct {
+	Keys []dataAPIKeyResponse `json:"keys"`
+}
+
+// toDataAPIKeyResponse converts a Data API key with its formulas to its API shape, a key with no formula listing an
+// empty array.
+func toDataAPIKeyResponse(k service.DataAPIKey) dataAPIKeyResponse {
+	formulaIDs := k.FormulaIDs
+	if formulaIDs == nil {
+		formulaIDs = []string{}
+	}
+	return dataAPIKeyResponse{
+		ID:          k.Key.ID,
+		Name:        k.Key.Name,
+		TokenPrefix: k.Key.TokenPrefix,
+		CreatedBy:   k.Key.UserID,
+		CreatedAt:   k.Key.CreatedAt,
+		LastUsedAt:  k.Key.LastUsedAt,
+		FormulaIDs:  formulaIDs,
 	}
 }

@@ -34,12 +34,12 @@ func setupRouter(t *testing.T) chi.Router {
 	testUserSvc = userSvc
 
 	handler := api.NewHandler(authenticationSvc, userSvc, roleSvc, nil, "", "", testLogger)
-	internalHandler := api.NewInternalHandler(roleSvc, userSvc)
+	tokens := newTokenService()
+	internalHandler := api.NewInternalHandler(roleSvc, userSvc, tokens)
 	publicURL := "http://localhost:8080"
 	discovery := api.NewDiscoveryHandler(publicURL, testJWKS.Issuer(), testLogger)
 	oidcProxy := api.NewOIDCProxyHandler(nil, publicURL, testLogger)
 
-	tokens := newTokenService()
 	tv, err := authhttp.NewTokenValidator(context.Background(), testJWKS.JWKSURL(), testJWKS.Issuer(), "", testLogger,
 		authhttp.WithOpaqueTokens(checkTestToken(tokens), domain.AccessTokenPersonal.Prefix()))
 	if err != nil {

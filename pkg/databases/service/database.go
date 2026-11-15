@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/quota"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
@@ -285,6 +286,52 @@ func (s *DatabaseService) CheckDatabasePermission(
 	}
 	if !allowed {
 		return domain.ErrAccessDenied
+	}
+	return nil
+}
+
+// CheckDataAPIKeyFormula verifies that the Data API key keyID of the bdb bdbID may run the formula formulaID. Returns
+// domain.ErrFormulaNotOnDataAPIKey if not, which every formula is on a soft-deleted bdb. Whether the key's creator may
+// run the formula is not checked here.
+func (s *DatabaseService) CheckDataAPIKeyFormula(
+	ctx context.Context, keyID, bdbID uuid.UUID, formulaID string,
+) error {
+	allowed, err := s.bdbsApp.CheckDataAPIKeyFormula(ctx, keyID, bdbID, formulaID)
+	if err != nil {
+		return fmt.Errorf("checking the data API key's formula: %w", err)
+	}
+	if !allowed {
+		return domain.ErrFormulaNotOnDataAPIKey
+	}
+	return nil
+}
+
+// ListDataAPIKeyFormulaIDs returns the IDs of the formulas the Data API key keyID of the bdb bdbID may run, none on a
+// soft-deleted bdb.
+func (s *DatabaseService) ListDataAPIKeyFormulaIDs(ctx context.Context, keyID, bdbID uuid.UUID) ([]string, error) {
+	formulaIDs, err := s.bdbsApp.ListDataAPIKeyFormulaIDs(ctx, keyID, bdbID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the data API key's formulas: %w", err)
+	}
+	return formulaIDs, nil
+}
+
+// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member
+// userID who may write the bdb's database, and none to anyone else.
+func (s *DatabaseService) ListFormulaDataAPIKeys(
+	ctx context.Context, userID, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	keys, err := s.bdbsApp.ListFormulaDataAPIKeys(ctx, userID, bdbID)
+	if err != nil {
+		return nil, fmt.Errorf("listing the data API keys by formula: %w", err)
+	}
+	return keys, nil
+}
+
+// ForgetDataAPIKeyFormula forgets the formula formulaID for every Data API key of the bdb bdbID.
+func (s *DatabaseService) ForgetDataAPIKeyFormula(ctx context.Context, bdbID uuid.UUID, formulaID string) error {
+	if err := s.bdbsApp.ForgetDataAPIKeyFormula(ctx, bdbID, formulaID); err != nil {
+		return fmt.Errorf("forgetting a formula of the data API keys: %w", err)
 	}
 	return nil
 }

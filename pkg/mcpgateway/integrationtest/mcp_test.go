@@ -140,6 +140,26 @@ func (a *allowAllBdbsApp) CheckMemberPermission(
 	return true, nil
 }
 
+// CheckDataAPIKeyFormula and ForgetDataAPIKeyFormula do nothing, since these tests run formulas under no key.
+func (a *allowAllBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}
+
+func (a *allowAllBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+func (a *allowAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *allowAllBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
 func (a *allowAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	return uuid.Nil, []authz.Role{authz.RoleUser}, nil
 }
@@ -165,6 +185,25 @@ func (a *gatewayTestAuthApp) GetUserProfiles(
 	return out, nil
 }
 
+// CreateDataAPIKey and the other Data API key methods do nothing, since these tests manage no keys.
+func (a *gatewayTestAuthApp) CreateDataAPIKey(
+	_ context.Context, _, _ uuid.UUID, _ string,
+) (apptypes.CreatedDataAPIKey, error) {
+	return apptypes.CreatedDataAPIKey{}, nil
+}
+
+func (a *gatewayTestAuthApp) ListDataAPIKeys(_ context.Context, _ uuid.UUID) ([]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
+func (a *gatewayTestAuthApp) RevokeDataAPIKey(_ context.Context, _, _ uuid.UUID) error { return nil }
+
+func (a *gatewayTestAuthApp) RevokeDataAPIKeys(_ context.Context, _ uuid.UUID) error { return nil }
+
+func (a *gatewayTestAuthApp) RevokeMemberDataAPIKeys(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
 // setupGatewayMCPClient creates both module MCP servers, aggregates them via the gateway, and returns an initialized
 // SSE MCP client authenticated as the given user. Returns the bdbs + databases services so tests can drive lifecycle
 // ops directly (e.g. provisioning a per-bdb DB, soft-deleting, advancing deleted_at, calling PurgeExpired).
@@ -176,7 +215,7 @@ func setupGatewayMCPClient(
 	// Bdbs MCP server.
 	bdbSvc := newBdbService(&gatewayTestAuthApp{}, quota.Fixed(quota.Limits{MaxBdbs: 100, MaxMembersPerBdb: 100}))
 	dbRef := &bdbsmcp.DatabasesAppRef{}
-	bdbsMCPServer := bdbsmcp.NewServer(bdbSvc, dbRef, bdbsmcp.Options{}, testLogger)
+	bdbsMCPServer := bdbsmcp.NewServer(bdbSvc, dbRef, nil, bdbsmcp.Options{}, testLogger)
 
 	// Databases MCP server. Shares KEK provider and sqlitelocal client across
 	// all setupGatewayMCPClient calls within this test so multi-client tests

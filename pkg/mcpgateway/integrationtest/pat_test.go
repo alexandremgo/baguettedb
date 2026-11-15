@@ -153,8 +153,8 @@ func TestInstance_PersonalAccessTokensOff(t *testing.T) {
 
 // newJWTInstance composes every app on the suite's instance store with auth, an OAuth Authentication: JWTs checked
 // against the suite's JWKS standing in for Hydra, a preset web client so no Hydra admin call is made, and bdb files in
-// a temporary directory keyed by a KEK generated on the spot.
-func newJWTInstance(t *testing.T, auth instance.Authentication) *instance.Instance {
+// a temporary directory keyed by a KEK generated on the spot. Each of tune then changes the configuration.
+func newJWTInstance(t *testing.T, auth instance.Authentication, tune ...func(*config.Config)) *instance.Instance {
 	t.Helper()
 	cfg, err := config.Load()
 	if err != nil {
@@ -169,6 +169,9 @@ func newJWTInstance(t *testing.T, auth instance.Authentication) *instance.Instan
 	backups := false
 	cfg.DatabasesBackupEnabled = &backups
 	testDB.Configure(&cfg)
+	for _, f := range tune {
+		f(&cfg)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -178,4 +181,90 @@ func newJWTInstance(t *testing.T, auth instance.Authentication) *instance.Instan
 	}
 	t.Cleanup(inst.Close)
 	return inst
+}
+
+// TestInstance_DataAPIKeyRefusedOutsideDataAPI checks that a Data API key authenticates on none of the routes an
+// instance serves besides the Data API: the auth, bdbs and databases APIs and the streamable MCP endpoint all refuse
+// it. It holds on an instance accepting JWTs with personal tokens alongside, on one accepting personal tokens alone, as
+// bdb serve does, and on one accepting JWTs alone, as every split service does. Where personal tokens are on, a
+// personal token of the key's own user is accepted on the same routes, so the refusal is the key's.
+func TestInstance_DataAPIKeyRefusedOutsideDataAPI(t *testing.T) {
+	for name, tt := range map[string]struct {
+		auth           instance.Authentication
+		personalTokens bool
+	}{
+		"OAuth with personal tokens": {auth: instance.OAuth(true), personalTokens: true},
+		"personal tokens only":       {auth: instance.PersonalTokensOnly(), personalTokens: true},
+		"OAuth alone":                {auth: instance.OAuth(false)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			truncateAll(t)
+			inst := newJWTInstance(t, tt.auth)
+			ts := httptest.NewServer(inst.Router)
+			t.Cleanup(ts.Close)
+
+			ctx := context.Background()
+			user, err := inst.Auth.UserSvc.CreateUser(ctx, "data-api-key-"+uuid.NewString()+"@example.com",
+				"Str0ng-Passw0rd!", "Api", "Key")
+			if err != nil {
+				t.Fatalf("creating a user: %v", err)
+			}
+			// The key's bdb needn't exist: no route but the Data API looks a key up at all.
+			key, _, err := inst.Auth.TokenSvc.CreateDataAPIKey(ctx, user.ID, uuid.New(), "app")
+			if err != nil {
+				t.Fatalf("creating a Data API key: %v", err)
+			}
+			pat, _, err := inst.Auth.TokenSvc.Create(ctx, user.ID, "laptop", nil)
+			if err != nil {
+				t.Fatalf("creating a personal token: %v", err)
+			}
+
+			get := func(path, bearer string) int {
+				t.Helper()
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+path, nil)
+				if err != nil {
+					t.Fatalf("building GET %s: %v", path, err)
+				}
+				req.Header.Set("Authorization", "Bearer "+bearer)
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatalf("GET %s: %v", path, err)
+				}
+				if err := resp.Body.Close(); err != nil {
+					t.Fatalf("closing GET %s: %v", path, err)
+				}
+				return resp.StatusCode
+			}
+			for _, path := range []string{"/api/auth/v1/me", "/api/bdbs/v1/bdbs", "/api/databases/v1/account/storage"} {
+				if status := get(path, key); status != http.StatusUnauthorized {
+					t.Errorf("GET %s with a Data API key = %d, want 401", path, status)
+				}
+				if tt.personalTokens {
+					if status := get(path, pat); status != http.StatusOK {
+						t.Errorf("GET %s with a personal token = %d, want 200", path, status)
+					}
+				}
+			}
+
+			c, err := mcpclient.NewStreamableHttpClient(ts.URL+"/mcp",
+				transport.WithHTTPHeaders(map[string]string{"Authorization": "Bearer " + key}))
+			if err != nil {
+				t.Fatalf("creating the MCP client: %v", err)
+			}
+			if err := c.Start(ctx); err != nil {
+				t.Fatalf("starting the MCP client: %v", err)
+			}
+			t.Cleanup(func() {
+				if err := c.Close(); err != nil {
+					t.Errorf("closing the MCP client: %v", err)
+				}
+			})
+			if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+				ClientInfo:      mcp.Implementation{Name: "test-client", Version: "1.0.0"},
+			}}); err == nil {
+				t.Error("initializing over MCP with a Data API key succeeded, want it refused")
+			}
+		})
+	}
 }

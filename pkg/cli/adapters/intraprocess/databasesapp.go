@@ -390,6 +390,15 @@ func (a *DatabasesApp) DeleteFormula(ctx context.Context, bdbID uuid.UUID, ref s
 	return err
 }
 
+// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, none unless
+// the account is the bdb's owner or an editor.
+func (a *DatabasesApp) ListFormulaDataAPIKeys(
+	ctx context.Context, bdbID uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	ctx = a.account.bind(ctx)
+	return a.formulaSvc.ListFormulaDataAPIKeys(ctx, a.account.ID, bdbID)
+}
+
 // ListSkills returns every skill of the bdb bdbID, with its body.
 func (a *DatabasesApp) ListSkills(ctx context.Context, bdbID uuid.UUID) ([]apptypes.Skill, error) {
 	ctx = a.account.bind(ctx)
@@ -463,6 +472,7 @@ func (a *DatabasesApp) RenderManual(ctx context.Context, topic string) (string, 
 // toFormulaDetail converts a formula of the databases app, with its parameters and SQL.
 func toFormulaDetail(f *dbdomain.Formula) domain.FormulaDetail {
 	return domain.FormulaDetail{
+		ID:          f.ID.String(),
 		Name:        f.Name,
 		Label:       f.Label,
 		Description: f.Description,

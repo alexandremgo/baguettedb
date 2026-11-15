@@ -31,6 +31,7 @@ pkg/<app>/
 │   └── <app>http/    # HTTP adapters for cross-app calls (split-service mode)
 ├── api/              # HTTP handlers + router (+ internal_handler.go for service-to-service)
 ├── mcp/              # MCP tools, in apps that expose some
+├── dataapi/          # The Data API, in databases: formulas run with a Data API key, its own versioned types
 ├── store.go          # Per-backend repositories and transaction compositions
 └── setup.go          # Wiring: creates adapters, services, handlers
 ```

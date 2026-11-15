@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { revertChangeBatch } from "../api/changes";
 import { executeQuery } from "../api/databases";
 import type { Value } from "../api/databases";
-import { listFormulas, runFormula } from "../api/formulas";
+import { listFormulas, listFormulasWithColumns, runFormula } from "../api/formulas";
 import { quoteIdent } from "../utils/sql";
 import type { LookupConfig, RunFormulaRequest } from "../api/formulas";
 
@@ -11,6 +11,15 @@ export function useFormulas(bdbId: string | undefined) {
   return useQuery({
     queryKey: ["formulas", bdbId],
     queryFn: () => listFormulas(bdbId!),
+    enabled: !!bdbId,
+  });
+}
+
+/** Fetches a bdb's formulas with each view's result columns; disabled when bdbId is undefined. */
+export function useFormulasWithColumns(bdbId: string | undefined) {
+  return useQuery({
+    queryKey: ["formulas", bdbId, "columns"],
+    queryFn: () => listFormulasWithColumns(bdbId!),
     enabled: !!bdbId,
   });
 }

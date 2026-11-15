@@ -91,6 +91,7 @@ linters:
             - "**/pkg/databases/domain/**"
             - "**/pkg/databases/service/**"
             - "**/pkg/databases/api/**"
+            - "**/pkg/databases/dataapi/**"
             - "**/pkg/databases/mcp/**"
             - "**/pkg/databases/appinput/**"
           deny:

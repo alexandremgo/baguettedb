@@ -70,6 +70,33 @@ type formulaEntry struct {
 	Kind        string `json:"kind"`
 	// Hidden marks an assistant-only formula: members don't see it in the app's formula list.
 	Hidden bool `json:"hidden,omitempty"`
+	// DataAPIKeys names the Data API keys apps run the formula with, shown to the bdb's owner and editors.
+	DataAPIKeys []formulaDataAPIKey `json:"data_api_keys,omitempty"`
+}
+
+// formulaDataAPIKey names a Data API key an app runs a formula with, never its value.
+type formulaDataAPIKey struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// formulaKeyLister lists a bdb's Data API keys by formula.
+type formulaKeyLister interface {
+	// FormulaKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, to a member userID who
+	// may write the bdb's database, and none to anyone else.
+	FormulaKeys(ctx context.Context, userID, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
+}
+
+// toFormulaDataAPIKeys names keys, none when there are none.
+func toFormulaDataAPIKeys(keys []apptypes.DataAPIKey) []formulaDataAPIKey {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make([]formulaDataAPIKey, len(keys))
+	for i, key := range keys {
+		out[i] = formulaDataAPIKey{ID: key.ID.String(), Name: key.Name}
+	}
+	return out
 }
 
 // bdbOverview is the describe_bdb response payload.
@@ -112,7 +139,7 @@ type bdbSummary struct {
 
 // registerBdbTools registers all bdb-level MCP tools (list_bdbs for
 // multi-bdb browsing, describe_bdb for bdb-bound orientation).
-func registerBdbTools(s *mcpserver.MCPServer, bdbSvc *service.BdbService, dbRef *DatabasesAppRef, opts Options, logger zerolog.Logger) {
+func registerBdbTools(s *mcpserver.MCPServer, bdbSvc *service.BdbService, dbRef *DatabasesAppRef, keys formulaKeyLister, opts Options, logger zerolog.Logger) {
 	s.AddTool(
 		mcplib.NewTool(mcputil.ToolListBdbs,
 			mcplib.WithDescription("Lists all bdbs the authenticated user belongs to, with their role in each. "+
@@ -131,7 +158,8 @@ func registerBdbTools(s *mcpserver.MCPServer, bdbSvc *service.BdbService, dbRef 
 			mcplib.WithDescription("Describes a single bdb: tables with their column schemas (columns and "+
 				"foreign keys), skills with their full bodies inlined (bdb-level and table-targeted "+
 				"alike), and formulas (name, description and kind — 'view' or 'action' — their SQL and "+
-				"parameters live in "+mcputil.ToolGetFormula+"). When a bdb is too large, schemas or "+
+				"parameters live in "+mcputil.ToolGetFormula+"; `data_api_keys` names the Data API keys apps run "+
+				"a formula with, for the owner and editors). When a bdb is too large, schemas or "+
 				"table-targeted skill bodies fall back to summaries and the `omitted` field says what "+
 				"to call instead. "+
 				"Always call this orientation tool once you have decided which bdb to work in — right "+
@@ -142,7 +170,7 @@ func registerBdbTools(s *mcpserver.MCPServer, bdbSvc *service.BdbService, dbRef 
 				"tell them they can restore it from the web UI before the purge date."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 		),
-		describeBdbHandler(bdbSvc, dbRef, opts, logger),
+		describeBdbHandler(bdbSvc, dbRef, keys, opts, logger),
 	)
 }
 
@@ -238,7 +266,7 @@ func listBdbsHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, logger 
 	}
 }
 
-func describeBdbHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, opts Options, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func describeBdbHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, formulaKeys formulaKeyLister, opts Options, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.describe_bdb")
 		defer span.End()
@@ -350,6 +378,13 @@ func describeBdbHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, opts
 			logger.Warn().Err(err).Str("bdb_id", matched.ID.String()).Msg("describe_bdb: failed to fetch formulas")
 			formulas = nil
 		}
+		var keysByFormula map[string][]apptypes.DataAPIKey
+		if formulaKeys != nil && len(formulas) > 0 {
+			if keysByFormula, err = formulaKeys.FormulaKeys(ctx, userID, matched.ID); err != nil {
+				logger.Warn().Err(err).Str("bdb_id", matched.ID.String()).Msg("describe_bdb: failed to fetch the formulas' data API keys")
+				keysByFormula = nil
+			}
+		}
 		formulaEntries := make([]formulaEntry, 0, len(formulas))
 		for _, f := range formulas {
 			formulaEntries = append(formulaEntries, formulaEntry{
@@ -359,6 +394,7 @@ func describeBdbHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, opts
 				Description: f.Description,
 				Kind:        f.Kind,
 				Hidden:      f.Hidden,
+				DataAPIKeys: toFormulaDataAPIKeys(keysByFormula[f.ID]),
 			})
 		}
 
