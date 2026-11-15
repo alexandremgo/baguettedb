@@ -123,5 +123,5 @@ change.
   formulas get other IDs, looks them up by `name` in `GET …/formulas`.
 - Read a view's rows by its `columns`, and an action's outcome by `affected_row_count`.
 - Handle `formula_not_on_key`: the owner can take a formula off the key, or delete it, at any time.
-- Agents with BaguetteDB's MCP tools or command line can read a formula's SQL and parameters with
+- Agents with BaguetteDB's MCP tools or command line can read a formula's ID, SQL and parameters with
   `{{.ToolGetFormula}}`, and a whole bdb with `{{.ToolDescribeBdb}}`.

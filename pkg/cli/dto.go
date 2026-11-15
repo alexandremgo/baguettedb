@@ -295,6 +295,7 @@ type exportJSON struct {
 // formulaDetailJSON is a formula as formulas show --json prints it: what running it takes, without the app's display
 // configuration.
 type formulaDetailJSON struct {
+	ID          string             `json:"id"`
 	Name        string             `json:"name"`
 	Label       string             `json:"label,omitempty"`
 	Description string             `json:"description"`
@@ -368,8 +369,8 @@ func toFormulaDetailJSON(f domain.FormulaDetail) formulaDetailJSON {
 		params = []formulaParamJSON{}
 	}
 	return formulaDetailJSON{
-		Name: f.Name, Label: f.Label, Description: f.Description, Kind: f.Kind, Verb: f.Verb, Hidden: f.Hidden,
-		SQL: f.SQL, Params: params, DataAPIKeys: toDataAPIKeysJSON(f.DataAPIKeys),
+		ID: f.ID, Name: f.Name, Label: f.Label, Description: f.Description, Kind: f.Kind, Verb: f.Verb,
+		Hidden: f.Hidden, SQL: f.SQL, Params: params, DataAPIKeys: toDataAPIKeysJSON(f.DataAPIKeys),
 	}
 }
 

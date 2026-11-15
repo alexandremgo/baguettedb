@@ -111,16 +111,16 @@ func quotedDataAPIKeyNames(keys []domain.DataAPIKey) string {
 	return strings.Join(names, ", ")
 }
 
-// newFormulasShowCmd builds the formulas show command, which prints one of a bdb's formulas: what it is, the
+// newFormulasShowCmd builds the formulas show command, which prints one of a bdb's formulas: what it is, its ID, the
 // parameters formulas run takes, and its SQL.
 func newFormulasShowCmd(flags *globalFlags, open localOpener) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "show <bdb> <formula>",
 		Short: "Show a formula of a bdb and its parameters",
-		Long: "show prints a formula of a bdb, by name: its kind, label and description, each parameter formulas run " +
-			"takes (its type, whether it is required, its default and the values it accepts), its SQL, and, to the " +
-			"bdb's owner and editors, the Data API keys apps run it with. " + bdbArgHelp,
+		Long: "show prints a formula of a bdb, by name: its kind, label, description and ID, each parameter formulas " +
+			"run takes (its type, whether it is required, its default and the values it accepts), its SQL, and, to " +
+			"the bdb's owner and editors, the Data API keys apps run it with. " + bdbArgHelp,
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLocal(cmd, flags, open, func(l *local) error {
@@ -165,8 +165,8 @@ func formulaShowHint(cmd *cobra.Command, b domain.Bdb, formula string) string {
 	return fmt.Sprintf("Run `%s` for its parameters.", show)
 }
 
-// printFormula writes f to w: a heading with its kind, its label and description, a table of its parameters, and its
-// SQL.
+// printFormula writes f to w: a heading with its kind, its label, description and ID, a table of its parameters, its
+// SQL, and the Data API keys apps run it with.
 func printFormula(w io.Writer, f domain.FormulaDetail) error {
 	var out strings.Builder
 	about := formulaKind(f)
@@ -180,6 +180,7 @@ func printFormula(w io.Writer, f domain.FormulaDetail) error {
 	if f.Description != "" {
 		fmt.Fprintf(&out, "Description:  %s\n", f.Description)
 	}
+	fmt.Fprintf(&out, "ID:           %s\n", f.ID)
 
 	if len(f.Params) == 0 {
 		out.WriteString("\nNo parameters.\n")
