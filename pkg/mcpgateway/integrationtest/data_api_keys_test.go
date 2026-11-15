@@ -443,6 +443,111 @@ func TestDataAPIKeys_RunFormula(t *testing.T) {
 	}
 }
 
+// noteBodies returns the bodies of the bdb bdbID's notes, sorted, as the user userID reads them through the view
+// viewID.
+func (k *keyInstance) noteBodies(userID uuid.UUID, bdbID, viewID string) []string {
+	k.t.Helper()
+	result, err := k.inst.Databases.FormulaSvc.RunFormula(context.Background(), userID, uuid.MustParse(bdbID), viewID,
+		dbsvc.FormulaRunInput{})
+	if err != nil {
+		k.t.Fatalf("reading the notes: %v", err)
+	}
+	bodies := make([]string, len(result.Result.Rows))
+	for i, row := range result.Result.Rows {
+		bodies[i], _ = row[0].Value.(string)
+	}
+	slices.Sort(bodies)
+	return bodies
+}
+
+// changeTo sends the holder of token's request to the bdb bdbID's change route rest, such as "undo", and returns the
+// status.
+func (k *keyInstance) changeTo(token, bdbID, rest string) int {
+	k.t.Helper()
+	status, _ := k.do(http.MethodPost, "/api/databases/v1/bdbs/"+bdbID+"/database/changes/"+rest, token, nil)
+	return status
+}
+
+// TestDataAPIKeys_RunStaysOffTheCreatorsUndoStack checks that an action run under a Data API key leaves its creator's
+// undo and redo stacks alone: the creator still redoes a change they undid before the run, their undos then take back
+// their own changes and never the run's, and the run's change, logged as the creator's, is reverted by its batch.
+func TestDataAPIKeys_RunStaysOffTheCreatorsUndoStack(t *testing.T) {
+	// An owner who added a note, edited it, and undid the edit: one change to undo, one to redo.
+	k := newKeyInstance(t)
+	ownerID, owner := k.user("owner")
+	bdbID, formulas := k.bdbWithFormulas(owner, "Notes", "all-notes")
+	action := k.actionFormula(owner, bdbID, "add-note")
+	keyID, _ := k.createKey(owner, bdbID, "app", action)
+	for _, sql := range []string{
+		"INSERT INTO notes (body) VALUES ('mine')", "UPDATE notes SET body = 'edited' WHERE body = 'mine'",
+	} {
+		if status, resp := k.do(http.MethodPost, "/api/databases/v1/bdbs/"+bdbID+"/database/data", owner,
+			map[string]string{"sql": sql}); status != http.StatusOK {
+			t.Fatalf("%s = %d %v, want 200", sql, status, resp)
+		}
+	}
+	if status := k.changeTo(owner, bdbID, "undo"); status != http.StatusOK {
+		t.Fatalf("undoing the edit = %d, want 200", status)
+	}
+
+	// The app adds a note under the key.
+	if _, err := k.run(ownerID, keyID, bdbID, action); err != nil {
+		t.Fatalf("running the action on the key = %v", err)
+	}
+
+	// The owner's redo still holds the edit, and their undos take back the edit then their own note.
+	if status := k.changeTo(owner, bdbID, "redo"); status != http.StatusOK {
+		t.Errorf("redoing the edit after the key's run = %d, want 200", status)
+	}
+	if got := k.noteBodies(ownerID, bdbID, formulas[0]); !slices.Equal(got, []string{"added", "edited"}) {
+		t.Errorf("notes after the redo = %v, want [added edited]", got)
+	}
+	for _, undone := range []string{"the edit", "the owner's note"} {
+		if status := k.changeTo(owner, bdbID, "undo"); status != http.StatusOK {
+			t.Errorf("undoing %s = %d, want 200", undone, status)
+		}
+	}
+	if got := k.noteBodies(ownerID, bdbID, formulas[0]); !slices.Equal(got, []string{"added"}) {
+		t.Errorf("notes after the owner's undos = %v, want [added], the key's note alone", got)
+	}
+
+	// Nothing of the key's is left for the owner to undo.
+	if status := k.changeTo(owner, bdbID, "undo"); status == http.StatusOK {
+		t.Error("a further undo succeeded, want nothing left to undo")
+	}
+	if got := k.noteBodies(ownerID, bdbID, formulas[0]); !slices.Equal(got, []string{"added"}) {
+		t.Errorf("notes after the refused undo = %v, want [added]", got)
+	}
+
+	// The key's change is in the change log as the owner's, and reverting its batch takes the note back.
+	_, resp := k.do(http.MethodGet, "/api/databases/v1/bdbs/"+bdbID+"/database/changes", owner, nil)
+	var keyBatch string
+	batches, _ := resp["batches"].([]any)
+	for _, raw := range batches {
+		batch, _ := raw.(map[string]any)
+		entries, _ := batch["entries"].([]any)
+		for _, rawEntry := range entries {
+			entry, _ := rawEntry.(map[string]any)
+			values, _ := entry["new_values"].(map[string]any)
+			if entry["operation"] == "INSERT" && values["body"] == "added" && batch["origin"] == "change" {
+				keyBatch, _ = batch["batch_id"].(string)
+				if batch["changed_by"] != ownerID.String() {
+					t.Errorf("the key's change is logged as %v's, want the owner %s", batch["changed_by"], ownerID)
+				}
+			}
+		}
+	}
+	if keyBatch == "" {
+		t.Fatalf("the key's change is not in the change log: %v", resp)
+	}
+	if status := k.changeTo(owner, bdbID, "batch/"+keyBatch+"/revert"); status != http.StatusOK {
+		t.Errorf("reverting the key's change = %d, want 200", status)
+	}
+	if got := k.noteBodies(ownerID, bdbID, formulas[0]); len(got) != 0 {
+		t.Errorf("notes after the revert = %v, want none", got)
+	}
+}
+
 // TestDataAPIKeys_RunRefusedOnASoftDeletedBdb checks that no key runs anything on a soft-deleted bdb, even a key a
 // failed revocation left there with its formula.
 func TestDataAPIKeys_RunRefusedOnASoftDeletedBdb(t *testing.T) {

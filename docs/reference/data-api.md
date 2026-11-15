@@ -12,6 +12,10 @@ bdb's owner and editors, `get_formula` and `list_formulas` name the keys a formu
 (`data_api_keys`). An app runs a formula as it is when it calls: changing a formula's SQL, parameters or result
 columns changes what the app gets from its next call, and deleting it stops the app from running it.
 
+What an app changes through a key is logged as a change of the key's creator, but is never their last change to undo:
+`undo_last_change` and `redo_last_change` pass over it, and `revert_change` takes it back by its
+ID.
+
 ## Endpoints
 
 Every path starts with the API's origin, then `/api/data/v1/bdbs/{bdb_id}`: the origin of the hosted service's API,

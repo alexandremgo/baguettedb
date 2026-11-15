@@ -194,6 +194,9 @@ func (s *FormulaService) RunFormula(
 // a key never does more than its creator: a viewer's key can't run an action. Only its in-flight slot is the key's own,
 // so an app can't use up its creator's slots.
 //
+// An action's change is logged as userID's, but stays off their undo and redo stacks: it is revertable by ID, and
+// userID's own last change stays the one they undo.
+//
 // A formula on the key that no longer exists is a domain.ErrFormulaNotFound, and its links to Data API keys are
 // forgotten, a failure to forget them only logged.
 func (s *FormulaService) RunFormulaAsDataAPIKey(

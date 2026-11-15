@@ -24,6 +24,12 @@ func withDataAPIKeyRun(ctx context.Context, keyID uuid.UUID) context.Context {
 	return context.WithValue(ctx, dataAPIKeyRunKey{}, keyID)
 }
 
+// dataAPIKeyRun returns the ID of the Data API key ctx's request runs under, and false for any other request.
+func dataAPIKeyRun(ctx context.Context) (uuid.UUID, bool) {
+	keyID, ok := ctx.Value(dataAPIKeyRunKey{}).(uuid.UUID)
+	return keyID, ok
+}
+
 // acquireSlot takes one of the in-flight slots of userID, or of the Data API key ctx's request runs under, for the rest
 // of the request, and returns the ctx to run it under plus the release; a ctx that already carries a slot is returned
 // as-is with a no-op release. At the cap, the same for a key as for its creator, it returns a QueryRateLimitedError
@@ -34,7 +40,7 @@ func (s *QueryService) acquireSlot(ctx context.Context, userID uuid.UUID) (conte
 	}
 	// A run under a Data API key takes the key's slots, so an app can't use up its owner's; keyID is uuid.Nil, the zero
 	// value cmp.Or skips, for any other request.
-	keyID, _ := ctx.Value(dataAPIKeyRunKey{}).(uuid.UUID)
+	keyID, _ := dataAPIKeyRun(ctx)
 	release, ok := s.gate.acquire(cmp.Or(keyID, userID), s.Limits(ctx).MaxConcurrentQueries)
 	if !ok {
 		return ctx, nil, &domain.QueryRateLimitedError{RetryAfter: time.Second}
