@@ -30,6 +30,10 @@ const (
 	codeInternalError   = "internal_error"
 )
 
+// unavailableRetryAfter is how long, in seconds, the Retry-After header tells an app to wait before it retries a
+// request refused because the bdb is briefly unavailable.
+const unavailableRetryAfter = "5"
+
 // errorResponse is a Data API error: a message for people, and a code for the app.
 type errorResponse struct {
 	Error string `json:"error"`
@@ -66,9 +70,10 @@ func (h *handler) respondFormulaError(w http.ResponseWriter, key authhttp.DataAP
 	case errors.Is(err, domain.ErrFormulaRunTimeout), errors.Is(err, domain.ErrQueryTimeout):
 		respondError(w, http.StatusGatewayTimeout, codeTimeout, "the formula took too long to run")
 	case errors.Is(err, domain.ErrDatabaseReadOnly):
-		w.Header().Set("Retry-After", "5")
+		w.Header().Set("Retry-After", unavailableRetryAfter)
 		respondError(w, http.StatusServiceUnavailable, codeUnavailable, "the bdb is briefly read-only; retry shortly")
 	case errors.Is(err, domain.ErrNewerPlatformSchema):
+		w.Header().Set("Retry-After", unavailableRetryAfter)
 		respondError(w, http.StatusServiceUnavailable, codeUnavailable, "the bdb is being upgraded; retry shortly")
 	default:
 		h.logger.Error().Err(err).Str("key_id", key.KeyID.String()).Msg("data API request failed")
