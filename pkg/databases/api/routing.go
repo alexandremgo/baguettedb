@@ -100,8 +100,8 @@ func (sr *ShardRouter) Middleware(next http.Handler) http.Handler {
 	return sr.route(next, nil)
 }
 
-// MiddlewareAnswering returns Middleware with unforwardable answering in its place a request that can't be forwarded
-// to the pod owning its bdb: the owner can't be reached, its address is malformed, or forwarding would loop.
+// MiddlewareAnswering returns Middleware, except that unforwardable answers a request that can't be forwarded to the
+// pod owning its bdb: the owner can't be reached, its address is malformed, or forwarding would loop.
 //
 // It is for routes whose answers follow a contract of their own, which the router's bare 502 or 500 breaks.
 func (sr *ShardRouter) MiddlewareAnswering(unforwardable http.HandlerFunc) func(http.Handler) http.Handler {
@@ -110,7 +110,8 @@ func (sr *ShardRouter) MiddlewareAnswering(unforwardable http.HandlerFunc) func(
 	}
 }
 
-// route is Middleware, a request that can't be forwarded being answered by unforwardable when it is set.
+// route returns the routing handler; a request that can't be forwarded is answered by unforwardable when it is set,
+// and with forward's own 502 or 500 otherwise.
 func (sr *ShardRouter) route(next http.Handler, unforwardable http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bdbID, err := uuid.Parse(chi.URLParam(r, "bdbID"))
@@ -173,8 +174,11 @@ func (sr *ShardRouter) forward(
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	if unforwardable != nil {
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			sr.logger.Warn().Err(err).Int16("owner_color", color).Int16("owner_shard", shard).
-				Msg("shard routing: the owner could not be reached")
+			// A canceled request is a caller that went away, not an owner that failed, so it isn't logged.
+			if !errors.Is(r.Context().Err(), context.Canceled) {
+				sr.logger.Warn().Err(err).Int16("owner_color", color).Int16("owner_shard", shard).
+					Msg("shard routing: the owner could not be reached")
+			}
 			unforwardable(w, r)
 		}
 	}

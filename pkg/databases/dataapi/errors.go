@@ -45,6 +45,16 @@ func respondError(w http.ResponseWriter, status int, code, message string) {
 	httputil.RespondJSON(w, status, errorResponse{Error: message, Code: code})
 }
 
+// OwnerUnreachable answers a Data API request that could not be forwarded to the pod owning its bdb, as that pod
+// answers for a bdb that is briefly unavailable: a 503 with the unavailable code and a Retry-After header, allowing any
+// origin so a page can read it. A preflight request is answered with a 204 No Content, as it needs nothing of the bdb.
+func OwnerUnreachable(w http.ResponseWriter, r *http.Request) {
+	allowAnyOrigin(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", unavailableRetryAfter)
+		respondError(w, http.StatusServiceUnavailable, codeUnavailable, "the bdb is briefly unavailable; retry shortly")
+	})).ServeHTTP(w, r)
+}
+
 // respondFormulaError maps the error of listing or running the key's formulas to a status and a code. An error the
 // app can't act on is logged, and answered as an internal error.
 func (h *handler) respondFormulaError(w http.ResponseWriter, key authhttp.DataAPIKeyIdentity, err error) {
