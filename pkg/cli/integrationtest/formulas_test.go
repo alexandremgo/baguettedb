@@ -5,6 +5,7 @@ package integrationtest
 import (
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -54,10 +55,12 @@ func TestRun_Formulas_List(t *testing.T) {
 	}
 }
 
-// TestRun_Formulas_Show checks that formulas show prints a formula's kind and verb, its parameters with how --param
-// gives each one, and its SQL; that --json carries the same parameters; and that an unknown formula points at the list.
+// TestRun_Formulas_Show checks that formulas show prints a formula's kind and verb, its ID, its parameters with how
+// --param gives each one, and its SQL; that --json carries the same ID and parameters; and that an unknown formula
+// points at the list.
 func TestRun_Formulas_Show(t *testing.T) {
 	dataDir := newKanban(t)
+	id := formulaID(t, dataDir, "Kanban", "move-task")
 
 	code, stdout, stderr := runCLI(t, "bdb", "--data-dir", dataDir, "formulas", "show", "Kanban", "move-task")
 	lines := strings.Split(stdout, "\n")
@@ -69,9 +72,13 @@ func TestRun_Formulas_Show(t *testing.T) {
 		t.Fatalf("formulas show = %d %q, stderr %q; want the heading, the three parameters and the SQL", code, stdout,
 			stderr)
 	}
+	if !slices.Contains(lines, "ID:           "+id) {
+		t.Errorf("formulas show = %q, want the line ID: %s", stdout, id)
+	}
 
 	code, stdout, stderr = runCLI(t, "bdb", "--data-dir", dataDir, "formulas", "show", "Kanban", "move-task", "--json")
 	var f struct {
+		ID     string `json:"id"`
 		Kind   string `json:"kind"`
 		Verb   string `json:"verb"`
 		SQL    string `json:"sql"`
@@ -85,7 +92,7 @@ func TestRun_Formulas_Show(t *testing.T) {
 			} `json:"options"`
 		} `json:"params"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &f); code != exitOK || err != nil || f.Kind != "action" ||
+	if err := json.Unmarshal([]byte(stdout), &f); code != exitOK || err != nil || f.ID != id || f.Kind != "action" ||
 		f.Verb != "update" || f.SQL == "" || len(f.Params) != 3 || f.Params[0].Source != "selection-single" ||
 		!f.Params[1].Required || len(f.Params[1].Options) != 3 || f.Params[1].Options[1].Label != "In progress" ||
 		f.Params[2].Required {
@@ -98,6 +105,27 @@ func TestRun_Formulas_Show(t *testing.T) {
 	if code != exitFailure || !strings.Contains(stderr, want) {
 		t.Errorf("an unknown formula = %d, stderr %q; want a pointer to the list", code, stderr)
 	}
+}
+
+// formulaID returns the ID of the formula named name in the bdb bdb of the data directory dataDir, as formulas list
+// --json prints it.
+func formulaID(t *testing.T, dataDir, bdb, name string) string {
+	t.Helper()
+	code, stdout, stderr := runCLI(t, "bdb", "--data-dir", dataDir, "formulas", "list", bdb, "--json")
+	var formulas []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &formulas); code != exitOK || err != nil {
+		t.Fatalf("formulas list --json = %d %q (%v), stderr %q", code, stdout, err, stderr)
+	}
+	for _, f := range formulas {
+		if f.Name == name && f.ID != "" {
+			return f.ID
+		}
+	}
+	t.Fatalf("formulas list --json = %q, want a formula named %q with an ID", stdout, name)
+	return ""
 }
 
 // TestRun_Formulas_RunView checks that formulas run prints a view's rows as a table with the count on stderr, and as
