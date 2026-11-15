@@ -412,7 +412,7 @@ func Setup(
 	if opts.DataAPIKeyChecker != nil {
 		var routeToOwner func(http.Handler) http.Handler
 		if shardRouter != nil {
-			routeToOwner = shardRouter.Middleware
+			routeToOwner = shardRouter.MiddlewareAnswering(dataapi.OwnerUnreachable)
 		}
 		dataapi.Register(router, formulaSvc, opts.DataAPIKeyChecker, routeToOwner, cfg.MaxRequestBodySize, logger)
 	}
