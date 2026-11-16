@@ -105,6 +105,9 @@ change.
 | 504 | `timeout` | The formula took too long to run. |
 | 500 | `internal_error` | Something failed on the server. |
 
+A deployment may also cap how many requests each visitor sends before they reach the Data API. Past that cap, it
+answers a 429 with a `Retry-After` header but no JSON body, so check the status before reading the code.
+
 ## Limits
 
 - Runs under a key take in-flight slots of their own, apart from its creator's: at most 4
