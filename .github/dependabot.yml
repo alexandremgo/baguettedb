@@ -27,7 +27,15 @@ updates:
       interval: weekly
     commit-message:
       prefix: chore
+    ignore:
+      # The Node types follow the Node major CI and the web image run, bumped by hand along with them.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-dependencies:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      # ESLint and its config package take a major together, in one PR.
+      eslint-major:
+        patterns: ["eslint", "@eslint/*"]
+        update-types: ["major"]
