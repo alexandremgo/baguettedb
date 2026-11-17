@@ -474,7 +474,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2 v1.47.5
+github.com/aws/aws-sdk-go-v2 v1.48.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -489,7 +489,7 @@ NOTICE.txt:
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.25
+github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.27
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -498,7 +498,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/credentials v1.20.12
+github.com/aws/aws-sdk-go-v2/credentials v1.21.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -507,7 +507,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.8
+github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -516,7 +516,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.8
+github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -525,7 +525,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.8
+github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.12
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -534,7 +534,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.23
+github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.25
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -543,7 +543,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.9
+github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.13
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -552,7 +552,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.8
+github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.12
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -561,7 +561,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.8
+github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.12
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -570,7 +570,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/s3 v1.114.6
+github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -579,7 +579,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/smithy-go v1.28.7
+github.com/aws/smithy-go v1.28.9
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -987,7 +987,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/jackc/pgx/v5 v5.11.0
+github.com/jackc/pgx/v5 v5.13.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1019,7 +1019,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/jackc/puddle/v2 v2.2.2
+github.com/jackc/puddle/v2 v2.2.3
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1207,7 +1207,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/mark3labs/mcp-go v1.4.0
+github.com/mark3labs/mcp-go v1.5.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -1476,7 +1476,7 @@ LICENSE.txt: shared text [3] below.
 
 
 --------------------------------------------------------------------------
-github.com/spf13/pflag v1.0.10
+github.com/spf13/pflag v1.1.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1716,7 +1716,7 @@ NOTICE:
 
 
 --------------------------------------------------------------------------
-golang.org/x/crypto v0.58.0
+golang.org/x/crypto v0.59.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1725,7 +1725,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/net v0.60.0
+golang.org/x/net v0.62.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1734,7 +1734,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/sync v0.24.0
+golang.org/x/sync v0.25.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1743,7 +1743,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/sys v0.49.0
+golang.org/x/sys v0.50.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1752,7 +1752,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/term v0.47.0
+golang.org/x/term v0.48.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1761,7 +1761,7 @@ LICENSE: shared text [1] below.
 
 
 --------------------------------------------------------------------------
-golang.org/x/text v0.43.0
+golang.org/x/text v0.44.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause
@@ -1850,7 +1850,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-modernc.org/libc v1.79.0
+modernc.org/libc v1.80.1
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause AND BSD-3-Clause AND MIT
@@ -2326,7 +2326,7 @@ LICENSE-MMAP-GO:
 
 
 --------------------------------------------------------------------------
-modernc.org/sqlite v1.61.0
+modernc.org/sqlite v1.62.0
 --------------------------------------------------------------------------
 
 License: BSD-3-Clause AND public domain AND MIT
