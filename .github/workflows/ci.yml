@@ -146,37 +146,6 @@ jobs:
       - name: Run integration tests
         run: go test -tags=integration -count=1 ./pkg/.../integrationtest
 
-  vulncheck:
-    name: Vulnerability Scan (runtime deps)
-    runs-on: ubuntu-latest
-    env:
-      CGO_ENABLED: 1
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      # See lint job for cache rationale.
-      - name: Cache Go build cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/go-build
-          key: ${{ runner.os }}-gobuild-${{ hashFiles('go.mod', 'go.sum', 'pkg/databases/adapters/sqlitelocal/csrc/SQLCIPHER_VERSION') }}
-          restore-keys: ${{ runner.os }}-gobuild-
-
-      - name: Install C build deps (libssl + pkg-config)
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      # Fails the workflow when a vulnerability is reachable from the shipping binaries. Scoped to ./cmd/..., their
-      # runtime dependencies.
-      - name: Run govulncheck
-        run: govulncheck ./cmd/...
-
   web:
     name: Web Lint & Build
     runs-on: ubuntu-latest

@@ -1,0 +1,53 @@
+# Scans the shipping binaries for vulnerabilities they reach (scripts/govulncheck.sh): on pull requests and pushes to
+# main, and weekly on main, since an advisory can be published without any change here. The advisories listed in
+# .github/govulncheck-skip are known, mitigated, and waiting for a release that fixes them.
+name: Vulnerability Scan
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.claude/**'
+      - '*.md'
+  pull_request:
+    paths-ignore:
+      - '.claude/**'
+      - '*.md'
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vulncheck:
+    name: Vulnerability Scan (runtime deps)
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Reuses CI's compiled-object cache, keyed the same way: the SQLCipher amalgamation only recompiles when its
+      # version changes.
+      - name: Cache Go build cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-gobuild-${{ hashFiles('go.mod', 'go.sum', 'pkg/databases/adapters/sqlitelocal/csrc/SQLCIPHER_VERSION') }}
+          restore-keys: ${{ runner.os }}-gobuild-
+
+      - name: Install C build deps (libssl + pkg-config)
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # Fails when the binaries reach a vulnerability the skip list does not name, or when a skipped one is gone.
+      - name: Run govulncheck
+        run: scripts/govulncheck.sh

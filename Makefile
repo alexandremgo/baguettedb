@@ -1,4 +1,4 @@
-.PHONY: docs-reference notices build build-ui build-cli build-cli-ui release-cli webui-sync build-auth build-bdbs build-databases build-mcp-gateway run run-auth run-bdbs run-databases run-mcp-gateway test test-fresh test-integration test-integration-fresh test-all-postgres test-all-sqlite test-all test-all-fresh lint dev-up dev-down dev-clean web-setup web-dev web-pwa-dev web-build
+.PHONY: docs-reference notices vulncheck build build-ui build-cli build-cli-ui release-cli webui-sync build-auth build-bdbs build-databases build-mcp-gateway run run-auth run-bdbs run-databases run-mcp-gateway test test-fresh test-integration test-integration-fresh test-all-postgres test-all-sqlite test-all test-all-fresh lint dev-up dev-down dev-clean web-setup web-dev web-pwa-dev web-build
 
 build:
 	go build -o bin/baguettedb ./cmd/monolith
@@ -103,6 +103,11 @@ docs-reference:
 # change; CI fails when the committed file differs.
 notices: web-build
 	go run ./cmd/third-party-notices
+
+# Scans the shipping binaries for vulnerabilities they reach, skipping the advisories .github/govulncheck-skip lists, as
+# CI's Vulnerability Scan does. Needs govulncheck and jq.
+vulncheck:
+	scripts/govulncheck.sh
 
 dev-up:
 	docker compose up --build
