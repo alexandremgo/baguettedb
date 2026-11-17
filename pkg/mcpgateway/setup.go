@@ -3,6 +3,7 @@ package mcpgateway
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
@@ -152,6 +153,15 @@ func SetupHTTP(
 	}, nil
 }
 
+// newBackendHTTPClient returns the HTTP client the gateway calls a backend with. It never follows a redirect: the
+// headers it sends carry the internal API secret and the caller's token, which a redirect would hand to another host,
+// as mcp-go's default client does (GO-2026-6911).
+func newBackendHTTPClient() *http.Client {
+	return &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
 // connectBackendWithRetry creates, starts, and initializes a Streamable HTTP MCP client for url, retrying with
 // exponential backoff until timeout elapses. It lets the gateway ride out a backend that is briefly unreachable at
 // startup (a rolling restart or a blue/green cutover) instead of failing fast and crash-looping.
@@ -164,7 +174,8 @@ func connectBackendWithRetry(
 	mcpURL := url + "/internal/mcp"
 
 	tryConnect := func() (*mcpclient.Client, error) {
-		c, err := mcpclient.NewStreamableHttpClient(mcpURL, transport.WithHTTPHeaderFunc(headerFunc))
+		c, err := mcpclient.NewStreamableHttpClient(mcpURL,
+			transport.WithHTTPHeaderFunc(headerFunc), transport.WithHTTPBasicClient(newBackendHTTPClient()))
 		if err != nil {
 			return nil, fmt.Errorf("creating client: %w", err)
 		}
