@@ -1426,6 +1426,9 @@ func requiresSnapshotForRevert(entry *domain.ChangeLogEntry) bool {
 //  4. The batch is pushed to the undo stack; the calling user's redo
 //     entries are cleared.
 //
+// A request run under a Data API key skips step 4: its batch is an app's change, logged as userID's like any other,
+// yet it is neither userID's last change to undo nor the end of their redo timeline. It stays revertable by ID.
+//
 // After commit, affected rows are read back from _change_log filtered
 // to kind='DML'. maxRows <= 0 disables the row-count cap.
 func (s *QueryService) executeDMLWithChangeLog(
@@ -1437,6 +1440,7 @@ func (s *QueryService) executeDMLWithChangeLog(
 	maxRows int,
 ) (*domain.QueryResult, error) {
 	batchID := uuid.New().String()
+	_, underDataAPIKey := dataAPIKeyRun(ctx)
 
 	correction := changeLogCorrectionStmt(userID, batchID, origin)
 	pendingCountSQL := fmt.Sprintf(
@@ -1485,6 +1489,9 @@ func (s *QueryService) executeDMLWithChangeLog(
 		}
 		if _, err := tx.ExecInternal(ctx, correction.SQL, correction.Args); err != nil {
 			return fmt.Errorf("change log correction: %w", err)
+		}
+		if underDataAPIKey {
+			return nil
 		}
 		for _, push := range undoStackPushAndRedoClearStmts(batchID, userID) {
 			if _, err := tx.ExecInternal(ctx, push.SQL, push.Args); err != nil {

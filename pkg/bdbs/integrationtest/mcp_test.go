@@ -38,11 +38,25 @@ func setupMCPClientWithDBApp(
 	t *testing.T, userID string, dbApp service.DatabasesApp,
 ) (*mcpclient.Client, *service.BdbService) {
 	t.Helper()
+	return setupMCPClientWithKeys(t, userID, dbApp, nil)
+}
+
+// formulaKeysLister lists a bdb's Data API keys by formula, as the bdbs MCP server asks for them.
+type formulaKeysLister interface {
+	FormulaKeys(ctx context.Context, userID, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
+}
+
+// setupMCPClientWithKeys wires the bdbs MCP server as setupMCPClientWithDBApp does, with keys listing the Data API keys
+// of the bdbs' formulas, none when nil.
+func setupMCPClientWithKeys(
+	t *testing.T, userID string, dbApp service.DatabasesApp, keys formulaKeysLister,
+) (*mcpclient.Client, *service.BdbService) {
+	t.Helper()
 
 	bdbSvc := newBdbService(&testAuthApp{}, quota.Fixed(quota.Limits{MaxBdbs: 100, MaxMembersPerBdb: 100}))
 
 	dbRef := &bdbsmcp.DatabasesAppRef{App: dbApp}
-	mcpSrv := bdbsmcp.NewServer(bdbSvc, dbRef, bdbsmcp.Options{}, testLogger)
+	mcpSrv := bdbsmcp.NewServer(bdbSvc, dbRef, keys, bdbsmcp.Options{}, testLogger)
 
 	tv, err := authhttp.NewTokenValidator(context.Background(), testJWKS.JWKSURL(), testJWKS.Issuer(), "", testLogger)
 	if err != nil {

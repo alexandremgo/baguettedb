@@ -1,0 +1,11 @@
+{
+  "key": {
+    "id": "<key-id>",
+    "bdb_id": "<bdb-id>",
+    "user_id": "<user-id>",
+    "name": "finance app",
+    "token_prefix": "<token-prefix>",
+    "created_at": "<time>"
+  },
+  "value": "<value>"
+}

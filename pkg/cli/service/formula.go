@@ -42,6 +42,13 @@ type formulaWriter interface {
 	DeleteFormula(ctx context.Context, bdbID uuid.UUID, ref string) error
 }
 
+// formulaKeyLister lists the Data API keys of a bdb's formulas in the databases app.
+type formulaKeyLister interface {
+	// ListFormulaDataAPIKeys returns the bdb bdbID's Data API keys by the IDs of the formulas each may run, none unless
+	// the account is the bdb's owner or an editor.
+	ListFormulaDataAPIKeys(ctx context.Context, bdbID uuid.UUID) (map[string][]apptypes.DataAPIKey, error)
+}
+
 // FormulaService runs the formula use cases: listing, showing, running, creating, changing and deleting.
 type FormulaService struct {
 	bdbs     bdbResolver
@@ -49,14 +56,34 @@ type FormulaService struct {
 	reader   formulaReader
 	runner   formulaRunner
 	writer   formulaWriter
+	keys     formulaKeyLister
 }
 
-// NewFormulaService creates a FormulaService resolving bdbs with bdbs and listing, reading, running and writing
-// formulas in the databases app.
+// NewFormulaService creates a FormulaService resolving bdbs with bdbs, and listing, reading, running and writing
+// formulas, and listing their Data API keys, in the databases app.
 func NewFormulaService(
 	bdbs bdbResolver, formulas formulaLister, reader formulaReader, runner formulaRunner, writer formulaWriter,
+	keys formulaKeyLister,
 ) *FormulaService {
-	return &FormulaService{bdbs: bdbs, formulas: formulas, reader: reader, runner: runner, writer: writer}
+	return &FormulaService{bdbs: bdbs, formulas: formulas, reader: reader, runner: runner, writer: writer, keys: keys}
+}
+
+// DataAPIKeys returns the Data API keys apps run the bdb b's formulas with, by formula ID, as the account may see
+// them: none unless it is the bdb's owner or an editor.
+func (s *FormulaService) DataAPIKeys(ctx context.Context, b domain.Bdb) (map[string][]domain.DataAPIKey, error) {
+	keys, err := s.keys.ListFormulaDataAPIKeys(ctx, b.ID)
+	if err != nil {
+		return nil, fmt.Errorf("in %s: looking up the Data API keys: %w", b.Name, err)
+	}
+	keysByFormula := make(map[string][]domain.DataAPIKey, len(keys))
+	for formulaID, formulaKeys := range keys {
+		for _, key := range formulaKeys {
+			keysByFormula[formulaID] = append(keysByFormula[formulaID], domain.DataAPIKey{
+				ID: key.ID.String(), Name: key.Name,
+			})
+		}
+	}
+	return keysByFormula, nil
 }
 
 // List returns the formulas of the bdb ref names, hidden ones included.

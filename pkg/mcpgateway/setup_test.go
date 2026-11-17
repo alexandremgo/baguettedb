@@ -38,6 +38,31 @@ func TestConnectBackendWithRetry_FailsAfterTimeoutWhenDown(t *testing.T) {
 	}
 }
 
+// TestConnectBackendWithRetry_NeverFollowsARedirect checks that a backend answering with a redirect is not followed:
+// the connection fails, and the host it points to never receives a request, so it never sees the gateway's headers.
+func TestConnectBackendWithRetry_NeverFollowsARedirect(t *testing.T) {
+	var reached atomic.Int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer elsewhere.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+"/internal/mcp", http.StatusTemporaryRedirect)
+	}))
+	defer redirecting.Close()
+
+	headerFunc := func(context.Context) map[string]string {
+		return map[string]string{authhttp.InternalSecretHeader: "test-secret"}
+	}
+	if _, err := connectBackendWithRetry(redirecting.URL, headerFunc, 300*time.Millisecond, zerolog.Nop()); err == nil {
+		t.Fatal("connecting to a backend that redirects succeeded, want an error")
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("the redirect's target received %d requests, want none", n)
+	}
+}
+
 // TestSetupHTTP_ConnectsAfterBackendBecomesReady checks that the gateway rides out a backend that is unreachable at
 // first and only becomes ready after the initial attempt — it must succeed on a retry rather than crash-looping.
 func TestSetupHTTP_ConnectsAfterBackendBecomesReady(t *testing.T) {

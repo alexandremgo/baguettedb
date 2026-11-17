@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
+	"github.com/alexandremgo/baguettedb/pkg/common/apptypes"
 	"github.com/alexandremgo/baguettedb/pkg/common/authhttp"
 	"github.com/alexandremgo/baguettedb/pkg/common/authz"
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
@@ -44,6 +45,26 @@ func (a *allowAllBdbsApp) CheckMemberPermission(
 	return true, nil
 }
 
+// CheckDataAPIKeyFormula and ForgetDataAPIKeyFormula do nothing, since these tests run formulas under no key.
+func (a *allowAllBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}
+
+func (a *allowAllBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+func (a *allowAllBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *allowAllBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return nil, nil
+}
+
 func (a *allowAllBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
 	if a.ownerRoles != nil {
 		return uuid.Nil, a.ownerRoles, nil
@@ -64,6 +85,26 @@ func (a *roleAwareBdbsApp) CheckMemberPermission(
 	_ context.Context, _, _ uuid.UUID, perm authz.DatabasePermission,
 ) (bool, error) {
 	return authz.BdbRoleHasDatabasePermission(a.role, perm), nil
+}
+
+// CheckDataAPIKeyFormula and ForgetDataAPIKeyFormula do nothing, since these tests run formulas under no key.
+func (a *roleAwareBdbsApp) CheckDataAPIKeyFormula(_ context.Context, _, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}
+
+func (a *roleAwareBdbsApp) ForgetDataAPIKeyFormula(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+func (a *roleAwareBdbsApp) ListDataAPIKeyFormulaIDs(_ context.Context, _, _ uuid.UUID) ([]string, error) {
+	return nil, nil
+}
+
+// ListFormulaDataAPIKeys answers no key for any formula.
+func (a *roleAwareBdbsApp) ListFormulaDataAPIKeys(
+	_ context.Context, _, _ uuid.UUID,
+) (map[string][]apptypes.DataAPIKey, error) {
+	return nil, nil
 }
 
 func (a *roleAwareBdbsApp) GetBdbOwner(_ context.Context, _ uuid.UUID) (uuid.UUID, []authz.Role, error) {
@@ -369,10 +410,13 @@ func setupStackWithOptions(t *testing.T, opts stackOptions) (chi.Router, *sqlite
 	formulaHandler := dbapi.NewFormulaHandler(formulaSvc, testLogger)
 	exportHandler := dbapi.NewExportHandler(exportSvc, testLogger)
 	internalHandler := dbapi.NewInternalHandler(querySvc, skillSvc, formulaSvc, dbSvc, nil, testLogger)
-	return dbapi.NewRouter(
+	router := dbapi.NewRouter(
 		handler, skillHandler, formulaHandler, exportHandler, internalHandler, nil, tv.RequireToken(), authz.Policy{},
 		sseServer, 1024*1024, testutil.InternalAPISecret,
-	), sqliteClient
+	)
+	docsHandler := dbapi.NewDocsHandler(service.NewDocsService(querySvc), testLogger)
+	dbapi.RegisterDocsRoutes(router, docsHandler, tv.RequireToken())
+	return router, sqliteClient
 }
 
 // userToken builds a JWT with user role for the given user ID.

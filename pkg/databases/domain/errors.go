@@ -111,6 +111,10 @@ var (
 	// the same. Also an ErrAccessDenied.
 	ErrNotMember = fmt.Errorf("%w: you are not a member of this bdb", ErrAccessDenied)
 
+	// ErrFormulaNotOnDataAPIKey indicates a formula a Data API key may not run: not among the key's formulas, or on a
+	// soft-deleted bdb. It is an ErrAccessDenied.
+	ErrFormulaNotOnDataAPIKey = fmt.Errorf("%w: the formula is not on this data API key", ErrAccessDenied)
+
 	// ErrDatabaseReadOnly indicates that a write was attempted against a database currently in read-only mode
 	// (e.g. during a rebalance move). Reads are unaffected; the write is retryable once the move completes. The
 	// message is phrased so it reads as retryable wherever it surfaces verbatim — notably MCP tool-result errors,

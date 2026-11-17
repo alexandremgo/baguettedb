@@ -97,6 +97,22 @@ func (sr *ShardRouter) steerNewBdb(ctx context.Context) (color, ordinal int16, s
 // or it doesn't exist yet) or reverse-proxies it to the owner. A lookup error is logged and the request served
 // locally — degrading to "maybe wrong pod" beats hard-failing every request on a transient Postgres blip.
 func (sr *ShardRouter) Middleware(next http.Handler) http.Handler {
+	return sr.route(next, nil)
+}
+
+// MiddlewareAnswering returns Middleware, except that unforwardable answers a request that can't be forwarded to the
+// pod owning its bdb: the owner can't be reached, its address is malformed, or forwarding would loop.
+//
+// It is for routes whose answers follow a contract of their own, which the router's bare 502 or 500 breaks.
+func (sr *ShardRouter) MiddlewareAnswering(unforwardable http.HandlerFunc) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return sr.route(next, unforwardable)
+	}
+}
+
+// route returns the routing handler; a request that can't be forwarded is answered by unforwardable when it is set,
+// and with forward's own 502 or 500 otherwise.
+func (sr *ShardRouter) route(next http.Handler, unforwardable http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bdbID, err := uuid.Parse(chi.URLParam(r, "bdbID"))
 		if err != nil {
@@ -117,18 +133,27 @@ func (sr *ShardRouter) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		sr.forward(w, r, color, ordinal)
+		sr.forward(w, r, color, ordinal, unforwardable)
 	})
 }
 
 // forward reverse-proxies r to the pod owning shard, streaming the response back. Guards against routing loops:
 // a request that was already forwarded once and still isn't local means metadata and DNS disagree.
-func (sr *ShardRouter) forward(w http.ResponseWriter, r *http.Request, color, shard int16) {
+//
+// A request that can't be forwarded is answered by unforwardable when it is set, and otherwise with a 502 for a loop
+// or an owner that can't be reached, and a 500 for a malformed peer URL.
+func (sr *ShardRouter) forward(
+	w http.ResponseWriter, r *http.Request, color, shard int16, unforwardable http.HandlerFunc,
+) {
 	if from := r.Header.Get(forwardedFromHeader); from != "" {
 		sr.logger.Error().Str("forwarded_from", from).
 			Int16("my_color", sr.color).Int16("my_ordinal", sr.ordinal).
 			Int16("owner_color", color).Int16("owner_shard", shard).
 			Msg("shard routing loop: already-forwarded request still not local")
+		if unforwardable != nil {
+			unforwardable(w, r)
+			return
+		}
 		commonhttputil.RespondJSON(w, http.StatusBadGateway, errorResponse{Error: "shard routing loop"})
 		return
 	}
@@ -137,12 +162,27 @@ func (sr *ShardRouter) forward(w http.ResponseWriter, r *http.Request, color, sh
 	if err != nil {
 		sr.logger.Error().Err(err).Int16("owner_color", color).Int16("owner_shard", shard).
 			Msg("shard routing: bad peer URL")
+		if unforwardable != nil {
+			unforwardable(w, r)
+			return
+		}
 		commonhttputil.RespondJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
 		return
 	}
 
 	r.Header.Set(forwardedFromHeader, strconv.Itoa(int(sr.ordinal)))
-	httputil.NewSingleHostReverseProxy(target).ServeHTTP(w, r)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	if unforwardable != nil {
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			// A canceled request is a caller that went away, not an owner that failed, so it isn't logged.
+			if !errors.Is(r.Context().Err(), context.Canceled) {
+				sr.logger.Warn().Err(err).Int16("owner_color", color).Int16("owner_shard", shard).
+					Msg("shard routing: the owner could not be reached")
+			}
+			unforwardable(w, r)
+		}
+	}
+	proxy.ServeHTTP(w, r)
 }
 
 // MCPProxy wraps an MCP handler so a tool call for a bdb owned by another shard is reverse-proxied to the
@@ -195,7 +235,7 @@ func (sr *ShardRouter) MCPProxy(maxBodyBytes int64, next http.Handler) http.Hand
 			return
 		}
 
-		sr.forward(w, r, color, ordinal)
+		sr.forward(w, r, color, ordinal, nil)
 	})
 }
 
@@ -237,7 +277,7 @@ func (sr *ShardRouter) InternalBodyProxy(maxBodyBytes int64, next http.Handler) 
 			return
 		}
 
-		sr.forward(w, r, color, ordinal)
+		sr.forward(w, r, color, ordinal, nil)
 	})
 }
 

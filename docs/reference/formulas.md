@@ -431,3 +431,13 @@ replace (re-validated against the SQL's result columns and the attached formulas
 are set. To change one part (e.g. reorder `row_actions`), read the current display with `get_formula` and
 resend all of it with that part changed. A formula referenced by a slot of its parent's display resists
 changes that break the slot's shape — clear the slot first.
+
+## Data API keys
+
+A bdb's owner can let an app of theirs run some of its formulas with a **Data API key**. Keys are created, changed
+and revoked in the web app only, where the owner picks the formulas each key may run. To the bdb's owner and editors,
+`get_formula` and `list_formulas` name the keys a formula is on, by ID and name and never the key's
+value (`data_api_keys` in JSON). An app runs a formula as it is when it calls, so changing a formula's SQL or
+parameters changes what the app gets from its next call, and deleting the formula stops the app from running it:
+`update_formula` and `delete_formula` say so when the formula is on keys. Before reshaping or deleting a
+formula an app may depend on, tell the user.
