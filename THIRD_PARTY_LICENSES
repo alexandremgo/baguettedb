@@ -2876,7 +2876,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-@tanstack/query-core 5.107.1
+@tanstack/query-core 5.108.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -2885,7 +2885,7 @@ LICENSE: shared text [11] below.
 
 
 --------------------------------------------------------------------------
-@tanstack/react-query 5.107.1
+@tanstack/react-query 5.108.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -2894,7 +2894,7 @@ LICENSE: shared text [11] below.
 
 
 --------------------------------------------------------------------------
-@ungap/structured-clone 1.3.3
+@ungap/structured-clone 1.4.0
 --------------------------------------------------------------------------
 
 License: ISC
@@ -3037,7 +3037,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-hast-util-to-jsx-runtime 2.3.6
+hast-util-to-jsx-runtime 2.3.7
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3086,7 +3086,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-inline-style-parser 0.2.7
+inline-style-parser 0.2.9
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3123,7 +3123,7 @@ LICENSE: shared text [17] below.
 
 
 --------------------------------------------------------------------------
-lucide-react 1.70.0
+lucide-react 1.74.0
 --------------------------------------------------------------------------
 
 License: ISC AND MIT
@@ -3176,7 +3176,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-markdown-table 3.0.4
+markdown-table 3.1.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3185,7 +3185,7 @@ LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-mdast-util-find-and-replace 3.0.2
+mdast-util-find-and-replace 3.0.4
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3194,7 +3194,7 @@ LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-mdast-util-from-markdown 2.0.3
+mdast-util-from-markdown 2.1.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3212,12 +3212,12 @@ LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-mdast-util-gfm-autolink-literal 2.0.1
+mdast-util-gfm-autolink-literal 2.1.0
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3230,30 +3230,30 @@ LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-mdast-util-gfm-strikethrough 2.0.0
+mdast-util-gfm-strikethrough 2.0.1
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-mdast-util-gfm-table 2.0.0
---------------------------------------------------------------------------
-
-License: MIT
-
-LICENSE: shared text [16] below.
-
-
---------------------------------------------------------------------------
-mdast-util-gfm-task-list-item 2.0.0
+mdast-util-gfm-table 2.0.1
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [16] below.
+LICENSE: shared text [14] below.
+
+
+--------------------------------------------------------------------------
+mdast-util-gfm-task-list-item 2.0.1
+--------------------------------------------------------------------------
+
+License: MIT
+
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3290,16 +3290,16 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-mdast-util-to-hast 13.2.1
+mdast-util-to-hast 13.2.2
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [13] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-mdast-util-to-markdown 2.1.2
+mdast-util-to-markdown 2.2.3
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3317,7 +3317,7 @@ LICENSE: shared text [12] below.
 
 
 --------------------------------------------------------------------------
-micromark 4.0.2
+micromark 4.0.3
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3326,7 +3326,7 @@ LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-micromark-core-commonmark 2.0.3
+micromark-core-commonmark 2.0.4
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3394,7 +3394,7 @@ LICENSE: shared text [16] below.
 
 
 --------------------------------------------------------------------------
-micromark-extension-gfm-table 2.1.1
+micromark-extension-gfm-table 2.1.2
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3430,7 +3430,7 @@ LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-micromark-factory-space 2.0.1
+micromark-factory-space 2.1.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3503,6 +3503,15 @@ LICENSE: shared text [14] below.
 
 --------------------------------------------------------------------------
 micromark-util-decode-string 2.0.1
+--------------------------------------------------------------------------
+
+License: MIT
+
+LICENSE: shared text [14] below.
+
+
+--------------------------------------------------------------------------
+micromark-util-edit-map 1.0.0
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3737,39 +3746,7 @@ LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
-style-to-js 1.1.21
---------------------------------------------------------------------------
-
-License: MIT
-
-LICENSE:
-
-    The MIT License (MIT)
-
-    Copyright (c) 2020 Menglin "Mark" Xu <mark@remarkablemark.org>
-
-    Permission is hereby granted, free of charge, to any person obtaining
-    a copy of this software and associated documentation files (the
-    "Software"), to deal in the Software without restriction, including
-    without limitation the rights to use, copy, modify, merge, publish,
-    distribute, sublicense, and/or sell copies of the Software, and to
-    permit persons to whom the Software is furnished to do so, subject to
-    the following conditions:
-
-    The above copyright notice and this permission notice shall be
-    included in all copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-    LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-    WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
---------------------------------------------------------------------------
-style-to-object 1.0.14
+style-to-object 2.0.2
 --------------------------------------------------------------------------
 
 License: MIT
@@ -3900,21 +3877,21 @@ LICENSE: shared text [13] below.
 
 
 --------------------------------------------------------------------------
-unist-util-visit 5.1.0
+unist-util-visit 5.2.0
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [12] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
-unist-util-visit-parents 6.0.2
+unist-util-visit-parents 6.1.0
 --------------------------------------------------------------------------
 
 License: MIT
 
-LICENSE: shared text [13] below.
+LICENSE: shared text [14] below.
 
 
 --------------------------------------------------------------------------
@@ -3927,7 +3904,7 @@ LICENSE: shared text [19] below.
 
 
 --------------------------------------------------------------------------
-vfile-message 4.0.3
+vfile-message 4.0.4
 --------------------------------------------------------------------------
 
 License: MIT
@@ -5061,8 +5038,7 @@ Used by: @tanstack/query-core, @tanstack/react-query.
 [12] MIT
 --------------------------------------------------------------------------
 
-Used by: bail, ccount, mdast-util-to-string, unist-util-position,
-unist-util-visit.
+Used by: bail, ccount, mdast-util-to-string, unist-util-position.
 
     (The MIT License)
 
@@ -5092,9 +5068,8 @@ unist-util-visit.
 [13] MIT
 --------------------------------------------------------------------------
 
-Used by: comma-separated-tokens, hast-util-whitespace, mdast-util-to-hast,
-space-separated-tokens, unist-util-stringify-position,
-unist-util-visit-parents.
+Used by: comma-separated-tokens, hast-util-whitespace,
+space-separated-tokens, unist-util-stringify-position.
 
     (The MIT License)
 
@@ -5126,7 +5101,9 @@ unist-util-visit-parents.
 
 Used by: decode-named-character-reference, hast-util-to-jsx-runtime,
 markdown-table, mdast-util-find-and-replace, mdast-util-from-markdown,
-mdast-util-gfm, mdast-util-gfm-footnote, mdast-util-to-markdown,
+mdast-util-gfm, mdast-util-gfm-autolink-literal, mdast-util-gfm-footnote,
+mdast-util-gfm-strikethrough, mdast-util-gfm-table,
+mdast-util-gfm-task-list-item, mdast-util-to-hast, mdast-util-to-markdown,
 micromark, micromark-core-commonmark, micromark-extension-gfm-table,
 micromark-factory-destination, micromark-factory-label,
 micromark-factory-space, micromark-factory-title,
@@ -5134,10 +5111,11 @@ micromark-factory-whitespace, micromark-util-character,
 micromark-util-chunked, micromark-util-classify-character,
 micromark-util-combine-extensions,
 micromark-util-decode-numeric-character-reference,
-micromark-util-decode-string, micromark-util-html-tag-name,
-micromark-util-normalize-identifier, micromark-util-resolve-all,
-micromark-util-sanitize-uri, micromark-util-subtokenize, remark-gfm,
-remark-rehype, vfile-message.
+micromark-util-decode-string, micromark-util-edit-map,
+micromark-util-html-tag-name, micromark-util-normalize-identifier,
+micromark-util-resolve-all, micromark-util-sanitize-uri,
+micromark-util-subtokenize, remark-gfm, remark-rehype, unist-util-visit,
+unist-util-visit-parents, vfile-message.
 
     (The MIT License)
 
@@ -5184,9 +5162,7 @@ Used by: escape-string-regexp, is-plain-obj.
 [16] MIT
 --------------------------------------------------------------------------
 
-Used by: estree-util-is-identifier-name, mdast-util-gfm-autolink-literal,
-mdast-util-gfm-strikethrough, mdast-util-gfm-table,
-mdast-util-gfm-task-list-item, micromark-extension-gfm,
+Used by: estree-util-is-identifier-name, micromark-extension-gfm,
 micromark-extension-gfm-autolink-literal,
 micromark-extension-gfm-strikethrough,
 micromark-extension-gfm-task-list-item.
