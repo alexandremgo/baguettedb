@@ -1,0 +1,9 @@
+# Advisories the Vulnerability Scan (scripts/govulncheck.sh) does not fail on: each one reachable from the shipping
+# binaries, with no release that fixes it yet, and mitigated here meanwhile. One advisory ID per line, below the
+# comment saying why it is skipped and what mitigates it. The scan fails once a listed advisory no longer turns up,
+# so its line goes when the fix lands.
+
+# mcp-go's HTTP client follows redirects to any host, carrying its headers along; mcp-go fixed it on its main branch
+# but has not released it. The gateway's backend client refuses every redirect (newBackendHTTPClient in
+# pkg/mcpgateway/setup.go), so the internal secret and the caller's token never reach another host.
+GO-2026-6911
