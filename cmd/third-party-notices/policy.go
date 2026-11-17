@@ -66,7 +66,7 @@ var overrides = map[string]override{
 		reason: "Only the source of the repository's logo image, which the binaries do not contain.",
 	},
 	"modernc.org/sqlite/LICENSE-3RD-PARTY.md": {
-		sha256: "d782121ab8bc21a30d401f333c3d769394651cd0d162f00a70b1655858378506",
+		sha256: "b72c0d9bdf260373108b700c37b22ad84098560807625e8172a43394ad6bc6a7",
 		reason: "An index of the licenses across modernc.org/sqlite's module graph. Every component it lists as " +
 			"linked brings its own license file into the notices, and the MPL-2.0 text it reproduces is for a module " +
 			"bdb does not link.",
