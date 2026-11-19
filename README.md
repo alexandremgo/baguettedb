@@ -28,7 +28,9 @@ guardrails: each bdb's schema and rules are described to them, and every change 
 - **Your data on your machine**: with `bdb`, every bdb is a file in one folder you own (`~/.baguettedb`).
 - **Encrypted at rest**: each bdb has a key of its own (SQLCipher), wrapped by one key that stays with you.
 - **Sharing by invitation**, with owner, editor and viewer roles per bdb.
-- **A web app**, served by the same binary as the MCP server. A public REST API is planned.
+- **A web app**, served by the same binary as the MCP server.
+- **A Data API for your own apps**: a web page, a script or a mobile app uses a bdb as its database, with a key that
+  runs only the formulas you pick for it. The manual: `bdb docs data-api`.
 
 ## Run it on your machine
 
@@ -104,7 +106,8 @@ bdb --help
 `bdb serve` serves the web app and the MCP endpoint on `http://127.0.0.1:3035`. People sign in to the web app with
 their email and password. MCP clients and scripts send a personal access token instead: create one in the web app's
 Settings or with `bdb tokens create <token-name>`, and `bdb mcp config --client claude --http` prints the client's setup
-with it. `--listen 0.0.0.0:3035` makes the server reachable from other machines.
+with it. Your own apps call the Data API on the same address, under `/api/data/v1/`, with a Data API key created in the
+bdb's Access tab of the web app. `--listen 0.0.0.0:3035` makes the server reachable from other machines.
 
 > [!WARNING]
 > `bdb serve` speaks plain HTTP: passwords, session cookies and tokens cross the network unencrypted. Before reaching
@@ -142,7 +145,7 @@ account `--as` names, over stdio; the account its token belongs to over HTTP.
 | History | `list_changes`, `undo_last_change`, `redo_last_change`, `revert_change` (one change or a whole batch); owners also get `undo_last_change_anyone` and `redo_last_change_anyone` |
 | Formulas | `list_formulas`, `get_formula`, `create_formula`, `update_formula`, `delete_formula`, `run_formula` |
 | Skills | `get_skill`, `create_skill`, `update_skill` |
-| Reference | `get_docs`, the built-in manuals on two topics: `sql` (the engine's rules, the change log included) and `formulas` |
+| Reference | `get_docs`, the built-in manuals on three topics: `sql` (the engine's rules, the change log included), `formulas`, and `data-api` (how an app calls the Data API) |
 
 Each tool has a `bdb` command that does the same, so an agent can work through either: `describe_bdb` is
 `bdb bdbs describe`, `execute_data` is `bdb sql data`, `create_formula` is `bdb formulas create`, `get_docs` is
