@@ -50,6 +50,65 @@ FTS5 is compiled in: `CREATE VIRTUAL TABLE docs_fts USING fts5(title, body)` wor
 ranking. Caveat: virtual tables are captured only at the DDL level in the change log — direct row
 writes into them bypass it, and undoing a DROP restores an empty vtable to be rebuilt from its source.
 
+## Editing long text
+
+Edit a long TEXT value (a note, a description, a markdown document) in place: send the part that changes, not the
+whole value read and written back.
+
+- `text_patch(text, old, new)` returns `text` with its single occurrence of `old` replaced by `new`. An empty `new`
+  deletes the match.
+
+```sql
+UPDATE notes SET body = text_patch(body, 'Ship it.', 'Ship it on Friday.') WHERE id = 3
+```
+
+- `text_replace_between(text, start, end, new)` replaces one block without sending it, naming it by how it begins
+  and how it ends: everything from the first character of `start` to the last character of `end` becomes `new`.
+  The anchors are part of the block — repeat one in `new` to keep it.
+
+```sql
+UPDATE notes
+SET body = text_replace_between(body, '## Risks', 'before launch.', '## Risks
+None.')
+WHERE id = 3
+```
+
+Both fail rather than guess, and the failure rolls the whole request back:
+
+- `old` and `start` must occur exactly once in the text, and `end` exactly once after `start`. A message such as
+  `text_patch: old found 3 times` means the match string is too short: quote more of the surrounding text until it
+  is unique. Overlapping occurrences count (`aa` is found twice in `aaa`).
+- Matching is exact, byte for byte: letter case, spaces and line breaks included.
+- A NULL argument or an empty match string is an error.
+
+Writing the passage and its replacement in SQL:
+
+- A line break or a tab goes inside the quotes as it is, as in the example above, or as `char(10)` / `char(9)`
+  joined with `||`. SQL has no backslash escapes: `'a\nb'` stores a backslash and an `n`, not a line break, and `\\`
+  stores two backslashes — write a backslash once.
+- An apostrophe is doubled (`'it''s'`), never backslashed.
+- Update one row at a time (`WHERE id = 3`): the function runs on every row the statement updates.
+- `old not found` on a passage that looks right usually means characters that look alike but differ: a typographic
+  apostrophe or quote (`’`, `“`), a long dash, a non-breaking space, a trailing space, a Windows line ending
+  (`char(13, 10)`) or an accent stored as two characters. Match a shorter passage of plain words, or put plain-word
+  anchors around the passage with `text_replace_between`.
+
+A formula removes the quoting altogether: its parameters carry the passage and the replacement exactly as given.
+Save the edit once for a column edited often, then run it with `{{.ToolRunFormula}}`, passing `id`, `old` and `new`:
+
+```sql
+UPDATE notes SET body = text_patch(body, :old, :new) WHERE id = :id
+```
+
+Other edits and partial reads need no function: append with `body || char(10) || 'one more line'`, read a slice
+with `substr(body, start, length)`, and locate a passage with `instr(body, 'needle')` rather than selecting a long
+value whole.
+
+Both functions run in `{{.ToolExecuteQuery}}`, `{{.ToolExecuteData}}` and formulas. Nothing stored in
+the schema can call them: a CHECK constraint, an index or a generated column doing so is refused when created, and a
+view, a trigger or a column DEFAULT doing so is accepted but fails with `unsafe use of text_patch()` each time it
+is used — such a trigger blocks every write that fires it until it is dropped.
+
 ## Change log semantics
 
 Every write — `{{.ToolExecuteData}}`, `{{.ToolExecuteSchema}}`, and formula actions — is captured in `_change_log`,

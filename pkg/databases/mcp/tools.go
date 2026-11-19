@@ -69,7 +69,9 @@ func registerTools(
 					"rolled back. All statements share one batch_id and produce a single undo entry. The statement "+
 					"and affected-row caps are listed in "+mcputil.ToolGetDocs+"(topic: 'sql') and named in a "+
 					"refusal. For schema changes use "+
-					mcputil.ToolExecuteSchema+"; for read-only queries use "+mcputil.ToolExecuteQuery+". JSON "+
+					mcputil.ToolExecuteSchema+"; for read-only queries use "+mcputil.ToolExecuteQuery+". Edit a "+
+					"long text value in place with text_patch(text, old, new) or text_replace_between(text, start, "+
+					"end, new) instead of rewriting it whole. JSON "+
 					"values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be "+
 					"stored (keep binary as base64 or hex text) — engine capabilities and rules in "+
 					mcputil.ToolGetDocs+"(topic: 'sql')."),

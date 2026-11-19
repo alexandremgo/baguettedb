@@ -68,7 +68,7 @@ Executes a single read-only SELECT statement. Multi-statement input is not suppo
 
 ### execute_data
 
-Writes data: executes one or more DML statements (INSERT, UPDATE, DELETE) atomically. Multiple statements separated by ';' run in a single transaction; if any fails the whole request is rolled back. All statements share one batch_id and produce a single undo entry. The statement and affected-row caps are listed in get_docs(topic: 'sql') and named in a refusal. For schema changes use execute_schema; for read-only queries use execute_query. JSON values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be stored (keep binary as base64 or hex text) — engine capabilities and rules in get_docs(topic: 'sql').
+Writes data: executes one or more DML statements (INSERT, UPDATE, DELETE) atomically. Multiple statements separated by ';' run in a single transaction; if any fails the whole request is rolled back. All statements share one batch_id and produce a single undo entry. The statement and affected-row caps are listed in get_docs(topic: 'sql') and named in a refusal. For schema changes use execute_schema; for read-only queries use execute_query. Edit a long text value in place with text_patch(text, old, new) or text_replace_between(text, start, end, new) instead of rewriting it whole. JSON values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be stored (keep binary as base64 or hex text) — engine capabilities and rules in get_docs(topic: 'sql').
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

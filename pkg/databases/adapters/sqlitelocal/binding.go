@@ -306,6 +306,13 @@ func openWithKeyMaterial(path string, keyMaterial []byte, busyTimeout time.Durat
 		return nil, err
 	}
 
+	if err := c.registerTextFunctions(); err != nil {
+		if cerr := c.Close(); cerr != nil {
+			return nil, errors.Join(err, cerr)
+		}
+		return nil, err
+	}
+
 	// Installs the reserved-prefix authorizer AFTER init prepares so the
 	// probe above isn't subject to deny rules. Subsequent SQL on this Conn
 	// fires the hook; platform code wraps with WithInternal.
