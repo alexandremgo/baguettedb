@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -27,6 +26,7 @@ func registerTools(
 	skillSvc *service.SkillService,
 	formulaSvc *service.FormulaService,
 	docsSvc *service.DocsService,
+	opts Options,
 	logger zerolog.Logger,
 ) {
 	s.AddTool(
@@ -45,7 +45,7 @@ func registerTools(
 	)
 
 	registerSkillTools(s, skillSvc, logger)
-	registerFormulaTools(s, formulaSvc, logger)
+	registerFormulaTools(s, formulaSvc, opts, logger)
 
 	s.AddTool(
 		mcplib.NewTool(mcputil.ToolExecuteQuery,
@@ -58,7 +58,7 @@ func registerTools(
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 			mcplib.WithString("sql", mcplib.Required(), mcplib.Description("Single SELECT statement to execute")),
 		),
-		executeQueryHandler(querySvc, logger),
+		executeQueryHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -66,10 +66,16 @@ func registerTools(
 			mcplib.WithDescription(
 				"Writes data: executes one or more DML statements (INSERT, UPDATE, DELETE) atomically. Multiple "+
 					"statements separated by ';' run in a single transaction; if any fails the whole request is "+
-					"rolled back. All statements share one batch_id and produce a single undo entry. The statement "+
+					"rolled back. All statements share one batch_id and produce a single undo entry. The answer's "+
+					"affected_rows give each changed row's old and new values: for an update, of the columns that "+
+					"changed only; and a text value over "+strconv.Itoa(opts.AffectedValueMaxChars)+" characters "+
+					"as an object {truncated, length, excerpt, excerpt_start} (the excerpt sits at the change; "+
+					mcputil.ToolListChanges+" returns the whole value). The statement "+
 					"and affected-row caps are listed in "+mcputil.ToolGetDocs+"(topic: 'sql') and named in a "+
 					"refusal. For schema changes use "+
-					mcputil.ToolExecuteSchema+"; for read-only queries use "+mcputil.ToolExecuteQuery+". JSON "+
+					mcputil.ToolExecuteSchema+"; for read-only queries use "+mcputil.ToolExecuteQuery+". Edit a "+
+					"long text value in place with text_patch(text, old, new) or text_replace_between(text, start, "+
+					"end, new) instead of rewriting it whole. JSON "+
 					"values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be "+
 					"stored (keep binary as base64 or hex text) — engine capabilities and rules in "+
 					mcputil.ToolGetDocs+"(topic: 'sql')."),
@@ -77,7 +83,7 @@ func registerTools(
 			mcplib.WithString("sql", mcplib.Required(),
 				mcplib.Description("DML statement(s) to execute; multiple separated by ';'")),
 		),
-		executeDataHandler(querySvc, logger),
+		executeDataHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -113,7 +119,7 @@ func registerTools(
 					mcputil.ToolRevertChange+"."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 		),
-		undoLastChangeHandler(querySvc, logger),
+		undoLastChangeHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -123,7 +129,7 @@ func registerTools(
 					"you make clears your redo stack; other members' activity does not."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 		),
-		redoLastChangeHandler(querySvc, logger),
+		redoLastChangeHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -141,7 +147,7 @@ func registerTools(
 				mcplib.Description("Batch ID to revert all entries from a single change (provide this OR "+
 					"change_log_id)")),
 		),
-		revertChangeHandler(querySvc, logger),
+		revertChangeHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -153,7 +159,7 @@ func registerTools(
 					"the timeline with "+mcputil.ToolListChanges+" first."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 		),
-		undoLastChangeAnyoneHandler(querySvc, logger),
+		undoLastChangeAnyoneHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -163,7 +169,7 @@ func registerTools(
 					"it. The re-applied batch lands on YOUR undo stack."),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 		),
-		redoLastChangeAnyoneHandler(querySvc, logger),
+		redoLastChangeAnyoneHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	s.AddTool(
@@ -188,7 +194,7 @@ func registerTools(
 			mcplib.WithString("sql", mcplib.Required(),
 				mcplib.Description("DDL statement(s) to execute; multiple separated by ';'")),
 		),
-		executeSchemaHandler(querySvc, logger),
+		executeSchemaHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
 
 	registerDocsTool(s, docsSvc)
@@ -240,7 +246,9 @@ func describeTableHandler(
 	}
 }
 
-func executeQueryHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func executeQueryHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.execute_query")
 		defer span.End()
@@ -269,11 +277,13 @@ func executeQueryHandler(querySvc *service.QueryService, logger zerolog.Logger) 
 			return executeErrorResult("query execution failed", err), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
-func executeDataHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func executeDataHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.execute_data")
 		defer span.End()
@@ -302,11 +312,13 @@ func executeDataHandler(querySvc *service.QueryService, logger zerolog.Logger) m
 			return executeErrorResult("mutation execution failed", err), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
-func executeSchemaHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func executeSchemaHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.execute_schema")
 		defer span.End()
@@ -335,7 +347,7 @@ func executeSchemaHandler(querySvc *service.QueryService, logger zerolog.Logger)
 			return executeErrorResult("schema execution failed", err), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
@@ -393,7 +405,9 @@ func listChangesHandler(querySvc *service.QueryService, logger zerolog.Logger) m
 	}
 }
 
-func undoLastChangeHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func undoLastChangeHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.undo_last_change")
 		defer span.End()
@@ -419,11 +433,13 @@ func undoLastChangeHandler(querySvc *service.QueryService, logger zerolog.Logger
 			return mcplib.NewToolResultError(fmt.Sprintf("undo failed: %v", err)), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
-func redoLastChangeHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func redoLastChangeHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.redo_last_change")
 		defer span.End()
@@ -449,11 +465,13 @@ func redoLastChangeHandler(querySvc *service.QueryService, logger zerolog.Logger
 			return mcplib.NewToolResultError(fmt.Sprintf("redo failed: %v", err)), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
-func undoLastChangeAnyoneHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func undoLastChangeAnyoneHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.undo_last_change_anyone")
 		defer span.End()
@@ -479,11 +497,13 @@ func undoLastChangeAnyoneHandler(querySvc *service.QueryService, logger zerolog.
 			return mcplib.NewToolResultError(fmt.Sprintf("undo-anyone failed: %v", err)), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
-func redoLastChangeAnyoneHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func redoLastChangeAnyoneHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.redo_last_change_anyone")
 		defer span.End()
@@ -509,11 +529,13 @@ func redoLastChangeAnyoneHandler(querySvc *service.QueryService, logger zerolog.
 			return mcplib.NewToolResultError(fmt.Sprintf("redo-anyone failed: %v", err)), nil
 		}
 
-		return marshalToJSON(toQueryResult(result))
+		return marshalToJSON(toQueryResult(result, maxValueChars))
 	}
 }
 
-func revertChangeHandler(querySvc *service.QueryService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func revertChangeHandler(
+	querySvc *service.QueryService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.revert_change")
 		defer span.End()
@@ -552,7 +574,7 @@ func revertChangeHandler(querySvc *service.QueryService, logger zerolog.Logger) 
 					Int64("change_log_id", changeLogID).Msg("MCP revert_change failed")
 				return mcplib.NewToolResultError(fmt.Sprintf("revert failed: %v", revertErr)), nil
 			}
-			return marshalToJSON(toQueryResult(result))
+			return marshalToJSON(toQueryResult(result, maxValueChars))
 
 		case batchID != "":
 			result, revertErr := querySvc.RevertChangeBatch(ctx, userID, bdbID, batchID)
@@ -565,7 +587,7 @@ func revertChangeHandler(querySvc *service.QueryService, logger zerolog.Logger) 
 					Str("batch_id", batchID).Msg("MCP revert_change (batch) failed")
 				return mcplib.NewToolResultError(fmt.Sprintf("revert failed: %v", revertErr)), nil
 			}
-			return marshalToJSON(toQueryResult(result))
+			return marshalToJSON(toQueryResult(result, maxValueChars))
 
 		default:
 			return mcplib.NewToolResultError("change_log_id or batch_id is required"), nil
@@ -635,7 +657,7 @@ func parseBdbID(request mcplib.CallToolRequest) (uuid.UUID, error) {
 // so an agent reads the reason, the blockers, and the resolution hints.
 // A conflict is a normal outcome of the contract, not a failure of the tool, so it is not logged as an error.
 func conflictToolResult(c *domain.ChangeConflict) *mcplib.CallToolResult {
-	body, err := json.Marshal(toChangeConflictResult(c))
+	body, err := mcputil.MarshalToolResult(toChangeConflictResult(c))
 	if err != nil {
 		return mcplib.NewToolResultError(domain.ErrChangeConflict.Error())
 	}
@@ -644,7 +666,7 @@ func conflictToolResult(c *domain.ChangeConflict) *mcplib.CallToolResult {
 
 // marshalToJSON returns result as a JSON text tool result, or an error tool result when it cannot be marshaled.
 func marshalToJSON(result any) (*mcplib.CallToolResult, error) {
-	data, err := json.Marshal(result)
+	data, err := mcputil.MarshalToolResult(result)
 	if err != nil {
 		return mcplib.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
 	}

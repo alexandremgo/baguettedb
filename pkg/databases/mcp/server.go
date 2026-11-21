@@ -10,17 +10,29 @@ import (
 	"github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
 
+// Options tunes how the tools shape their answers.
+type Options struct {
+	// AffectedValueMaxChars is the longest text value, in characters, a write tool's affected_rows carry whole: a
+	// longer one is answered as its length and an excerpt, and stays whole in the change log. Zero or negative
+	// selects the default (500).
+	AffectedValueMaxChars int
+}
+
 // NewServer creates an MCP server with all database query tools registered.
 func NewServer(
 	querySvc *service.QueryService, skillSvc *service.SkillService,
-	formulaSvc *service.FormulaService, docsSvc *service.DocsService, logger zerolog.Logger,
+	formulaSvc *service.FormulaService, docsSvc *service.DocsService, opts Options, logger zerolog.Logger,
 ) *mcpserver.MCPServer {
+	if opts.AffectedValueMaxChars <= 0 {
+		opts.AffectedValueMaxChars = defaultAffectedValueMaxChars
+	}
+
 	s := mcpserver.NewMCPServer(
 		"baguettedb-databases",
 		"1.0.0",
 	)
 
-	registerTools(s, querySvc, skillSvc, formulaSvc, docsSvc, logger)
+	registerTools(s, querySvc, skillSvc, formulaSvc, docsSvc, opts, logger)
 
 	return s
 }

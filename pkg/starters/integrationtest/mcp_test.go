@@ -151,6 +151,27 @@ func TestMCP_ListStarters_ReturnsCatalog(t *testing.T) {
 // TestMCP_ListStarters_VisibleFormulasOnly checks that a catalog entry lists the formulas a member will see in
 // the app — name and label both, so the entries join against what the seeded bdb reports — leaving out the
 // actions attached to a view and the assistant-only ones.
+// TestMCP_ListStarters_KeepsHTMLCharacters checks that list_starters answers with <, > and & as a starter's name and
+// description hold them, not as unicode escape sequences.
+func TestMCP_ListStarters_KeepsHTMLCharacters(t *testing.T) {
+	manifest := tasksManifest()
+	manifest.Name, manifest.Description = "Tasks & chores", "Things to do > things done, <soon> & later"
+	c, _ := setupStartersMCPClient(t, uuid.NewString(), []string{"user"}, 100,
+		&testSource{manifests: []domain.StarterManifest{manifest}})
+
+	result := callStarterTool(t, c, "list_starters", nil)
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	text := toolText(t, result)
+	// A backslash followed by "u00" starts the escape sequence encoding/json writes for these characters by default.
+	if !strings.Contains(text, manifest.Name) || !strings.Contains(text, manifest.Description) ||
+		strings.Contains(text, string(rune(92))+"u00") {
+		t.Errorf("list_starters result = %s, want it to carry %q and %q as they are", text, manifest.Name,
+			manifest.Description)
+	}
+}
+
 func TestMCP_ListStarters_VisibleFormulasOnly(t *testing.T) {
 	// A second visible view, deliberately without a label, so the name fallback is exercised: Label is optional
 	// in a manifest, and an unlabelled formula must still reach the catalog under a name.
