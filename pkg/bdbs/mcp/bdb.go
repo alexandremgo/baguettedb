@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -258,7 +257,7 @@ func listBdbsHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, logger 
 				"confirm the name. The \"+ New Bdb\" gallery in the BaguetteDB web app is the alternative."), nil
 		}
 
-		data, err := json.Marshal(summaries)
+		data, err := mcputil.MarshalToolResult(summaries)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
 		}
@@ -412,7 +411,7 @@ func describeBdbHandler(bdbSvc *service.BdbService, dbRef *DatabasesAppRef, form
 			PurgeAt:     matched.PurgeAt(),
 		}
 
-		data, err := json.Marshal(overview)
+		data, err := mcputil.MarshalToolResult(overview)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
 		}

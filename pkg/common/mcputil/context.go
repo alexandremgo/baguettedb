@@ -1,7 +1,7 @@
 // Package mcputil holds the MCP helpers the apps share: the context funcs carrying the caller's identity into a tool
 // handler's context, from the authenticated request or a forwarded JWT; the tool names every registration and tool
-// description refers to; and BdbIDFromToolCallBody, which reads the bdb a tool call targets from its raw body before
-// any MCP server parses it.
+// description refers to; BdbIDFromToolCallBody, which reads the bdb a tool call targets from its raw body before
+// any MCP server parses it; and MarshalToolResult, which encodes the JSON a tool answers with.
 package mcputil
 
 import (

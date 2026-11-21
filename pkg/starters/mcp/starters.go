@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,7 +34,7 @@ func listStartersHandler(starterSvc *service.StarterService, logger zerolog.Logg
 			entries[i] = toStarterEntry(m)
 		}
 
-		data, err := json.Marshal(entries)
+		data, err := mcputil.MarshalToolResult(entries)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
 		}
@@ -79,7 +78,7 @@ func createBdbHandler(starterSvc *service.StarterService, logger zerolog.Logger)
 				fmt.Sprintf("the bdb was created but could not be read back: %v", err)), nil
 		}
 
-		data, err := json.Marshal(createdBdb{
+		data, err := mcputil.MarshalToolResult(createdBdb{
 			ID:          created.ID.String(),
 			Name:        created.Name,
 			Description: created.Description,

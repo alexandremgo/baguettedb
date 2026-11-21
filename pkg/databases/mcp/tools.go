@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -637,7 +636,7 @@ func parseBdbID(request mcplib.CallToolRequest) (uuid.UUID, error) {
 // so an agent reads the reason, the blockers, and the resolution hints.
 // A conflict is a normal outcome of the contract, not a failure of the tool, so it is not logged as an error.
 func conflictToolResult(c *domain.ChangeConflict) *mcplib.CallToolResult {
-	body, err := json.Marshal(toChangeConflictResult(c))
+	body, err := mcputil.MarshalToolResult(toChangeConflictResult(c))
 	if err != nil {
 		return mcplib.NewToolResultError(domain.ErrChangeConflict.Error())
 	}
@@ -646,7 +645,7 @@ func conflictToolResult(c *domain.ChangeConflict) *mcplib.CallToolResult {
 
 // marshalToJSON returns result as a JSON text tool result, or an error tool result when it cannot be marshaled.
 func marshalToJSON(result any) (*mcplib.CallToolResult, error) {
-	data, err := json.Marshal(result)
+	data, err := mcputil.MarshalToolResult(result)
 	if err != nil {
 		return mcplib.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
 	}

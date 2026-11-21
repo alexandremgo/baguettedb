@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -83,7 +82,7 @@ func updateBdbHandler(bdbSvc *service.BdbService, logger zerolog.Logger) mcpserv
 			return updateBdbError(ctx, err, userID, bdbID, logger), nil
 		}
 
-		data, err := json.Marshal(updatedBdb{
+		data, err := mcputil.MarshalToolResult(updatedBdb{
 			ID:          bdb.ID.String(),
 			Name:        bdb.Name,
 			Description: bdb.Description,
