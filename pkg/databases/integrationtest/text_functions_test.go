@@ -228,13 +228,13 @@ func TestREST_TextFunctions_Data(t *testing.T) {
 	router := setupRouter(t)
 	userID, bdbID := uuid.New().String(), uuid.New().String()
 	token := userToken(t, userID)
-	for endpoint, sql := range map[string]string{
-		"schema": notesSchema,
-		"data":   "INSERT INTO notes (id, body) VALUES (1, 'one two three')",
+	for _, setup := range []struct{ endpoint, sql string }{
+		{"schema", notesSchema},
+		{"data", "INSERT INTO notes (id, body) VALUES (1, 'one two three')"},
 	} {
-		if status, resp := testutil.DoRequest(t, router, http.MethodPost, dbPath(bdbID, endpoint), token,
-			map[string]string{"sql": sql}); status != http.StatusOK {
-			t.Fatalf("POST /%s = %d %v", endpoint, status, resp)
+		if status, resp := testutil.DoRequest(t, router, http.MethodPost, dbPath(bdbID, setup.endpoint), token,
+			map[string]string{"sql": setup.sql}); status != http.StatusOK {
+			t.Fatalf("POST /%s = %d %v", setup.endpoint, status, resp)
 		}
 	}
 
