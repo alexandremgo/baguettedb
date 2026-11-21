@@ -385,7 +385,8 @@ func setupStackWithOptions(t *testing.T, opts stackOptions) (chi.Router, *sqlite
 	}
 	t.Cleanup(tv.Close)
 
-	mcpSrv := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, service.NewDocsService(querySvc), testLogger)
+	mcpSrv := dbmcp.NewServer(querySvc, skillSvc, formulaSvc, service.NewDocsService(querySvc), dbmcp.Options{},
+		testLogger)
 	sseServer := mcpserver.NewSSEServer(mcpSrv,
 		mcpserver.WithStaticBasePath("/mcp"),
 		mcpserver.WithSSEContextFunc(mcputil.SSEContextFunc),

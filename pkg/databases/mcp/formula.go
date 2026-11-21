@@ -26,7 +26,9 @@ import (
 // hints only. The full authoring semantics are served on demand by get_docs, and validation is strict
 // server-side, so a rejected call self-corrects cheaply; keeping the manual out of the always-injected
 // tool definitions is what pays for that tradeoff.
-func registerFormulaTools(s *mcpserver.MCPServer, formulaSvc *service.FormulaService, logger zerolog.Logger) {
+func registerFormulaTools(
+	s *mcpserver.MCPServer, formulaSvc *service.FormulaService, opts Options, logger zerolog.Logger,
+) {
 	s.AddTool(
 		mcplib.NewTool(mcputil.ToolCreateFormula,
 			mcplib.WithDescription("Creates a formula: a named, parameterized SQL artifact members run from the "+
@@ -150,7 +152,7 @@ func registerFormulaTools(s *mcpserver.MCPServer, formulaSvc *service.FormulaSer
 				mcplib.Description("Parameter values keyed by name (e.g. {\"status\": \"open\", "+
 					"\"rowids\": [3, 7]}). Omit a parameter to leave a pagination control at its default.")),
 		),
-		runFormulaHandler(formulaSvc, logger),
+		runFormulaHandler(formulaSvc, opts.AffectedValueMaxChars, logger),
 	)
 }
 
@@ -605,7 +607,9 @@ func keyNames(keys []formulaDataAPIKey) string {
 	return strings.Join(names, ", ")
 }
 
-func runFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Logger) mcpserver.ToolHandlerFunc {
+func runFormulaHandler(
+	formulaSvc *service.FormulaService, maxValueChars int, logger zerolog.Logger,
+) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		ctx, span := tracer.Start(ctx, "mcp.run_formula")
 		defer span.End()
@@ -632,7 +636,7 @@ func runFormulaHandler(formulaSvc *service.FormulaService, logger zerolog.Logger
 				Str("ref", ref).Msg("MCP run_formula failed")
 			return mcplib.NewToolResultError(fmt.Sprintf("failed to run formula: %v", err)), nil
 		}
-		return marshalToJSON(toFormulaRunResult(result))
+		return marshalToJSON(toFormulaRunResult(result, maxValueChars))
 	}
 }
 

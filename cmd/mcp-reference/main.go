@@ -65,7 +65,7 @@ func collectTools() []mcplib.Tool {
 	logger := zerolog.Nop()
 	bdbsServer := bdbsmcp.NewServer(nil, nil, nil, bdbsmcp.Options{}, logger)
 	startersmcp.RegisterTools(bdbsServer, nil, logger)
-	databasesServer := databasesmcp.NewServer(nil, nil, nil, nil, logger)
+	databasesServer := databasesmcp.NewServer(nil, nil, nil, nil, databasesmcp.Options{}, logger)
 
 	var tools []mcplib.Tool
 	for _, listed := range bdbsServer.ListTools() {

@@ -184,7 +184,9 @@ func sqlTypeToString(t domain.SQLType) string {
 	}
 }
 
-func toQueryResult(qr *domain.QueryResult) queryResult {
+// toQueryResult converts a query or write outcome to its MCP DTO. The affected rows are trimmed as trimAffectedValues
+// describes, cutting text values longer than maxValueChars characters.
+func toQueryResult(qr *domain.QueryResult, maxValueChars int) queryResult {
 	columns := make([]column, len(qr.Columns))
 	for i, c := range qr.Columns {
 		columns[i] = column{Name: c.Name, DeclaredType: c.DeclaredType}
@@ -201,12 +203,13 @@ func toQueryResult(qr *domain.QueryResult) queryResult {
 
 	var affected []affectedRow
 	for _, r := range qr.AffectedRows {
+		oldValues, newValues := trimAffectedValues(r.Operation, r.OldValues, r.NewValues, maxValueChars)
 		affected = append(affected, affectedRow{
 			TableName: r.TableName,
 			RowID:     r.RowID,
 			Operation: r.Operation,
-			OldValues: r.OldValues,
-			NewValues: r.NewValues,
+			OldValues: oldValues,
+			NewValues: newValues,
 		})
 	}
 
@@ -514,8 +517,8 @@ type formulaRunResult struct {
 }
 
 // toFormulaRunResult converts a formula run outcome to its MCP DTO.
-func toFormulaRunResult(rr *service.FormulaRunResult) formulaRunResult {
-	out := formulaRunResult{queryResult: toQueryResult(rr.Result), StatementCount: rr.StatementCount}
+func toFormulaRunResult(rr *service.FormulaRunResult, maxValueChars int) formulaRunResult {
+	out := formulaRunResult{queryResult: toQueryResult(rr.Result, maxValueChars), StatementCount: rr.StatementCount}
 	if rr.Pagination != nil {
 		out.Pagination = &formulaPagination{
 			HasMore:    rr.Pagination.HasMore,

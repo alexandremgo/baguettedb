@@ -229,6 +229,10 @@ type Config struct {
 	// all entries degrade to name+type and the response's `omitted` note says so. Defaults to 20.
 	MCPDescribeBdbSchemaTableLimit int `koanf:"mcp_describe_bdb_schema_table_limit"`
 
+	// MCPAffectedValueMaxChars is the longest text value, in characters, a write tool's affected_rows carry whole. A
+	// longer one is answered as its length and an excerpt; the change log keeps it whole. Defaults to 500.
+	MCPAffectedValueMaxChars int `koanf:"mcp_affected_value_max_chars"`
+
 	// ShutdownTimeout caps how long each HTTP server is given to drain in-flight requests after a SIGINT/SIGTERM before
 	// the process exits. Should not exceed the grace period the process manager allows before killing the process.
 	// Defaults to 30s.
@@ -269,6 +273,7 @@ func (c Config) LogValues(logger zerolog.Logger) {
 		Dur("bdbs_purge_interval", c.BdbsPurgeInterval).
 		Int("mcp_describe_bdb_skill_body_budget_bytes", c.MCPDescribeBdbSkillBodyBudgetBytes).
 		Int("mcp_describe_bdb_schema_table_limit", c.MCPDescribeBdbSchemaTableLimit).
+		Int("mcp_affected_value_max_chars", c.MCPAffectedValueMaxChars).
 		Dur("shutdown_timeout", c.ShutdownTimeout).
 		Dur("mcp_gateway_backend_init_timeout", c.MCPGatewayBackendInitTimeout).
 		Int("quota_max_bdbs", c.QuotaMaxBdbs).

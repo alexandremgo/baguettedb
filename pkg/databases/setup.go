@@ -376,7 +376,8 @@ func Setup(
 
 	// Creates MCP server (tool handlers only, no transport).
 	docsSvc := service.NewDocsService(querySvc)
-	mcpServer := dbmcp.NewServer(querySvc, skillSvc, mcpFormulaSvc, docsSvc, logger)
+	mcpServer := dbmcp.NewServer(querySvc, skillSvc, mcpFormulaSvc, docsSvc,
+		dbmcp.Options{AffectedValueMaxChars: cfg.MCPAffectedValueMaxChars}, logger)
 
 	// In standalone mode, creates SSE transport and mounts MCP routes on the router.
 	var sseServer *mcpserver.SSEServer
