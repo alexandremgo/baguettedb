@@ -324,6 +324,38 @@ formulas:
         hint: defaults to global; narrow only if the rule is tool- or repo-specific
     attached_to: memories-list
 
+  # For agents: correcting one detail of a memory sends the passage that changes, not the whole content.
+  # Like any rewrite of the content, it clears verified_at so the staleness clock restarts.
+  - name: amend-memory
+    label: Amend memory
+    hidden: true
+    description: Replaces one passage of a memory's content in place, restarting its staleness clock — `old` must occur exactly once in the content; an omitted `new` deletes the passage. For correcting a detail, where remember would rewrite the content whole; the summary is left as it is.
+    sql: |-
+      UPDATE memories SET
+          content = text_patch(content, :old, COALESCE(:new, '')),
+          verified_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = :memory_id
+    params:
+      - name: memory_id
+        type: integer
+        source: lookup
+        lookup:
+          table: memories
+          label_column: slug
+          value_column: id
+      - name: old
+        type: text
+        source: prompt
+        multiline: true
+        hint: the passage to replace, exactly as it stands in the content
+      - name: new
+        type: text
+        source: prompt
+        multiline: true
+        optional: true
+        hint: what replaces it; leave empty to delete the passage
+
   - name: link
     label: Link memories
     hidden: true
@@ -453,6 +485,10 @@ skills:
       `remember` (upsert by `slug`) rather than adding a near-duplicate. Slug uniqueness won't save you:
       a paraphrase gets a new slug and silently splits one rule into two. One subject → one memory.
 
+      To correct one detail of a long memory, `amend-memory` (`memory_id`, `old`, `new`) replaces the one
+      passage `old` in its `content` without resending the rest; `old` must match exactly and occur once.
+      Rewrite the `summary` with `remember` when the correction changes what the memory is about.
+
       ## Shape of a memory
 
       - `slug` — stable kebab-case id (e.g. `prefers-dark-mode`); used to reference and to upsert.
@@ -521,8 +557,9 @@ skills:
       and the older the `age_days`, the more that matters.
 
       When you verify a memory and it still holds, `reaffirm` it — that resets its clock without touching
-      the content. Rewriting one (`remember` upsert or the in-place edit) also restarts the clock: age is
-      always measured from the last time the content was written or reaffirmed, whichever is later.
+      the content. Rewriting one (`remember` upsert, `amend-memory` or the in-place edit) also restarts the
+      clock: age is always measured from the last time the content was written or reaffirmed, whichever is
+      later.
 
       ## Linking
 

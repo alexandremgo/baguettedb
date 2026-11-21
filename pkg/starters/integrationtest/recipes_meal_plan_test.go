@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	dbdomain "github.com/alexandremgo/baguettedb/pkg/databases/domain"
+	dbservice "github.com/alexandremgo/baguettedb/pkg/databases/service"
 	"github.com/alexandremgo/baguettedb/pkg/starters/adapters/embedded"
 )
 
@@ -364,6 +365,46 @@ func TestRecipesDisplayWiring(t *testing.T) {
 	for _, name := range []string{"reorder-slots", "rename-slot"} {
 		if !byName[name].Hidden {
 			t.Errorf("%s is listed, want it hidden — assistant-only", name)
+		}
+	}
+}
+
+// TestRecipesPatchRecipeEditsOneField checks that patch-recipe replaces a passage in the field it is pointed at and
+// leaves the others alone, refuses a field outside its three, and refuses a field the recipe has nothing in.
+func TestRecipesPatchRecipeEditsOneField(t *testing.T) {
+	deps, userID, bdbID := applyRecipesMealPlan(t)
+
+	runFormula(t, deps, userID, bdbID, "add-recipe", map[string]any{
+		"name":              "Pumpkin soup",
+		"ingredients":       "- 1 kg pumpkin\n- 1 onion",
+		"preparation_steps": "1. Roast the pumpkin.\n2. Blend.",
+	})
+	idCell := cell(t, execSQL(t, deps, userID, bdbID, "SELECT id FROM recipes", dbdomain.IntentQuery), 0, "id")
+	recipeID := float64(idCell.(int64))
+
+	runFormula(t, deps, userID, bdbID, "patch-recipe", map[string]any{
+		"recipe_id": recipeID, "field": "preparation_steps", "old": "2. Blend.", "new": "2. Add stock.\n3. Blend.",
+	})
+	recipe := execSQL(t, deps, userID, bdbID,
+		"SELECT ingredients, preparation_steps FROM recipes", dbdomain.IntentQuery)
+	if v := cell(t, recipe, 0, "preparation_steps"); v != "1. Roast the pumpkin.\n2. Add stock.\n3. Blend." {
+		t.Errorf("preparation_steps = %q, want the one step replaced", v)
+	}
+	if v := cell(t, recipe, 0, "ingredients"); v != "- 1 kg pumpkin\n- 1 onion" {
+		t.Errorf("ingredients = %q, want them untouched", v)
+	}
+
+	for _, tc := range []struct {
+		name, field, wantErr string
+	}{
+		{"a field outside the three", "name", "must be one of"},
+		{"a field the recipe has nothing in", "notes", "text_patch: text is NULL"},
+	} {
+		_, err := deps.formulaSvc.RunFormula(t.Context(), userID, bdbID, "patch-recipe", dbservice.FormulaRunInput{
+			Params: map[string]any{"recipe_id": recipeID, "field": tc.field, "old": "Pumpkin", "new": "x"},
+		})
+		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: error = %v, want one containing %q", tc.name, err, tc.wantErr)
 		}
 	}
 }

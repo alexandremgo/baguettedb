@@ -338,6 +338,47 @@ formulas:
         multiline: true
     attached_to: recipe-cards
 
+  # For agents: a small edit of a long recipe sends the passage that changes, not the whole recipe.
+  - name: patch-recipe
+    label: Patch recipe
+    hidden: true
+    description: Replaces one passage of a recipe's ingredients, steps or notes in place — `old` must occur exactly once in the chosen field; an omitted `new` deletes the passage. For a small edit (a quantity, one step), where edit-recipe would rewrite the recipe whole.
+    sql: |-
+      UPDATE recipes
+      SET ingredients = CASE WHEN :field = 'ingredients'
+                             THEN text_patch(ingredients, :old, COALESCE(:new, '')) ELSE ingredients END,
+          preparation_steps = CASE WHEN :field = 'preparation_steps'
+                                   THEN text_patch(preparation_steps, :old, COALESCE(:new, ''))
+                                   ELSE preparation_steps END,
+          notes = CASE WHEN :field = 'notes' THEN text_patch(notes, :old, COALESCE(:new, '')) ELSE notes END
+      WHERE id = :recipe_id
+    params:
+      - name: recipe_id
+        type: integer
+        source: lookup
+        lookup:
+          table: recipes
+          label_column: name
+          value_column: id
+      - name: field
+        type: text
+        source: prompt
+        options:
+          - { value: ingredients, label: Ingredients }
+          - { value: preparation_steps, label: Steps }
+          - { value: notes, label: Notes }
+      - name: old
+        type: text
+        source: prompt
+        multiline: true
+        hint: the passage to replace, exactly as it stands in the field
+      - name: new
+        type: text
+        source: prompt
+        multiline: true
+        optional: true
+        hint: what replaces it; leave empty to delete the passage
+
   - name: delete-recipe
     label: Delete recipe
     description: Deletes the selected recipe; meals that used it keep its name as their dish, so the plan and the cooking history still say what was cooked.
@@ -634,7 +675,10 @@ skills:
       **Recipes.** `ingredients` / `preparation_steps` are free text pasted as written — never link them
       to another bdb's catalog. `tags` is a JSON array of lowercase strings (query with `json_each`);
       reuse the tags already on file (`tag_options`) rather than inventing near-duplicates. `add-recipe`
-      and `edit-recipe` take tags as one row per tag. To answer "can I make this?", read the recipe
+      and `edit-recipe` take tags as one row per tag. For a small change to a long recipe (a quantity,
+      one step), run `patch-recipe` on the `field` concerned (`ingredients`, `preparation_steps` or
+      `notes`) rather than rewriting the recipe with `edit-recipe`: it replaces the one passage `old`,
+      which must match the text exactly and occur once. To answer "can I make this?", read the recipe
       text against the pantry of a shopping bdb, if the user has one, and say what is missing.
 
       **Meals.** One row per meal. `plan_date` NULL means the meal waits in the unscheduled tray (an

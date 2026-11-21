@@ -149,3 +149,40 @@ func TestAIMemoryEditDefaultsAndCaps(t *testing.T) {
 		t.Errorf("recall(max_rows=1) rows = %d, want 1", len(capped.Result.Rows))
 	}
 }
+
+// TestAIMemoryAmendMemoryPatchesContent checks that amend-memory replaces the one passage of a memory's content,
+// leaves its summary alone and restarts its staleness clock, as any rewrite of the content does.
+func TestAIMemoryAmendMemoryPatchesContent(t *testing.T) {
+	deps, userID, bdbID := applyAIMemory(t)
+
+	runFormula(t, deps, userID, bdbID, "remember", map[string]any{
+		"slug": "bakery-oven-schedule", "summary": "the bakery's oven schedule",
+		"content": "The first batch goes in at 5:00.\nThe sourdough proofs overnight.",
+	})
+	idCell := cell(t, execSQL(t, deps, userID, bdbID, "SELECT id FROM memories", dbdomain.IntentQuery), 0, "id")
+	memoryID := float64(idCell.(int64))
+	runFormula(t, deps, userID, bdbID, "reaffirm", map[string]any{"rowid": memoryID})
+
+	runFormula(t, deps, userID, bdbID, "amend-memory", map[string]any{
+		"memory_id": memoryID, "old": "at 5:00", "new": "at 4:30",
+	})
+
+	row := execSQL(t, deps, userID, bdbID,
+		"SELECT summary, content, verified_at FROM memories WHERE slug = 'bakery-oven-schedule'", dbdomain.IntentQuery)
+	if v := cell(t, row, 0, "content"); v != "The first batch goes in at 4:30.\nThe sourdough proofs overnight." {
+		t.Errorf("content = %q, want the one passage replaced", v)
+	}
+	if v := cell(t, row, 0, "summary"); v != "the bakery's oven schedule" {
+		t.Errorf("summary = %v, want it untouched", v)
+	}
+	if v := cell(t, row, 0, "verified_at"); v != nil {
+		t.Errorf("verified_at = %v, want it cleared so the staleness clock restarts", v)
+	}
+
+	_, err := deps.formulaSvc.RunFormula(t.Context(), userID, bdbID, "amend-memory", dbservice.FormulaRunInput{
+		Params: map[string]any{"memory_id": memoryID, "old": "croissants", "new": "x"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "text_patch: old not found") {
+		t.Errorf("amending an absent passage: error = %v, want it refused", err)
+	}
+}

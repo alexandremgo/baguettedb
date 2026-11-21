@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	dbdomain "github.com/alexandremgo/baguettedb/pkg/databases/domain"
+	dbservice "github.com/alexandremgo/baguettedb/pkg/databases/service"
 	"github.com/alexandremgo/baguettedb/pkg/starters/adapters/embedded"
 )
 
@@ -260,5 +261,43 @@ func TestNotesCaptureWithTags(t *testing.T) {
 		if !found {
 			t.Errorf("%s tag field: want an allow_new lookup over tag_options", f.Name)
 		}
+	}
+}
+
+// TestNotesPatchNoteEditsBodyInPlace checks that patch-note replaces the one passage it is given and bumps the note's
+// update time, that an omitted new deletes the passage, and that a passage found twice is refused, leaving the body
+// as it was.
+func TestNotesPatchNoteEditsBodyInPlace(t *testing.T) {
+	deps, userID, bdbID := applyNotes(t)
+
+	runFormula(t, deps, userID, bdbID, "capture", map[string]any{
+		"body": "# Spring window\n\n- paint the shutters\n- paint the sign\n",
+	})
+	idCell := cell(t, execSQL(t, deps, userID, bdbID, "SELECT id FROM notes", dbdomain.IntentQuery), 0, "id")
+	noteID := float64(idCell.(int64))
+	execSQL(t, deps, userID, bdbID, "UPDATE notes SET updated_at = '2000-01-01 00:00:00'", dbdomain.IntentExecute)
+
+	runFormula(t, deps, userID, bdbID, "patch-note", map[string]any{
+		"note_id": noteID, "old": "paint the sign", "new": "repaint the sign in gold",
+	})
+	note := execSQL(t, deps, userID, bdbID, "SELECT body, updated_at FROM notes", dbdomain.IntentQuery)
+	if v := cell(t, note, 0, "body"); v != "# Spring window\n\n- paint the shutters\n- repaint the sign in gold\n" {
+		t.Errorf("body = %q, want the one passage replaced", v)
+	}
+	if v := cell(t, note, 0, "updated_at"); v == "2000-01-01 00:00:00" {
+		t.Errorf("updated_at = %v, want it bumped by the patch", v)
+	}
+
+	_, err := deps.formulaSvc.RunFormula(t.Context(), userID, bdbID, "patch-note", dbservice.FormulaRunInput{
+		Params: map[string]any{"note_id": noteID, "old": "paint", "new": "varnish"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "text_patch: old found 2 times") {
+		t.Errorf("patching a passage found twice: error = %v, want it refused naming the two matches", err)
+	}
+
+	runFormula(t, deps, userID, bdbID, "patch-note", map[string]any{"note_id": noteID, "old": "- paint the shutters\n"})
+	note = execSQL(t, deps, userID, bdbID, "SELECT body FROM notes", dbdomain.IntentQuery)
+	if v := cell(t, note, 0, "body"); v != "# Spring window\n\n- repaint the sign in gold\n" {
+		t.Errorf("body = %q, want the passage deleted and nothing changed by the refused patch", v)
 	}
 }

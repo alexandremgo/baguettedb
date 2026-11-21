@@ -221,6 +221,32 @@ formulas:
               allow_new: true
     attached_to: notes-feed
 
+  # For agents: a small edit of a long note sends the passage that changes, not the whole body.
+  - name: patch-note
+    label: Patch note
+    hidden: true
+    description: Replaces one passage of a note's body in place, bumping its update time — `old` must occur exactly once in the body; an omitted `new` deletes the passage. For a small edit of a long note, where edit-note would rewrite it whole.
+    sql: |-
+      UPDATE notes
+      SET body = text_patch(body, :old, COALESCE(:new, '')), updated_at = CURRENT_TIMESTAMP
+      WHERE id = :note_id
+    params:
+      - name: note_id
+        type: integer
+        source: prompt
+        hint: the note's id
+      - name: old
+        type: text
+        source: prompt
+        multiline: true
+        hint: the passage to replace, exactly as it stands in the body
+      - name: new
+        type: text
+        source: prompt
+        multiline: true
+        optional: true
+        hint: what replaces it; leave empty to delete the passage
+
   - name: delete-note
     label: Delete note
     description: Deletes the selected note; its links disappear with it.
@@ -328,6 +354,10 @@ skills:
 
       Set `updated_at = CURRENT_TIMESTAMP` on every content UPDATE. Pinning is the exception — it isn't
       a content edit, so `toggle-pin` leaves `updated_at` alone.
+
+      To change part of a long body, run `patch-note` (`note_id`, `old`, `new`) rather than rewriting the
+      note with `edit-note`: it replaces the one passage `old`, which must match the body exactly and
+      occur once, and bumps `updated_at`.
 
       ## Finding
 
