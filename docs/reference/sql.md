@@ -68,6 +68,32 @@ ending in punctuation is taken whole (`c++`). A text with no word in it matches 
 queries and formulas, not from a view, a trigger or a schema expression. Write the FTS5 query yourself when you want
 its operators (`OR`, `NOT`, `NEAR`, a column filter).
 
+## Values apart from the SQL
+
+`execute_query` and `execute_data` take the values of a request apart from its SQL. Write a named
+placeholder where a value goes, and give the value under that name:
+
+```sql
+UPDATE notes SET body = :body WHERE id = :id
+```
+
+with `{"body": "It's 20 % rye.", "id": 3}`: the `params` argument of a tool call, `--params` on the command line, or
+one `--param name=value` per value there.
+
+- A value arrives exactly as given: no apostrophe to double, nothing to escape, and a line break stays a line break.
+  Prefer it for any text that is long, quoted from someone, or holds quotes, backslashes or line breaks.
+- A string binds as text, a whole number as an integer, another number as a real, `true` and `false` as 1 and 0,
+  `null` as NULL, and an array or an object as its JSON text, ready for `json_extract` or `json_each`. A whole number
+  above 2^53 (9007199254740992) in a tool call's `params` may lose its last digits, as any JSON number can: give it
+  as a string, which an INTEGER column stores as the exact number.
+- On the command line, `--param` always gives text, which SQLite reads as a number where it meets a numeric column
+  (`WHERE id = :id`) or a `LIMIT`; `--params` and `--params-file` take a JSON object and give each value its type.
+- The statements of one request share the values, each using the names it needs. A placeholder left without a
+  value, a value no statement uses, and a bare `?` are refused: placeholders are named.
+- A placeholder stands for a value, never for a table or column name. `execute_schema` takes no values.
+- The right-hand side of `MATCH` stays an FTS5 query even when it comes as a value: wrap a person's words in
+  `fts_all_words(:query)`.
+
 ## Editing long text
 
 Edit a long TEXT value (a note, a description, a markdown document) in place: send the part that changes, not the
@@ -99,7 +125,14 @@ Both fail rather than guess, and the failure rolls the whole request back:
 - Matching is exact, byte for byte: letter case, spaces and line breaks included.
 - A NULL argument or an empty match string is an error.
 
-Writing the passage and its replacement in SQL:
+Give the passage and its replacement as values (see "Values apart from the SQL") and none of the quoting rules below
+apply:
+
+```sql
+UPDATE notes SET body = text_patch(body, :old, :new) WHERE id = :id
+```
+
+When they are written in the SQL instead:
 
 - A line break or a tab goes inside the quotes as it is, as in the example above, or as `char(10)` / `char(9)`
   joined with `||`. SQL has no backslash escapes: `'a\nb'` stores a backslash and an `n`, not a line break, and `\\`
@@ -111,12 +144,8 @@ Writing the passage and its replacement in SQL:
   (`char(13, 10)`) or an accent stored as two characters. Match a shorter passage of plain words, or put plain-word
   anchors around the passage with `text_replace_between`.
 
-A formula removes the quoting altogether: its parameters carry the passage and the replacement exactly as given.
-Save the edit once for a column edited often, then run it with `run_formula`, passing `id`, `old` and `new`:
-
-```sql
-UPDATE notes SET body = text_patch(body, :old, :new) WHERE id = :id
-```
+For a column edited often, save that statement once as a formula and run it with `run_formula`, passing
+`id`, `old` and `new`: its parameters carry the passage and the replacement exactly as given too.
 
 Other edits and partial reads need no function: append with `body || char(10) || 'one more line'`, read a slice
 with `substr(body, start, length)`, and locate a passage with `instr(body, 'needle')` rather than selecting a long

@@ -59,21 +59,23 @@ Describes one table: columns, foreign keys, CHECK constraints, kind (table / vie
 
 ### execute_query
 
-Executes a single read-only SELECT statement. Multi-statement input is not supported. Results are capped: a larger result is refused with the limit named in the error, so add a LIMIT or aggregate for big tables. The full JSON1 function set, JSONB, and FTS5 are built in — engine capabilities, rules and your limits in get_docs(topic: 'sql').
+Executes a single read-only SELECT statement. Multi-statement input is not supported. Results are capped: a larger result is refused with the limit named in the error, so add a LIMIT or aggregate for big tables. The full JSON1 function set, JSONB, and FTS5 are built in — engine capabilities, rules and your limits in get_docs(topic: 'sql'). To keep a value out of the SQL text, write a named placeholder (:name) and give its value in params: text then arrives exactly as given, quotes, backslashes and line breaks included, with nothing to escape.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `bdb_id` | string | yes | Bdb ID |
 | `sql` | string | yes | Single SELECT statement to execute |
+| `params` | object | no | Optional values for the SQL's named placeholders, keyed by name without the colon (e.g. sql "UPDATE notes SET body = :body WHERE id = :id" with {"body": "It's done", "id": 3}). A string binds as text, a whole number as an integer, another number as a real, true/false as 1/0, null as NULL, an array or object as its JSON text. Several statements share the one set, each using the names it needs; a value no statement uses is refused. |
 
 ### execute_data
 
-Writes data: executes one or more DML statements (INSERT, UPDATE, DELETE) atomically. Multiple statements separated by ';' run in a single transaction; if any fails the whole request is rolled back. All statements share one batch_id and produce a single undo entry. The answer's affected_rows give each changed row's old and new values: for an update, of the columns that changed only; and a text value over 500 characters as an object {truncated, length, excerpt, excerpt_start} (the excerpt sits at the change; list_changes returns the whole value). The statement and affected-row caps are listed in get_docs(topic: 'sql') and named in a refusal. For schema changes use execute_schema; for read-only queries use execute_query. Edit a long text value in place with text_patch(text, old, new) or text_replace_between(text, start, end, new) instead of rewriting it whole. JSON values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be stored (keep binary as base64 or hex text) — engine capabilities and rules in get_docs(topic: 'sql').
+Writes data: executes one or more DML statements (INSERT, UPDATE, DELETE) atomically. Multiple statements separated by ';' run in a single transaction; if any fails the whole request is rolled back. All statements share one batch_id and produce a single undo entry. The answer's affected_rows give each changed row's old and new values: for an update, of the columns that changed only; and a text value over 500 characters as an object {truncated, length, excerpt, excerpt_start} (the excerpt sits at the change; list_changes returns the whole value). The statement and affected-row caps are listed in get_docs(topic: 'sql') and named in a refusal. For schema changes use execute_schema; for read-only queries use execute_query. Edit a long text value in place with text_patch(text, old, new) or text_replace_between(text, start, end, new) instead of rewriting it whole. JSON values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be stored (keep binary as base64 or hex text) — engine capabilities and rules in get_docs(topic: 'sql'). To keep a value out of the SQL text, write a named placeholder (:name) and give its value in params: text then arrives exactly as given, quotes, backslashes and line breaks included, with nothing to escape.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `bdb_id` | string | yes | Bdb ID |
 | `sql` | string | yes | DML statement(s) to execute; multiple separated by ';' |
+| `params` | object | no | Optional values for the SQL's named placeholders, keyed by name without the colon (e.g. sql "UPDATE notes SET body = :body WHERE id = :id" with {"body": "It's done", "id": 3}). A string binds as text, a whole number as an integer, another number as a real, true/false as 1/0, null as NULL, an array or object as its JSON text. Several statements share the one set, each using the names it needs; a value no statement uses is refused. |
 
 ### execute_schema
 

@@ -219,13 +219,101 @@ func TestRun_SQL_Errors(t *testing.T) {
 		{[]string{"sql", "data", "Places", "INSERT INTO places (name) VALUES (NULL)"}, exitFailure,
 			"Error: in Places: NOT NULL constraint failed: places.name\n"},
 		{[]string{"q", "Places", "SELECT 1; SELECT nope"}, exitFailure, "in Places: statement 2: no such column: nope"},
-		{[]string{"q", "Places", "SELECT * FROM places WHERE name = :name OR id = ?"}, exitFailure,
-			"in Places: the SQL has parameters (name, ?), which sql commands don't take"},
+		{[]string{"q", "Places", "SELECT * FROM places WHERE name = :name OR id = :id"}, exitFailure,
+			"in Places: the SQL has parameters (name, id) but no values for them; give each one with --param " +
+				"name=value, or all of them as a JSON object with --params"},
+		{[]string{"sql", "schema", "Places", "CREATE TABLE towns AS SELECT :name AS name"}, exitFailure,
+			"in Places: the SQL has parameters (name), which sql schema doesn't take; write the values in the SQL"},
 		{[]string{"q", "Places", "SELECT 1 AS x, 2 AS x", "--json"}, exitFailure, `column "x" appears twice`},
 		{[]string{"q", "Places", "SELECT 1 AS x, 2 AS x"}, exitOK, "(1 row)"},
 	} {
 		code, _, stderr := runCLI(t, append([]string{"bdb", "--data-dir", dataDir}, tt.args...)...)
 		if code != tt.code || !strings.Contains(stderr, tt.stderr) {
+			t.Errorf("%v = %d, stderr %q; want %d and %q", tt.args, code, stderr, tt.code, tt.stderr)
+		}
+	}
+}
+
+// TestRun_SQL_Params checks the values sql query and sql data take for the SQL's named placeholders: --param binds
+// text exactly as given, which an INTEGER column and a comparison with one still read as a number; --params and
+// --params-file bind each value of a JSON object as JSON types it, a whole number of any size exactly and an object as
+// its JSON text; statements share the values; and the refusals: a placeholder without a value or without a name, a
+// value the SQL does not use, several of the three flags, parameters that are not a JSON object, a name with its
+// colon, the SQL and the parameters both from stdin, and sql schema, which takes none.
+func TestRun_SQL_Params(t *testing.T) {
+	dataDir, _ := newBdbWithPlaces(t)
+	run := func(args ...string) (int, string, string) {
+		t.Helper()
+		return runCLI(t, append([]string{"bdb", "--data-dir", dataDir}, args...)...)
+	}
+	const note = `Baker's "best" C:\ovens, and \n stays two characters -- <b>R&D</b>`
+
+	code, stdout, stderr := run("sql", "data", "Places",
+		"INSERT INTO places (name, note, score) VALUES (:name, :note, :score); "+
+			"UPDATE places SET note = note || :suffix WHERE name = :name",
+		"--param", "name=Arles", "--param", "note="+note, "--param", "score=3.5", "--param", "suffix=; it's fine")
+	if code != exitOK || !strings.HasPrefix(stdout, "2 rows changed") {
+		t.Fatalf("sql data --param = %d %q, stderr %q; want 2 rows changed", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = run("q", "Places",
+		"SELECT note, typeof(score) AS stored, typeof(:min) AS given FROM places WHERE score < :min AND name = :name",
+		"--param", "min=4", "--param", "name=Arles", "--json")
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); code != exitOK || err != nil || len(rows) != 1 {
+		t.Fatalf("q --param = %d %q (%v), stderr %q; want one row", code, stdout, err, stderr)
+	}
+	if rows[0]["note"] != note+"; it's fine" || rows[0]["stored"] != "real" || rows[0]["given"] != "text" {
+		t.Errorf("q --param = %+v, want the note as given, stored as a real and given as text", rows[0])
+	}
+
+	const typed = `{"whole": 9007199254740993, "decimal": 1.5, "yes": true, "nothing": null, "tags": {"a": ["<b>"]}}`
+	paramsFile := filepath.Join(t.TempDir(), "params.json")
+	if err := os.WriteFile(paramsFile, []byte(typed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const typesSQL = "SELECT :whole AS whole, typeof(:whole) AS whole_type, typeof(:decimal) AS decimal_type, " +
+		":yes AS yes, typeof(:nothing) AS nothing_type, :tags AS tags"
+	const wantTypes = "whole             whole_type  decimal_type  yes  nothing_type  tags\n" +
+		"9007199254740993  integer     real          1    null          {\"a\":[\"<b>\"]}\n"
+	for _, args := range [][]string{
+		{"q", "Places", typesSQL, "--params", typed},
+		{"q", "Places", typesSQL, "--params-file", paramsFile},
+	} {
+		if code, stdout, stderr := run(args...); code != exitOK || stdout != wantTypes {
+			t.Errorf("%v = %d %q, stderr %q; want %q", args[3], code, stdout, stderr, wantTypes)
+		}
+	}
+	code, stdout, stderr = runCLIWithStdin(t, typed, "bdb", "--data-dir", dataDir, "q", "Places", typesSQL,
+		"--params-file", "-")
+	if code != exitOK || stdout != wantTypes {
+		t.Errorf("q --params-file - = %d %q, stderr %q; want %q", code, stdout, stderr, wantTypes)
+	}
+
+	for _, tt := range []struct {
+		args   []string
+		code   int
+		stderr string
+	}{
+		{[]string{"q", "Places", "SELECT :a, :b", "--param", "a=1"}, exitFailure,
+			"in Places: the SQL has parameters (b) but no values for them; give each one with --param name=value"},
+		{[]string{"q", "Places", "SELECT :a", "--param", "a=1", "--param", "c=3", "--param", "b=2"}, exitFailure,
+			"in Places: values given for parameters the SQL does not have (b, c)"},
+		{[]string{"q", "Places", "SELECT ?", "--param", "a=1"}, exitFailure,
+			"in Places: a ? placeholder has no name to take a value by; write a named one such as :name"},
+		{[]string{"q", "Places", "SELECT :a", "--param", "a=1", "--params", "{}"}, exitUsage,
+			"give the parameters with --param, --params or --params-file, only one of them"},
+		{[]string{"q", "Places", "SELECT :a", "--params", " "}, exitUsage, "the parameters are empty"},
+		{[]string{"q", "Places", "SELECT :a", "--params", "[1]"}, exitFailure,
+			`in Places: reading the parameters: want a JSON object, such as {"name": "value"}`},
+		{[]string{"q", "Places", "SELECT :a", "--params", `{":a": 1}`}, exitFailure,
+			`in Places: the parameters: parameter ":a": write the name without its ":", as "a"`},
+		{[]string{"q", "Places", "--file", "-", "--params-file", "-"}, exitUsage,
+			"the SQL and the parameters cannot both come from stdin"},
+		{[]string{"sql", "schema", "Places", "CREATE TABLE towns (name TEXT)", "--param", "a=1"}, exitUsage,
+			"unknown flag: --param"},
+	} {
+		if code, _, stderr := run(tt.args...); code != tt.code || !strings.Contains(stderr, tt.stderr) {
 			t.Errorf("%v = %d, stderr %q; want %d and %q", tt.args, code, stderr, tt.code, tt.stderr)
 		}
 	}
