@@ -1,5 +1,7 @@
 /*
- * Implements the SQL functions editing a text value in place.
+ * Implements the platform's SQL text functions.
+ *
+ * Two edit a text value in place:
  *
  *   text_patch(text, old, new)                  replaces the single occurrence of old with new.
  *   text_replace_between(text, start, end, new) replaces the single block running from the first byte of start to
@@ -8,6 +10,11 @@
  * Both raise an error instead of guessing: an argument that is NULL, an empty match string, a match string that is
  * absent, or one found more than once. Matching is byte for byte, and overlapping occurrences count separately
  * ("aa" is found twice in "aaa"). Arguments of another type are read as text, as the built-in replace() reads them.
+ *
+ * One builds a full-text query from words typed as they come:
+ *
+ *   fts_all_words(text)                         returns the FTS5 query matching the rows that hold every word of
+ *                                               text, none of it read as query syntax.
  */
 
 #include "text_functions.h"
@@ -195,6 +202,110 @@ static void text_replace_between(sqlite3_context *ctx, int argc, sqlite3_value *
     splice(ctx, text, start_at, end_at + end.n - start_at, repl);
 }
 
+/*
+ * Reports whether c separates words: an ASCII space or any ASCII control character, tab, line break and NUL
+ * included. A NUL kept inside a word would end the query early for the FTS5 parser, leaving its string unterminated.
+ */
+static int is_space_byte(unsigned char c) {
+    return c <= 32;
+}
+
+/*
+ * Reports whether c belongs to a letter or a digit as far as a byte can tell: an ASCII letter or digit, or any byte of
+ * a multi-byte character.
+ */
+static int is_word_byte(unsigned char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80;
+}
+
+/*
+ * Implements fts_all_words(text): sets the result to the FTS5 query matching the rows that hold every word of text.
+ * When text is NULL or holds no word, the result is the empty phrase (two double quotes), which matches no row: a
+ * NULL or an empty string on the right of MATCH is an FTS5 syntax error.
+ *
+ * A word is a run of characters between spaces or control characters. Each becomes a quoted FTS5 string, its
+ * double quotes doubled, so that no punctuation in it is read as query syntax ("pain-de-mie", "node.js", "c++").
+ *
+ * A word ending in a letter or a digit also matches the start of a longer word ("bake" finds "bakery"). One ending
+ * in punctuation is taken whole ("c++" does not find every word starting with c).
+ *
+ * A word holding no letter and no digit is left out: the tokenizer would keep nothing of it, and a string with no
+ * token matches no row.
+ */
+static void fts_all_words(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
+    const unsigned char *text;
+    sqlite3_int64 n, i, start, words = 0, quotes = 0, len = 0;
+    unsigned char *out;
+
+    (void)argc;
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_text(ctx, "\"\"", 2, SQLITE_STATIC);
+        return;
+    }
+    text = sqlite3_value_text(argv[0]);
+    n = sqlite3_value_bytes(argv[0]);
+    if (text == NULL) {
+        sqlite3_result_error_nomem(ctx);
+        return;
+    }
+
+    /* Sizes the result: every byte once, each double quote twice, and per word two quotes, a star and a space. */
+    for (i = 0; i < n; i++) {
+        if (text[i] == '"') {
+            quotes++;
+        }
+        if (!is_space_byte(text[i]) && (i == 0 || is_space_byte(text[i - 1]))) {
+            words++;
+        }
+    }
+    if (n + quotes + 4 * words > sqlite3_limit(sqlite3_context_db_handle(ctx), SQLITE_LIMIT_LENGTH, -1)) {
+        sqlite3_result_error_toobig(ctx);
+        return;
+    }
+    out = sqlite3_malloc64((sqlite3_uint64)(n + quotes + 4 * words + 1));
+    if (out == NULL) {
+        sqlite3_result_error_nomem(ctx);
+        return;
+    }
+
+    i = 0;
+    while (i < n) {
+        int has_word_byte = 0;
+
+        while (i < n && is_space_byte(text[i])) {
+            i++;
+        }
+        start = i;
+        while (i < n && !is_space_byte(text[i])) {
+            has_word_byte = has_word_byte || is_word_byte(text[i]);
+            i++;
+        }
+        if (!has_word_byte) {
+            continue;
+        }
+        if (len > 0) {
+            out[len++] = ' ';
+        }
+        out[len++] = '"';
+        for (; start < i; start++) {
+            if (text[start] == '"') {
+                out[len++] = '"';
+            }
+            out[len++] = text[start];
+        }
+        out[len++] = '"';
+        if (is_word_byte(text[i - 1])) {
+            out[len++] = '*';
+        }
+    }
+    if (len == 0) {
+        sqlite3_free(out);
+        sqlite3_result_text(ctx, "\"\"", 2, SQLITE_STATIC);
+        return;
+    }
+    sqlite3_result_text64(ctx, (char *)out, (sqlite3_uint64)len, sqlite3_free, SQLITE_UTF8);
+}
+
 int sqlitelocal_register_text_functions(sqlite3 *db) {
     const int flags = SQLITE_UTF8 | SQLITE_DETERMINISTIC | SQLITE_DIRECTONLY;
     int rc;
@@ -203,6 +314,10 @@ int sqlitelocal_register_text_functions(sqlite3 *db) {
     if (rc != SQLITE_OK) {
         return rc;
     }
-    return sqlite3_create_function_v2(db, "text_replace_between", 4, flags, NULL, text_replace_between, NULL, NULL,
-                                      NULL);
+    rc = sqlite3_create_function_v2(db, "text_replace_between", 4, flags, NULL, text_replace_between, NULL, NULL,
+                                    NULL);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    return sqlite3_create_function_v2(db, "fts_all_words", 1, flags, NULL, fts_all_words, NULL, NULL, NULL);
 }

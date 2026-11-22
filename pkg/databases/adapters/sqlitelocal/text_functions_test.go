@@ -83,7 +83,7 @@ func TestTextFunctions_RefusedInSchema(t *testing.T) {
 	// wantUnsafe fails the test unless err is the engine's refusal of a direct-only function.
 	wantUnsafe := func(t *testing.T, err error) {
 		t.Helper()
-		if sqlErr, ok := errors.AsType[*Error](err); !ok || !strings.Contains(sqlErr.Msg, "unsafe use of text_") {
+		if sqlErr, ok := errors.AsType[*Error](err); !ok || !strings.Contains(sqlErr.Msg, "unsafe use of ") {
 			t.Errorf("error = %v, want an *Error reporting an unsafe use of a text function", err)
 		}
 	}
@@ -93,6 +93,7 @@ func TestTextFunctions_RefusedInSchema(t *testing.T) {
 		{"check constraint with text_replace_between",
 			"CREATE TABLE checked (body TEXT CHECK (text_replace_between(body, 'a', 'b', 'c') <> ''))"},
 		{"index expression", "CREATE INDEX notes_patched ON notes (text_patch(body, 'a', 'b'))"},
+		{"index expression with fts_all_words", "CREATE INDEX notes_words ON notes (fts_all_words(body))"},
 		{"generated column",
 			"CREATE TABLE generated (body TEXT, patched TEXT GENERATED ALWAYS AS (text_patch(body, 'a', 'b')))"},
 	}
@@ -255,4 +256,196 @@ func TestTextFunctions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFTSAllWords_BuildsTheQuery verifies the FTS5 query fts_all_words returns: every word quoted with its double
+// quotes doubled, a prefix star after a word ending in a letter or a digit only, words without a letter or a digit
+// left out, and the empty phrase, never NULL, when nothing is left to search for.
+func TestFTSAllWords_BuildsTheQuery(t *testing.T) {
+	c, err := Open(tmpDB(t), newKey(t), 0)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer tClose(t, "conn", c)
+
+	for _, tc := range []struct {
+		name string
+		text any
+		want string
+	}{
+		{name: "hyphenated word and a plain one", text: "pain-de-mie rye", want: `"pain-de-mie"* "rye"*`},
+		{name: "word ending in punctuation is taken whole", text: "c++", want: `"c++"`},
+		{name: "dot inside a word", text: "node.js", want: `"node.js"*`},
+		{name: "closing bracket ends the word", text: "(draft)", want: `"(draft)"`},
+		{name: "spaces, tabs and line breaks separate words", text: "  two   spaces\tand\nbreaks ",
+			want: `"two"* "spaces"* "and"* "breaks"*`},
+		{name: "double quotes are doubled", text: `say "hi"`, want: `"say"* """hi"""`},
+		{name: "a word without letter or digit is left out", text: "R & D", want: `"R"* "D"*`},
+		{name: "accented letters end a word like letters", text: "café crème", want: `"café"* "crème"*`},
+		{name: "a number is read as text", text: 42, want: `"42"*`},
+		{name: "symbols only", text: "++ --", want: `""`},
+		{name: "empty text", text: "", want: `""`},
+		{name: "spaces only", text: "   ", want: `""`},
+		{name: "NULL", text: nil, want: `""`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := queryText(t, c, "SELECT coalesce(fts_all_words(?), '<NULL>')", tc.text)
+			if err != nil {
+				t.Fatalf("fts_all_words: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("fts_all_words(%q) = %s, want %s", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFTSAllWords_SearchesWordsWithPunctuation verifies searches run through fts_all_words on an FTS5 table: words
+// carrying punctuation find their notes where the raw text is an FTS5 syntax error, every word has to be present, a
+// partial word finds the words it starts, and a text with nothing to search for finds nothing without failing.
+func TestFTSAllWords_SearchesWordsWithPunctuation(t *testing.T) {
+	c, err := Open(tmpDB(t), newKey(t), 0)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer tClose(t, "conn", c)
+	mustExec(t, c, "CREATE VIRTUAL TABLE notes_fts USING fts5(body)")
+	for _, body := range []string{
+		"Pain-de-mie trial with rye flour", "pain rustique without mie, baked on rye", "bakery opening hours",
+		"c++ templates", "the cat sat on the couch", "node.js event loop", "nodes and edges",
+	} {
+		mustExec(t, c, "INSERT INTO notes_fts (body) VALUES (?)", body)
+	}
+
+	// search returns the matching bodies in insertion order, joined by " | ".
+	search := func(t *testing.T, where, text string) (string, error) {
+		t.Helper()
+		return queryText(t, c, "SELECT coalesce(group_concat(body, ' | '), '') FROM "+
+			"(SELECT body FROM notes_fts WHERE notes_fts MATCH "+where+" ORDER BY rowid)", text)
+	}
+
+	got, err := queryText(t, c, "SELECT count(*) FROM notes_fts WHERE notes_fts MATCH fts_all_words(NULL)")
+	if err != nil || got != "0" {
+		t.Errorf("searching a NULL text = %q, %v; want no row and no error", got, err)
+	}
+
+	for _, raw := range []string{"pain-de-mie rye", "c++", "node.js"} {
+		if got, err := search(t, "?", raw); err == nil {
+			t.Errorf("raw MATCH %q = %q, want the FTS5 syntax error the function is there to avoid", raw, got)
+		}
+	}
+
+	for _, tc := range []struct {
+		name, text, want string
+	}{
+		{"hyphenated word and a plain one", "pain-de-mie rye", "Pain-de-mie trial with rye flour"},
+		{"word ending in punctuation", "c++", "c++ templates"},
+		{"dot inside a word", "node.js", "node.js event loop"},
+		{"every word has to be present", "pain rustique", "pain rustique without mie, baked on rye"},
+		{"a partial word finds the words it starts", "bake",
+			"pain rustique without mie, baked on rye | bakery opening hours"},
+		{"letter case does not matter", "PAIN",
+			"Pain-de-mie trial with rye flour | pain rustique without mie, baked on rye"},
+		{"a stray double quote", `no"de`, ""},
+		{"symbols only", "++", ""},
+		{"empty text", "", ""},
+		{"spaces only", "   ", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := search(t, "fts_all_words(?)", tc.text)
+			if err != nil {
+				t.Fatalf("search %q: %v", tc.text, err)
+			}
+			if got != tc.want {
+				t.Errorf("search %q = %q, want %q", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
+// isSpaceRune reports whether r separates words for fts_all_words: an ASCII space or any ASCII control character.
+func isSpaceRune(r rune) bool {
+	return r <= ' '
+}
+
+// isWordByte reports whether b belongs to a letter or a digit as far as a byte can tell: an ASCII letter or digit, or
+// any byte of a multi-byte character.
+func isWordByte(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
+}
+
+// quoteFTSWord returns word as an FTS5 string: between double quotes, its own double quotes doubled, and followed by
+// a star when its last byte is a word byte, so that it also matches the start of a longer word.
+func quoteFTSWord(word string) string {
+	quoted := `"` + strings.ReplaceAll(word, `"`, `""`) + `"`
+	if isWordByte(word[len(word)-1]) {
+		quoted += "*"
+	}
+	return quoted
+}
+
+// ftsAllWordsModel is fts_all_words written in Go: the query it must return for text.
+func ftsAllWordsModel(text string) string {
+	var quoted []string
+	for _, word := range strings.FieldsFunc(text, isSpaceRune) {
+		hasWordByte := false
+		for i := range len(word) {
+			hasWordByte = hasWordByte || isWordByte(word[i])
+		}
+		if hasWordByte {
+			quoted = append(quoted, quoteFTSWord(word))
+		}
+	}
+	if len(quoted) == 0 {
+		return `""`
+	}
+	return strings.Join(quoted, " ")
+}
+
+// FuzzFTSAllWords checks fts_all_words against a model written in Go, and that the query it returns never makes a
+// search fail, whatever the text.
+func FuzzFTSAllWords(f *testing.F) {
+	f.Add("pain-de-mie rye")
+	f.Add("c++")
+	f.Add(`say "hi"`)
+	f.Add("  two\twords\n")
+	f.Add("café — crème")
+	f.Add("")
+	// A NUL inside a word once ended the query early for the FTS5 parser.
+	f.Add("0\x00")
+
+	key := make([]byte, KeySize)
+	if _, err := rand.Read(key); err != nil {
+		f.Fatalf("rand: %v", err)
+	}
+	c, err := Open(filepath.Join(f.TempDir(), "fuzz.db"), key, 0)
+	if err != nil {
+		f.Fatalf("open: %v", err)
+	}
+	f.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			f.Errorf("close conn: %v", err)
+		}
+	})
+	if _, err := c.Exec(context.Background(), "CREATE VIRTUAL TABLE notes_fts USING fts5(body)"); err != nil {
+		f.Fatalf("create fts table: %v", err)
+	}
+	seed := "INSERT INTO notes_fts (body) VALUES ('a note about c++ and rye bread')"
+	if _, err := c.Exec(context.Background(), seed); err != nil {
+		f.Fatalf("seed fts table: %v", err)
+	}
+
+	f.Fuzz(func(t *testing.T, text string) {
+		got, err := queryText(t, c, "SELECT fts_all_words(?)", text)
+		if err != nil {
+			t.Fatalf("fts_all_words(%q): %v", text, err)
+		}
+		if want := ftsAllWordsModel(text); got != want {
+			t.Errorf("fts_all_words(%q) = %s, want %s", text, got, want)
+		}
+		search := "SELECT count(*) FROM notes_fts WHERE notes_fts MATCH fts_all_words(?)"
+		if _, err := queryText(t, c, search, text); err != nil {
+			t.Errorf("searching %q failed: %v", text, err)
+		}
+	})
 }

@@ -3,6 +3,7 @@
 package integrationtest
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -299,5 +300,43 @@ func TestNotesPatchNoteEditsBodyInPlace(t *testing.T) {
 	note = execSQL(t, deps, userID, bdbID, "SELECT body FROM notes", dbdomain.IntentQuery)
 	if v := cell(t, note, 0, "body"); v != "# Spring window\n\n- repaint the sign in gold\n" {
 		t.Errorf("body = %q, want the passage deleted and nothing changed by the refused patch", v)
+	}
+}
+
+// TestNotesFeedSearchTakesPunctuation checks that the feed's search box finds words carrying punctuation, which
+// raw FTS5 would read as syntax and fail on, that every word has to be found, and that a partial word finds the
+// words it starts.
+func TestNotesFeedSearchTakesPunctuation(t *testing.T) {
+	deps, userID, bdbID := applyNotes(t)
+
+	for _, body := range []string{
+		"Pain-de-mie trial: 4% sugar, 82% butter",
+		"Oven no.2 runs hot (+10 C)",
+		"Painting the shop front",
+	} {
+		runFormula(t, deps, userID, bdbID, "capture", map[string]any{"body": body})
+	}
+
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{"pain-de-mie", []string{"Pain-de-mie trial: 4% sugar, 82% butter"}},
+		{"82%", []string{"Pain-de-mie trial: 4% sugar, 82% butter"}},
+		{"no.2", []string{"Oven no.2 runs hot (+10 C)"}},
+		{"(+10", []string{"Oven no.2 runs hot (+10 C)"}},
+		{"pain", []string{"Painting the shop front", "Pain-de-mie trial: 4% sugar, 82% butter"}},
+		{"oven butter", nil},
+		{"++", nil},
+	} {
+		feed := runFormula(t, deps, userID, bdbID, "notes-feed", map[string]any{"query": tc.query})
+		var got []string
+		for row := range feed.Result.Rows {
+			body, _ := cell(t, feed.Result, row, "body").(string)
+			got = append(got, body)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("query %q found %q, want %q", tc.query, got, tc.want)
+		}
 	}
 }

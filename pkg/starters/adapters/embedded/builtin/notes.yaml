@@ -99,9 +99,10 @@ formulas:
             AND n.updated_at = (SELECT updated_at FROM notes WHERE id = :cursor)
             AND n.id < :cursor) )
         -- Filters, not a separate search: matching notes keep the feed's order and cards, and a
-        -- blank query means everything rather than nothing.
+        -- blank query means everything rather than nothing. The query is words typed in a box, so
+        -- fts_all_words quotes them: raw, "pain-de-mie" or "c++" would be read as FTS5 syntax and fail.
         AND (:query IS NULL OR TRIM(:query) = ''
-             OR n.id IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH :query))
+             OR n.id IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH fts_all_words(:query)))
         AND (:tag IS NULL OR EXISTS (SELECT 1 FROM json_each(n.tags) WHERE value = :tag))
       ORDER BY n.pinned DESC, n.updated_at DESC, n.id DESC
       LIMIT :limit
@@ -110,7 +111,7 @@ formulas:
         type: text
         source: prompt
         optional: true
-        hint: full-text search over titles and bodies
+        hint: words to find in titles and bodies
       - name: tag
         type: text
         source: lookup
@@ -361,8 +362,11 @@ skills:
 
       ## Finding
 
-      One view: `notes-feed` (pinned first, then recent), with optional `query` (full-text — see the
-      searching skill) and `tag` filters that compose. For tag facets query directly: existing tags via
+      One view: `notes-feed` (pinned first, then recent), with optional `query` and `tag` filters that
+      compose. `query` is words, taken literally: every word has to be found, a word also matching the
+      start of a longer one, and punctuation is safe (`pain-de-mie`, `c++`). Search operators don't apply
+      there — for those, query `notes_fts` directly (see the searching skill). For tag facets query
+      directly: existing tags via
       `SELECT DISTINCT value FROM notes, json_each(notes.tags)`, notes carrying one via
       `WHERE EXISTS (SELECT 1 FROM json_each(tags) WHERE value = :tag)`.
 
@@ -410,6 +414,10 @@ skills:
       | Prefix | `kuber*` |
       | Specific column | `title:roadmap` |
       | Within N tokens | `NEAR(deploy production, 5)` |
+
+      Those operators make punctuation meaningful: `pain-de-mie` or `c++` written raw is a syntax error.
+      To search for words as a person typed them, wrap them: `notes_fts MATCH fts_all_words(:words)`
+      finds the rows holding every word, each also matching the start of a longer one.
 
       ### Writing
 
