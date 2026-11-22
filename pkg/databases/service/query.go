@@ -100,7 +100,33 @@ func (s *QueryService) Execute(
 	if len(args) > 0 {
 		argsPerStmt = [][]domain.TypedValue{args}
 	}
-	return s.execute(ctx, userID, bdbID, sql, argsPerStmt, intent)
+	return s.execute(ctx, userID, bdbID, sql, statementArgs{perStmt: argsPerStmt}, intent)
+}
+
+// ExecuteNamed is Execute for values given by placeholder name: params maps a name, without its sigil ("x" for ":x"),
+// to its value. The request may hold several statements; each binds the names it uses.
+//
+// Placeholders without a value return a *domain.MissingParametersError, values no statement uses a
+// *domain.UnusedParametersError, and a bare "?" placeholder domain.ErrUnnamedParameter.
+func (s *QueryService) ExecuteNamed(
+	ctx context.Context,
+	userID, bdbID uuid.UUID,
+	sql string,
+	params map[string]domain.TypedValue,
+	intent domain.OperationIntent,
+) (*domain.QueryResult, error) {
+	if params == nil {
+		params = map[string]domain.TypedValue{}
+	}
+	return s.execute(ctx, userID, bdbID, sql, statementArgs{named: params}, intent)
+}
+
+// statementArgs carries the bound values of a request in one of two forms: perStmt holds one positional slice per
+// statement, and a non-nil named holds values keyed by placeholder name, resolved into positional slices once the
+// statements are classified.
+type statementArgs struct {
+	perStmt [][]domain.TypedValue
+	named   map[string]domain.TypedValue
 }
 
 // ExecuteStatements is Execute for pre-bound multi-statement input: argsPerStmt[i] binds
@@ -114,10 +140,10 @@ func (s *QueryService) ExecuteStatements(
 	argsPerStmt [][]domain.TypedValue,
 	intent domain.OperationIntent,
 ) (*domain.QueryResult, error) {
-	return s.execute(ctx, userID, bdbID, sql, argsPerStmt, intent)
+	return s.execute(ctx, userID, bdbID, sql, statementArgs{perStmt: argsPerStmt}, intent)
 }
 
-// execute runs the shared authorize → resolve → classify → execute path with per-statement bound args.
+// execute runs the shared authorize → resolve → classify → execute path with the request's bound args.
 //
 // Preflight order:
 //  0. Take one of the caller's in-flight slots; at the cap the request is refused with QueryRateLimitedError
@@ -140,7 +166,7 @@ func (s *QueryService) execute(
 	ctx context.Context,
 	userID, bdbID uuid.UUID,
 	sql string,
-	argsPerStmt [][]domain.TypedValue,
+	args statementArgs,
 	intent domain.OperationIntent,
 ) (*domain.QueryResult, error) {
 	ctx, span := tracer.Start(ctx, "QueryService.Execute",
@@ -172,7 +198,7 @@ func (s *QueryService) execute(
 		runCtx, cancel = context.WithTimeout(ctx, s.requestTimeout)
 		defer cancel()
 	}
-	result, err := s.classifyAndRun(runCtx, userID, bdbID, db, sql, argsPerStmt, intent)
+	result, err := s.classifyAndRun(runCtx, userID, bdbID, db, sql, args, intent)
 	if err != nil {
 		// Attributes the failure to the budget only when it fired while the caller's own ctx was still live: a client
 		// disconnect or an inherited shorter deadline must not masquerade as the query timeout.
@@ -191,7 +217,7 @@ func (s *QueryService) classifyAndRun(
 	userID, bdbID uuid.UUID,
 	db *domain.Database,
 	sql string,
-	argsPerStmt [][]domain.TypedValue,
+	given statementArgs,
 	intent domain.OperationIntent,
 ) (*domain.QueryResult, error) {
 	databaseID := db.ID.String()
@@ -229,7 +255,15 @@ func (s *QueryService) classifyAndRun(
 	if err := validateIntentForStatements(intent, stmts); err != nil {
 		return nil, err
 	}
-	if len(argsPerStmt) == 0 {
+	argsPerStmt := given.perStmt
+	switch {
+	case given.named != nil:
+		bound, err := domain.BindNamedParameters(stmts, given.named)
+		if err != nil {
+			return nil, err
+		}
+		argsPerStmt = bound
+	case len(argsPerStmt) == 0:
 		if err := domain.MissingParameters(stmts); err != nil {
 			return nil, err
 		}

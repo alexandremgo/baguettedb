@@ -40,7 +40,7 @@ func (e *StatementKindError) Error() string {
 	return "the statement is of another kind"
 }
 
-// ParametersError reports SQL with parameter placeholders, which the SQL commands take no values for.
+// ParametersError reports SQL with parameter placeholders left without a value.
 type ParametersError struct {
 	// Names lists the placeholders without their sigil ("x" for ":x"); "?" for a bare one.
 	Names []string

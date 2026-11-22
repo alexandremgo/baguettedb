@@ -38,8 +38,13 @@ func newSQLCmd(flags *globalFlags, open localOpener) *cobra.Command {
 
 // newSQLRunCmd builds a command named name that runs one statement of the kind intent in a bdb, the SQL given as an
 // argument or read from --file (- for stdin).
+//
+// A query and a data command also take the values of the SQL's named placeholders, with --param, --params or
+// --params-file; a schema command takes none.
 func newSQLRunCmd(name, short string, intent domain.Intent, flags *globalFlags, open localOpener) *cobra.Command {
-	var file string
+	takesParams := intent != domain.IntentSchema
+	params := paramFlag{}
+	var file, paramsJSON, paramsFile string
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   name + " <bdb> [<sql> | --file <path>]",
@@ -47,18 +52,38 @@ func newSQLRunCmd(name, short string, intent domain.Intent, flags *globalFlags, 
 		Long:  short + ". " + bdbArgHelp + " The SQL is the second argument, or the content of --file (- reads stdin).",
 		Args:  usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if file == "-" && paramsFile == "-" {
+				return usageError{err: errors.New("the SQL and the parameters cannot both come from stdin")}
+			}
 			sql, err := readSQL(cmd.InOrStdin(), args[1:], file)
 			if err != nil {
 				return err
 			}
+			var spec []byte
+			if takesParams {
+				if spec, err = readParamsSpec(cmd, paramsJSON, paramsFile); err != nil {
+					return err
+				}
+			}
 			return runLocal(cmd, flags, open, func(l *local) error {
-				b, result, err := l.sql.Run(cmd.Context(), args[0], sql, intent)
+				var b domain.Bdb
+				var result domain.QueryResult
+				var err error
+				if spec != nil {
+					b, result, err = l.sql.RunJSON(cmd.Context(), args[0], sql, intent, spec)
+				} else {
+					b, result, err = l.sql.Run(cmd.Context(), args[0], sql, intent, params)
+				}
 				if refused, ok := errors.AsType[*domain.StatementKindError](err); ok {
 					return fmt.Errorf("in %s: %s", b.Name, statementKindMessage(cmd.Root().Name(), refused))
 				}
-				if params, ok := errors.AsType[*domain.ParametersError](err); ok {
-					return fmt.Errorf("in %s: %v, which sql commands don't take; write the values in the SQL, or save "+
-						"it as a formula and run it with --param", b.Name, params)
+				if missing, ok := errors.AsType[*domain.ParametersError](err); ok && takesParams {
+					return fmt.Errorf("in %s: %s but no values for them; give each one with --param name=value, or "+
+						"all of them as a JSON object with --params", b.Name, missing.Error())
+				}
+				if missing, ok := errors.AsType[*domain.ParametersError](err); ok {
+					return fmt.Errorf("in %s: %s, which sql %s doesn't take; write the values in the SQL", b.Name,
+						missing.Error(), name)
 				}
 				if err != nil {
 					return err
@@ -68,12 +93,37 @@ func newSQLRunCmd(name, short string, intent domain.Intent, flags *globalFlags, 
 		},
 	}
 	cmd.Flags().StringVar(&file, "file", "", "read the SQL from this file, or from stdin with -")
+	if takesParams {
+		cmd.Use = name + " <bdb> [<sql> | --file <path>] [--param name=value]... [--params <json>] " +
+			"[--params-file <path>]"
+		cmd.Long += " To keep a value out of the SQL, write a named placeholder (:name) and give its value with " +
+			"--param name=value: it binds as text, exactly as given, with no quote to double. --params gives " +
+			"every value as one JSON object instead, each typed as JSON types it (a number, true or false, null, " +
+			"or a list or object bound as its JSON text); --params-file reads that object from a file, or from " +
+			"stdin with -. Give only one of the three."
+		cmd.Example = "  bdb sql " + name + " Bakery " + sqlParamExample(intent)
+		cmd.Flags().Var(params, "param", "the value of a named placeholder of the SQL, as text; repeated for each one")
+		cmd.Flags().StringVar(&paramsJSON, "params", "", "the value of every placeholder as one JSON object")
+		cmd.Flags().StringVar(&paramsFile, "params-file", "",
+			"read the value of every placeholder as one JSON object from this file, or from stdin with -")
+	}
 	jsonHelp := "print the result as a JSON object: the rows changed, and any rows RETURNING gives"
 	if intent == domain.IntentQuery {
 		jsonHelp = "print the rows as a JSON array, each row an object keyed by column"
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, jsonHelp)
 	return cmd
+}
+
+// sqlParamExample returns the end of an example command line running a statement of the kind intent with values.
+func sqlParamExample(intent domain.Intent) string {
+	if intent == domain.IntentQuery {
+		return "\"SELECT name FROM loaves WHERE flour = :flour\" --param flour=rye\n" +
+			"  bdb sql query Bakery \"SELECT name FROM loaves WHERE grams > :grams\" --params '{\"grams\": 500}'"
+	}
+	return "\"UPDATE loaves SET note = :note WHERE id = :id\" --param id=3 --param note=\"Baker's choice\"\n" +
+		"  bdb sql data Bakery \"INSERT INTO loaves (name, grams) VALUES (:name, :grams)\" " +
+		"--params '{\"name\": \"Rye\", \"grams\": 800}'"
 }
 
 // readSQL returns the SQL from args (at most one) or from file, stdin when file is -. Neither or both, and SQL that

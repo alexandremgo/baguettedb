@@ -5,7 +5,35 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
+
+// readParamsSpec returns the JSON object cmd's --params flag (paramsJSON) or --params-file flag (paramsFile) gives,
+// and nil when neither is set. More than one of --param, --params and --params-file, and parameters that are only
+// blank, are usage errors.
+func readParamsSpec(cmd *cobra.Command, paramsJSON, paramsFile string) ([]byte, error) {
+	f := cmd.Flags()
+	modes := 0
+	for _, name := range []string{"param", "params", "params-file"} {
+		if f.Changed(name) {
+			modes++
+		}
+	}
+	if modes > 1 {
+		return nil, usageError{err: errors.New("give the parameters with --param, --params or --params-file, " +
+			"only one of them")}
+	}
+	switch {
+	case f.Changed("params") && strings.TrimSpace(paramsJSON) == "":
+		return nil, usageError{err: errors.New("the parameters are empty")}
+	case f.Changed("params"):
+		return []byte(paramsJSON), nil
+	case f.Changed("params-file"):
+		return readFileFlag(cmd.InOrStdin(), paramsFile, "parameters")
+	}
+	return nil, nil
+}
 
 // paramFlag collects repeated --param name=value flags into a map, as a pflag.Value.
 type paramFlag map[string]string

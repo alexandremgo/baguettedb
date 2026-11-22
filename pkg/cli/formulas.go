@@ -304,29 +304,9 @@ func newFormulasRunCmd(flags *globalFlags, open localOpener) *cobra.Command {
 			"  EOF",
 		Args: usageArgs(argsByUsage),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f := cmd.Flags()
-			modes := 0
-			for _, name := range []string{"param", "params", "params-file"} {
-				if f.Changed(name) {
-					modes++
-				}
-			}
-			if modes > 1 {
-				return usageError{err: errors.New("give the parameters with --param, --params or --params-file, " +
-					"only one of them")}
-			}
-			var spec []byte
-			switch {
-			case f.Changed("params") && strings.TrimSpace(paramsJSON) == "":
-				return usageError{err: errors.New("the parameters are empty")}
-			case f.Changed("params"):
-				spec = []byte(paramsJSON)
-			case f.Changed("params-file"):
-				content, err := readFileFlag(cmd.InOrStdin(), paramsFile, "parameters")
-				if err != nil {
-					return err
-				}
-				spec = content
+			spec, err := readParamsSpec(cmd, paramsJSON, paramsFile)
+			if err != nil {
+				return err
 			}
 			return runLocal(cmd, flags, open, func(l *local) error {
 				var b domain.Bdb

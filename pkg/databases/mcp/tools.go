@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/alexandremgo/baguettedb/pkg/common/mcputil"
+	"github.com/alexandremgo/baguettedb/pkg/databases/appinput"
 	"github.com/alexandremgo/baguettedb/pkg/databases/domain"
 	"github.com/alexandremgo/baguettedb/pkg/databases/service"
 )
@@ -54,9 +55,10 @@ func registerTools(
 					"Multi-statement input is not supported. Results are capped: a larger result is refused with the "+
 					"limit named in the error, so add a LIMIT or aggregate for big tables. The full JSON1 function "+
 					"set, JSONB, and FTS5 are built in — engine capabilities, rules and your limits in "+
-					mcputil.ToolGetDocs+"(topic: 'sql')."),
+					mcputil.ToolGetDocs+"(topic: 'sql'). "+sqlParamsAdvice),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 			mcplib.WithString("sql", mcplib.Required(), mcplib.Description("Single SELECT statement to execute")),
+			mcplib.WithObject("params", mcplib.Description(sqlParamsDescription)),
 		),
 		executeQueryHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
@@ -78,10 +80,11 @@ func registerTools(
 					"end, new) instead of rewriting it whole. JSON "+
 					"values bind and store as TEXT, with the full JSON1 set usable in DML. BLOB values cannot be "+
 					"stored (keep binary as base64 or hex text) — engine capabilities and rules in "+
-					mcputil.ToolGetDocs+"(topic: 'sql')."),
+					mcputil.ToolGetDocs+"(topic: 'sql'). "+sqlParamsAdvice),
 			mcplib.WithString("bdb_id", mcplib.Required(), mcplib.Description("Bdb ID")),
 			mcplib.WithString("sql", mcplib.Required(),
 				mcplib.Description("DML statement(s) to execute; multiple separated by ';'")),
+			mcplib.WithObject("params", mcplib.Description(sqlParamsDescription)),
 		),
 		executeDataHandler(querySvc, opts.AffectedValueMaxChars, logger),
 	)
@@ -269,12 +272,17 @@ func executeQueryHandler(
 			return mcplib.NewToolResultError("sql is required"), nil
 		}
 
-		result, err := querySvc.Execute(ctx, userID, bdbID, sql, nil, domain.IntentQuery)
+		params, err := sqlParams(args)
+		if err != nil {
+			return mcplib.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := querySvc.ExecuteNamed(ctx, userID, bdbID, sql, params, domain.IntentQuery)
 		if err != nil {
 			logger.Error().Err(err).
 				Str("user_id", userID.String()).Str("bdb_id", bdbID.String()).
 				Msg("MCP execute_query failed")
-			return executeErrorResult("query execution failed", err), nil
+			return executeErrorResult("query execution failed", err, true), nil
 		}
 
 		return marshalToJSON(toQueryResult(result, maxValueChars))
@@ -304,12 +312,17 @@ func executeDataHandler(
 			return mcplib.NewToolResultError("sql is required"), nil
 		}
 
-		result, err := querySvc.Execute(ctx, userID, bdbID, sql, nil, domain.IntentExecute)
+		params, err := sqlParams(args)
+		if err != nil {
+			return mcplib.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := querySvc.ExecuteNamed(ctx, userID, bdbID, sql, params, domain.IntentExecute)
 		if err != nil {
 			logger.Error().Err(err).
 				Str("user_id", userID.String()).Str("bdb_id", bdbID.String()).
 				Msg("MCP execute_data failed")
-			return executeErrorResult("mutation execution failed", err), nil
+			return executeErrorResult("mutation execution failed", err, true), nil
 		}
 
 		return marshalToJSON(toQueryResult(result, maxValueChars))
@@ -344,7 +357,7 @@ func executeSchemaHandler(
 			logger.Error().Err(err).
 				Str("user_id", userID.String()).Str("bdb_id", bdbID.String()).
 				Msg("MCP execute_schema failed")
-			return executeErrorResult("schema execution failed", err), nil
+			return executeErrorResult("schema execution failed", err, false), nil
 		}
 
 		return marshalToJSON(toQueryResult(result, maxValueChars))
@@ -610,9 +623,41 @@ func parseUserID(ctx context.Context) (uuid.UUID, error) {
 	return userID, nil
 }
 
+// sqlParamsAdvice is the sentence of a tool description on giving values apart from the SQL.
+const sqlParamsAdvice = "To keep a value out of the SQL text, write a named placeholder (:name) and give its value " +
+	"in params: text then arrives exactly as given, quotes, backslashes and line breaks included, with nothing to " +
+	"escape."
+
+// sqlParamsDescription describes the params argument of the tools that take values apart from the SQL.
+const sqlParamsDescription = "Optional values for the SQL's named placeholders, keyed by name without the colon " +
+	"(e.g. sql \"UPDATE notes SET body = :body WHERE id = :id\" with {\"body\": \"It's done\", \"id\": 3}). A " +
+	"string binds as text, a whole number as an integer, another number as a real, true/false as 1/0, null as " +
+	"NULL, an array or object as its JSON text. Several statements share the one set, each using the names it " +
+	"needs; a value no statement uses is refused."
+
+// sqlParams reads the optional params argument of a tool call into the values to bind, keyed by placeholder name.
+// Absent or null params hold no value; params that are not an object are an error.
+func sqlParams(args map[string]any) (map[string]domain.TypedValue, error) {
+	raw, present := args["params"]
+	if !present || raw == nil {
+		return appinput.SQLParams(nil)
+	}
+	object, ok := raw.(map[string]any)
+	if !ok {
+		return nil, errors.New("params must be an object of values keyed by parameter name, " +
+			"e.g. {\"title\": \"Rye loaf\"}")
+	}
+	values, err := appinput.SQLParams(object)
+	if err != nil {
+		return nil, fmt.Errorf("params: %w", err)
+	}
+	return values, nil
+}
+
 // executeErrorResult returns the tool error for a failed execute_* call: failure (e.g. "query execution failed") and
-// its cause, with advice naming the tool to use when the statement's kind or its parameters are the cause.
-func executeErrorResult(failure string, err error) *mcplib.CallToolResult {
+// its cause, with advice naming the tool to use when the statement's kind is the cause, and what to do about the
+// parameters when they are. takesParams tells whether the tool takes values for the SQL's placeholders.
+func executeErrorResult(failure string, err error, takesParams bool) *mcplib.CallToolResult {
 	if refused, ok := errors.AsType[*domain.StatementKindError](err); ok {
 		var advice string
 		switch {
@@ -630,9 +675,16 @@ func executeErrorResult(failure string, err error) *mcplib.CallToolResult {
 		return mcplib.NewToolResultError(fmt.Sprintf("%s: %v; %s", failure, refused, advice))
 	}
 	if errors.Is(err, domain.ErrMissingParameters) {
-		return mcplib.NewToolResultError(fmt.Sprintf("%s: %v; this tool takes none, so write the values in the SQL, "+
-			"or save it as a formula (%s) and run it with its parameters (%s)", failure, err,
-			mcputil.ToolCreateFormula, mcputil.ToolRunFormula))
+		if !takesParams {
+			return mcplib.NewToolResultError(fmt.Sprintf("%s: %v; this tool takes none, so write the values in the SQL",
+				failure, err))
+		}
+		return mcplib.NewToolResultError(fmt.Sprintf("%s: %v; give each one a value in params, keyed by its name "+
+			"without the colon", failure, err))
+	}
+	if errors.Is(err, domain.ErrUnusedParameters) {
+		return mcplib.NewToolResultError(fmt.Sprintf("%s: %v; use each one in the SQL as :name, or leave it out of "+
+			"params", failure, err))
 	}
 	return mcplib.NewToolResultError(fmt.Sprintf("%s: %v", failure, err))
 }

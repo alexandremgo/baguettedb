@@ -177,6 +177,13 @@ var (
 	// errors.Is on a *MissingParametersError.
 	ErrMissingParameters = errors.New("SQL parameters without values")
 
+	// ErrUnusedParameters indicates values given for parameters the SQL does not have. Also returned by errors.Is on
+	// an *UnusedParametersError.
+	ErrUnusedParameters = errors.New("values without SQL parameters")
+
+	// ErrUnnamedParameter indicates a bare "?" placeholder in SQL whose values are given by name.
+	ErrUnnamedParameter = errors.New("a ? placeholder has no name to take a value by; write a named one such as :name")
+
 	// ErrReservedTable indicates that the statement targets a platform-reserved table (name starts with '_').
 	ErrReservedTable = errors.New("table is reserved by the platform")
 

@@ -1,7 +1,9 @@
 package intraprocess
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -71,10 +73,35 @@ func (a *DatabasesApp) ListFormulas(ctx context.Context, bdbID uuid.UUID) ([]app
 	return appconv.Formulas(formulas), nil
 }
 
-// Execute runs sql in the bdb bdbID as the databases app's statement kind matching intent, and converts the result. A
-// statement of another kind returns a *domain.StatementKindError, SQL with parameters a *domain.ParametersError.
+// Execute runs sql in the bdb bdbID as the databases app's statement kind matching intent, and converts the result.
+// params holds the values of the SQL's named placeholders, keyed by name and bound as text. A statement of another
+// kind returns a *domain.StatementKindError, a placeholder left without a value a *domain.ParametersError.
 func (a *DatabasesApp) Execute(
-	ctx context.Context, bdbID uuid.UUID, sql string, intent domain.Intent,
+	ctx context.Context, bdbID uuid.UUID, sql string, intent domain.Intent, params map[string]string,
+) (domain.QueryResult, error) {
+	values := make(map[string]any, len(params))
+	for name, value := range params {
+		values[name] = value
+	}
+	return a.execute(ctx, bdbID, sql, intent, values)
+}
+
+// ExecuteJSON is Execute with the values given as params, a JSON object keyed by placeholder name, each bound as JSON
+// types it: a whole number of any size binds as that exact integer.
+func (a *DatabasesApp) ExecuteJSON(
+	ctx context.Context, bdbID uuid.UUID, sql string, intent domain.Intent, params []byte,
+) (domain.QueryResult, error) {
+	values, err := decodeSQLParams(params)
+	if err != nil {
+		return domain.QueryResult{}, err
+	}
+	return a.execute(ctx, bdbID, sql, intent, values)
+}
+
+// execute runs sql in the bdb bdbID with values, the decoded JSON values of its named placeholders. A schema change
+// takes none.
+func (a *DatabasesApp) execute(
+	ctx context.Context, bdbID uuid.UUID, sql string, intent domain.Intent, values map[string]any,
 ) (domain.QueryResult, error) {
 	ctx = a.account.bind(ctx)
 	var dbIntent dbdomain.OperationIntent
@@ -89,12 +116,39 @@ func (a *DatabasesApp) Execute(
 		return domain.QueryResult{}, fmt.Errorf("unknown statement kind %d", intent)
 	}
 
-	r, err := a.querySvc.Execute(ctx, a.account.ID, bdbID, sql, nil, dbIntent)
+	if intent == domain.IntentSchema {
+		r, err := a.querySvc.Execute(ctx, a.account.ID, bdbID, sql, nil, dbIntent)
+		if err != nil {
+			return domain.QueryResult{}, executeError(err)
+		}
+		return toQueryResult(r), nil
+	}
+
+	bound, err := appinput.SQLParams(values)
+	if err != nil {
+		return domain.QueryResult{}, fmt.Errorf("the parameters: %w", err)
+	}
+	r, err := a.querySvc.ExecuteNamed(ctx, a.account.ID, bdbID, sql, bound, dbIntent)
 	if err != nil {
 		return domain.QueryResult{}, executeError(err)
 	}
 
 	return toQueryResult(r), nil
+}
+
+// decodeSQLParams decodes params, a single JSON object, into the values of a statement's placeholders, keeping each
+// number as a json.Number so a whole number stays exact whatever its size; JSON null holds none.
+func decodeSQLParams(params []byte) (map[string]any, error) {
+	var values map[string]any
+	d := json.NewDecoder(bytes.NewReader(params))
+	d.UseNumber()
+	if err := d.Decode(&values); err != nil {
+		return nil, fmt.Errorf("reading the parameters: want a JSON object, such as {\"name\": \"value\"}: %w", err)
+	}
+	if d.More() {
+		return nil, fmt.Errorf("reading the parameters: %w", errMoreThanOneValue)
+	}
+	return values, nil
 }
 
 // executeError converts the databases app's statement-kind, missing-parameter and parameter value errors into the

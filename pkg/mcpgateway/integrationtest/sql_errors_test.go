@@ -14,8 +14,8 @@ const gatewayPlacesSchema = "CREATE TABLE places (id INTEGER PRIMARY KEY, name T
 
 // TestMCP_SQLErrors_ReadPlainly checks how the execute tools word refused or failing SQL: a statement of another kind
 // names the tool that runs it (numbered within a batch), invalid SQL and a statement the engine refuses (a NOT NULL
-// column left empty) carry SQLite's message alone, numbered within a batch only, and SQL with parameters points at
-// formulas; and that execute_data with RETURNING returns its rows and the true count.
+// column left empty) carry SQLite's message alone, numbered within a batch only, and SQL with parameters asks for
+// their values in params; and that execute_data with RETURNING returns its rows and the true count.
 func TestMCP_SQLErrors_ReadPlainly(t *testing.T) {
 	truncateAll(t)
 	userID, bdbID := uuid.New().String(), uuid.New().String()
@@ -40,8 +40,7 @@ func TestMCP_SQLErrors_ReadPlainly(t *testing.T) {
 		{"execute_data", "INSERT INTO places (name) VALUES ('Lyon'); INSERT INTO places (name) VALUES (NULL)",
 			"mutation execution failed: statement 2: NOT NULL constraint failed: places.name"},
 		{"execute_query", "SELECT * FROM places WHERE name = :name", "query execution failed: the SQL has parameters " +
-			"(name) but no values for them; this tool takes none, so write the values in the SQL, or save it as a " +
-			"formula (create_formula) and run it with its parameters (run_formula)"},
+			"(name) but no values for them; give each one a value in params, keyed by its name without the colon"},
 	} {
 		result = callTool(t, c, tt.tool, map[string]any{"bdb_id": bdbID, "sql": tt.sql})
 		if text := result.Content[0].(mcp.TextContent).Text; !result.IsError || text != tt.want {

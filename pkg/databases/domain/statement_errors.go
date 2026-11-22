@@ -78,6 +78,22 @@ func (e *MissingParametersError) Unwrap() error {
 	return ErrMissingParameters
 }
 
+// UnusedParametersError reports values given for parameters that no statement of the SQL has.
+type UnusedParametersError struct {
+	// Names lists the parameters without their sigil ("x" for ":x"), sorted.
+	Names []string
+}
+
+// Error names the parameters, e.g. "values given for parameters the SQL does not have (x, y)".
+func (e *UnusedParametersError) Error() string {
+	return fmt.Sprintf("values given for parameters the SQL does not have (%s)", strings.Join(e.Names, ", "))
+}
+
+// Unwrap returns ErrUnusedParameters, so errors.Is matches the sentinel.
+func (e *UnusedParametersError) Unwrap() error {
+	return ErrUnusedParameters
+}
+
 // MissingParameters returns a *MissingParametersError naming the placeholders of stmts, or nil when they have none.
 func MissingParameters(stmts []ClassifiedStatement) error {
 	var names []string
