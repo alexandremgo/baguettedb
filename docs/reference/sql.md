@@ -54,6 +54,20 @@ FTS5 is compiled in: `CREATE VIRTUAL TABLE docs_fts USING fts5(title, body)` wor
 ranking. Caveat: virtual tables are captured only at the DDL level in the change log — direct row
 writes into them bypass it, and undoing a DROP restores an empty vtable to be rebuilt from its source.
 
+The right-hand side of `MATCH` is an FTS5 query, in which punctuation is syntax: searching `pain-de-mie`, `node.js` or
+`c++` as typed fails with a syntax error, and so does an empty string or NULL. To search for words as a person typed
+them, a search box's parameter for instance, wrap them in `fts_all_words(text)`:
+
+```sql
+SELECT rowid FROM docs_fts WHERE docs_fts MATCH fts_all_words(:query)
+```
+
+It returns the query matching the rows that hold every word of the text, each word quoted so that none of it is read
+as syntax. A word ending in a letter or a digit also matches the start of a longer word (`bake` finds `bakery`); one
+ending in punctuation is taken whole (`c++`). A text with no word in it matches no row. Like `text_patch`, it runs in
+queries and formulas, not from a view, a trigger or a schema expression. Write the FTS5 query yourself when you want
+its operators (`OR`, `NOT`, `NEAR`, a column filter).
+
 ## Editing long text
 
 Edit a long TEXT value (a note, a description, a markdown document) in place: send the part that changes, not the

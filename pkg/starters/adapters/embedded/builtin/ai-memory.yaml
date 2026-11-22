@@ -98,14 +98,16 @@ formulas:
   - name: recall
     label: Recall
     hidden: true
-    description: Full-text relevance search over summaries and contents, ranked, with a matching excerpt and staleness age.
+    description: Full-text relevance search over summaries and contents, ranked, with a matching excerpt and staleness age — `query` is words taken literally, every one of them to be found, punctuation included.
     sql: |-
       SELECT m.id AS rowid, m.slug, m.type, m.summary,
              snippet(memories_fts, -1, '[', ']', '…', 12) AS excerpt, m.tags, m.scope, m.pinned,
              CAST(julianday('now') - julianday(COALESCE(m.verified_at, m.updated_at)) AS INTEGER) AS age_days
       FROM memories_fts
       JOIN memories m ON m.id = memories_fts.rowid
-      WHERE memories_fts MATCH :query
+      -- The query is words, quoted by fts_all_words: raw, a slug such as "prefers-dark-mode" would be
+      -- read as FTS5 syntax and fail.
+      WHERE memories_fts MATCH fts_all_words(:query)
       ORDER BY rank
       LIMIT :max_rows
     params:

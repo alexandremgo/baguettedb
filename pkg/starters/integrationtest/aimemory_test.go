@@ -3,6 +3,7 @@
 package integrationtest
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -184,5 +185,40 @@ func TestAIMemoryAmendMemoryPatchesContent(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "text_patch: old not found") {
 		t.Errorf("amending an absent passage: error = %v, want it refused", err)
+	}
+}
+
+// TestAIMemoryRecallTakesPunctuation checks that recall finds a memory by words carrying punctuation, a hyphenated
+// name and a time of day, which raw FTS5 would read as syntax and fail on, and that every word has to be found.
+func TestAIMemoryRecallTakesPunctuation(t *testing.T) {
+	deps, userID, bdbID := applyAIMemory(t)
+
+	runFormula(t, deps, userID, bdbID, "remember", map[string]any{
+		"slug": "bakery-oven-schedule", "summary": "the bakery's deck-oven schedule",
+		"content": "The deck-oven (no.2) takes the first batch at 5:00.",
+	})
+	runFormula(t, deps, userID, bdbID, "remember", map[string]any{
+		"slug": "bakery-shop-window", "summary": "the bakery's shop window",
+		"content": "Repainted in spring; the deck chairs stay outside.",
+	})
+
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{"deck-oven", []string{"bakery-oven-schedule"}},
+		{"5:00", []string{"bakery-oven-schedule"}},
+		{"deck spring", []string{"bakery-shop-window"}},
+		{"deck croissant", nil},
+	} {
+		found := runFormula(t, deps, userID, bdbID, "recall", map[string]any{"query": tc.query})
+		var got []string
+		for row := range found.Result.Rows {
+			slug, _ := cell(t, found.Result, row, "slug").(string)
+			got = append(got, slug)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("recall %q found %q, want %q", tc.query, got, tc.want)
+		}
 	}
 }
