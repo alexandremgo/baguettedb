@@ -498,7 +498,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/credentials v1.21.0
+github.com/aws/aws-sdk-go-v2/credentials v1.21.3
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -570,7 +570,7 @@ LICENSE.txt: shared text [2] below.
 
 
 --------------------------------------------------------------------------
-github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
+github.com/aws/aws-sdk-go-v2/service/s3 v1.116.0
 --------------------------------------------------------------------------
 
 License: Apache-2.0
@@ -1207,7 +1207,7 @@ LICENSE:
 
 
 --------------------------------------------------------------------------
-github.com/mark3labs/mcp-go v1.5.0
+github.com/mark3labs/mcp-go v1.6.0
 --------------------------------------------------------------------------
 
 License: MIT
