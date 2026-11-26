@@ -44,7 +44,7 @@ export function BdbList() {
     return (
       <StarterGallery
         title="Welcome to BaguetteDB"
-        subtitle="create your first bdb from a curated starter — tables, formulas, and a skill included."
+        subtitle="create your first bdb from a starter, which comes with its tables, formulas and a skill."
       />
     );
   }

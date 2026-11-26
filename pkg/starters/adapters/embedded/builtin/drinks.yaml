@@ -5,7 +5,7 @@
 key: drinks
 version: 1
 name: Drinks
-description: Log the drinks you taste — wine, beer, coffee, cocktails — rate them in half-stars, keep a cellar with a wishlist, and save the recipes you converge on.
+description: Log the wine, beer, coffee and cocktails you taste, rate them in half-stars, keep a cellar with a wishlist, and save the recipes you settle on.
 icon: "🍷☕"
 tags:
   - lifestyle

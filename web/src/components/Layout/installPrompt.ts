@@ -30,7 +30,7 @@ export function installInstructions(): string {
     return "To install: tap the Share button, then choose Add to Home Screen.";
   }
   if (navigator.platform === "MacIntel" || /macintosh/i.test(ua)) {
-    return "To install: in Safari: File → Add to Dock; in Chrome: click the install icon in the address bar (it might already be installed — check chrome://apps).";
+    return "To install: in Safari: File → Add to Dock; in Chrome: click the install icon in the address bar (if it's already installed, chrome://apps lists it).";
   }
-  return "To install: click the install icon in your browser's address bar if available. It might already be installed — check chrome://apps.";
+  return "To install: click the install icon in your browser's address bar if available. If it's already installed, chrome://apps lists it.";
 }

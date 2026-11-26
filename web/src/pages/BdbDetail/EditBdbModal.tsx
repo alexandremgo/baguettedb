@@ -52,7 +52,7 @@ export function EditBdbModal({ bdb, open, onClose }: EditBdbModalProps) {
           name="description"
           defaultValue={bdb.description}
           placeholder="What is this bdb for?"
-          hint="Helps you — and your AI assistants — pick the right bdb later."
+          hint="Helps you and your AI assistants pick the right bdb later."
         />
         <div className={styles.actions}>
           <Button variant="secondary" type="button" onClick={onClose}>

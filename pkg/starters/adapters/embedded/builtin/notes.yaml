@@ -6,7 +6,7 @@
 key: notes
 version: 1
 name: Notes
-description: Not sure where to start? A simple Notes bdb for whatever you want to keep — loose thoughts or linked ones, a passing idea or a whole plan.
+description: Notes for anything you want to keep, with tags, links between notes and full-text search. A good first bdb when you're not sure where to start.
 icon: "📝"
 tags:
   - notes

@@ -47,7 +47,7 @@ export function Settings() {
         window.location.href = "/sign-in?ended=1";
         return;
       }
-      toast("Password changed successfully", "success");
+      toast("Password changed", "success");
       formRef.current?.reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to change password");

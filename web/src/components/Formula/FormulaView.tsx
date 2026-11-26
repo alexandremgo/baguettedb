@@ -401,8 +401,8 @@ export function FormulaView({
             <div className={styles.results}>
               {modeDegraded && (
                 <div className={styles.notice}>
-                  This view's display config no longer matches its columns —
-                  showing the table.
+                  This view's display config no longer matches its columns, so it shows as a
+                  table.
                 </div>
               )}
 

@@ -3,7 +3,7 @@
 key: ai-memory
 version: 1
 name: AI Memory
-description: A portable long-term memory your AI assistants share — atomic facts with stable slugs, links, and full-text recall.
+description: "Long-term memory that all your AI assistants share: one fact per row, with stable slugs, links between facts and full-text recall."
 icon: "🧠"
 tags:
   - ai

@@ -199,7 +199,7 @@ export function MultiSelect({
               <div className={styles.note}>{loading ? "Loading…" : "No matches."}</div>
             )}
             {truncated && (
-              <div className={styles.note}>Showing the first matches — keep typing to narrow.</div>
+              <div className={styles.note}>Showing the first matches. Keep typing to narrow.</div>
             )}
           </div>
         </div>

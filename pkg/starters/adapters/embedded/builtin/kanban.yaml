@@ -4,7 +4,7 @@
 key: kanban
 version: 1
 name: Kanban
-description: Track a project's tasks on a kanban board — drag between To do, In progress, and Done, with priorities, due dates, and a self-cleaning archive.
+description: Track a project's tasks on a board with To do, In progress and Done columns. Tasks carry priorities and due dates, and done ones move to the archive on their own.
 icon: "📋"
 tags:
   - productivity

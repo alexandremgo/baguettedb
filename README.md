@@ -1,7 +1,7 @@
 # 🥖 BaguetteDB
 
-**The data layer for your AI agents: one structured database per topic, each shared with exactly the people you
-choose.**
+**The data layer for your AI agents and your apps: one structured database per topic, each shared with exactly the
+people you choose.**
 
 [![CI](https://github.com/alexandremgo/baguettedb/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandremgo/baguettedb/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alexandremgo/baguettedb)](https://github.com/alexandremgo/baguettedb/releases)

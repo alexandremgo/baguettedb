@@ -3,7 +3,7 @@
 key: shared-expenses
 version: 1
 name: Shared expenses
-description: Split costs with your group — expenses with payers and shares, balances derived on demand, settlements, and recurring bills.
+description: "Split costs with your group: who paid and who shares each expense, balances worked out when you ask, settlements and recurring bills."
 icon: "💶"
 tags:
   - money

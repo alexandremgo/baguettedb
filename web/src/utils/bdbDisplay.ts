@@ -25,8 +25,8 @@ export function bdbOwnerAttribution(bdb: Bdb): string | undefined {
   return bdb.owner.email?.split("@")[0] || undefined;
 }
 
-/** Returns the bdb name with owner attribution appended ("Workout — owned by Emma"), for tooltips. */
+/** Returns the bdb name with owner attribution appended ("Workout (owned by Emma)"), for tooltips. */
 export function bdbTitle(bdb: Bdb): string {
   const owner = bdbOwnerAttribution(bdb);
-  return owner ? `${bdb.name} — owned by ${owner}` : bdb.name;
+  return owner ? `${bdb.name} (owned by ${owner})` : bdb.name;
 }

@@ -92,7 +92,7 @@ export function SkillsTab({ bdbId, canEdit }: SkillsTabProps) {
       <EmptyState
         icon={BookOpen}
         title="No skills yet."
-        hint="Skills teach your assistant how to work with this bdb — ask it to add one."
+        hint="Skills teach your assistant how to work with this bdb. Ask it to add one."
       />
     );
   }

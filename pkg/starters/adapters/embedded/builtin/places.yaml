@@ -3,7 +3,7 @@
 key: places
 version: 1
 name: Places
-description: Save the places you love or want to try — restaurants, cafés, shops, viewpoints — with ratings, tags, a wishlist, and map links.
+description: Save the restaurants, cafés, shops and viewpoints you love or want to try, with ratings, tags, a wishlist and map links.
 icon: "📍"
 tags:
   - travel
