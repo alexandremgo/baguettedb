@@ -83,13 +83,13 @@ func renderToolsDoc(tools []mcplib.Tool) (string, error) {
 
 	var sb strings.Builder
 	sb.WriteString("# MCP tools\n\n")
-	sb.WriteString("The MCP server of an instance exposes the tools below. An agent acts with the permissions of one " +
-		"account, on the bdbs that account is a member of: the owner, or the account `--as` names, when `bdb mcp` " +
-		"serves it over stdio; otherwise the account it signed in with or whose token it sends. A tool reserved to " +
-		"bdb owners says so in its description. `" + mcputil.ToolGetDocs + "` serves two manuals an agent reads " +
-		"before authoring formulas or writing SQL: the [formula authoring manual](formulas.md) and the [SQL " +
-		"capabilities and engine rules](sql.md). Every session also opens with the [agent " +
-		"instructions](agent-instructions.md).\n")
+	sb.WriteString("Every tool an agent can call on a BaguetteDB MCP server, with its parameters. An agent acts with " +
+		"the permissions of one account, on the bdbs that account is a member of: the owner, or the account `--as` " +
+		"names, when `bdb mcp` serves it over stdio; otherwise the account it signed in with or whose token it " +
+		"sends. A tool reserved to bdb owners says so in its description. `" + mcputil.ToolGetDocs + "` serves the " +
+		"manuals an agent reads before authoring formulas, writing SQL or building an app on the Data API: the " +
+		"[formula authoring manual](formulas.md), the [SQL capabilities and engine rules](sql.md) and the [Data API " +
+		"manual](data-api.md). Every session also opens with the [agent instructions](agent-instructions.md).\n")
 	for _, a := range areas {
 		fmt.Fprintf(&sb, "\n## %s\n", a.title)
 		for _, name := range a.tools {

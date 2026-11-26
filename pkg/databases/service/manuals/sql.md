@@ -1,30 +1,31 @@
 # SQL capabilities and engine rules
 
-Each bdb is a SQLite database. Check the exact engine version with `SELECT sqlite_version()`; it is
+Each bdb is a SQLite database with a few rules of its own, on names, reserved tables, the change log and statement
+limits. Check the exact engine version with `SELECT sqlite_version()`; it is
 guaranteed to be at least 3.45, so the JSON1 function set, JSONB, and FTS5 are all built in.
 
 ## Identifier rules
 
 Every created or renamed-to name (tables, columns, indexes, views, triggers) must start with an ASCII
 letter and contain only ASCII letters, digits, and underscores, at most 128 bytes. SQL keywords (e.g.
-`order`) are allowed — generated SQL always quotes identifiers — but best avoided, since every later
+`order`) are allowed (generated SQL always quotes identifiers) but best avoided, since every later
 hand-written query has to double-quote them.
 
 ## Reserved `_` prefix (platform tables)
 
-A leading underscore marks a platform-reserved name — the identifier rules exclude it, so user schema
+A leading underscore marks a platform-reserved name: the identifier rules exclude it, so user schema
 can never take one. Platform tables (e.g. `_change_log`, the per-user undo/redo stacks, skills storage)
-live in the same database: **reads on them are always allowed** (audit visibility — `SELECT` away), but
+live in the same database: **reads on them are always allowed** (for audits, `SELECT` away), but
 writes, DDL, and creating new `_`-prefixed objects are denied. SQLite's own `sqlite_*` internals are
 likewise off-limits; `sqlite_master` remains readable for schema introspection. A trigger body is checked
 when the trigger fires, so a trigger that writes a platform table fails at the statement that fires it,
 not at creation. Two more statement shapes are refused: `CREATE TEMP ...` (temporary objects would live
-on the shared connection, not in the bdb — use a CTE for intermediate results or a regular table for
+on the shared connection, not in the bdb; use a CTE for intermediate results or a regular table for
 scratch data) and `REINDEX` (index maintenance is the platform's job).
 
 ## JSON support
 
-JSON values are stored as TEXT — SQLite has no JSON column type. Declare JSON-holding columns TEXT and
+JSON values are stored as TEXT, since SQLite has no JSON column type. Declare JSON-holding columns TEXT and
 validate with a CHECK constraint:
 
 ```sql
@@ -41,13 +42,13 @@ CREATE TABLE items (data TEXT CHECK (json_valid(data)))
 CREATE INDEX idx_items_field ON items (json_extract(data, '$.field'))
 ```
 
-- Formula group params and multi-select lookup params bind as ONE JSON TEXT value — consume them with
+- Formula group params and multi-select lookup params bind as ONE JSON TEXT value; consume them with
   `json_each`, e.g. `WHERE m.id IN (SELECT je.value FROM json_each(:share_among) je)`.
 
 ## Full-text search
 
 FTS5 is compiled in: `CREATE VIRTUAL TABLE docs_fts USING fts5(title, body)` works, including BM25
-ranking. Caveat: virtual tables are captured only at the DDL level in the change log — direct row
+ranking. Caveat: virtual tables are captured only at the DDL level in the change log: direct row
 writes into them bypass it, and undoing a DROP restores an empty vtable to be rebuilt from its source.
 
 The right-hand side of `MATCH` is an FTS5 query, in which punctuation is syntax: searching `pain-de-mie`, `node.js` or
@@ -104,7 +105,7 @@ UPDATE notes SET body = text_patch(body, 'Ship it.', 'Ship it on Friday.') WHERE
 
 - `text_replace_between(text, start, end, new)` replaces one block without sending it, naming it by how it begins
   and how it ends: everything from the first character of `start` to the last character of `end` becomes `new`.
-  The anchors are part of the block — repeat one in `new` to keep it.
+  The anchors are part of the block: repeat one in `new` to keep it.
 
 ```sql
 UPDATE notes
@@ -132,7 +133,7 @@ When they are written in the SQL instead:
 
 - A line break or a tab goes inside the quotes as it is, as in the example above, or as `char(10)` / `char(9)`
   joined with `||`. SQL has no backslash escapes: `'a\nb'` stores a backslash and an `n`, not a line break, and `\\`
-  stores two backslashes — write a backslash once.
+  stores two backslashes, so write a backslash once.
 - An apostrophe is doubled (`'it''s'`), never backslashed.
 - Update one row at a time (`WHERE id = 3`): the function runs on every row the statement updates.
 - `old not found` on a passage that looks right usually means characters that look alike but differ: a typographic
@@ -150,19 +151,19 @@ value whole.
 Both functions run in `{{.ToolExecuteQuery}}`, `{{.ToolExecuteData}}` and formulas. Nothing stored in
 the schema can call them: a CHECK constraint, an index or a generated column doing so is refused when created, and a
 view, a trigger or a column DEFAULT doing so is accepted but fails with `unsafe use of text_patch()` each time it
-is used — such a trigger blocks every write that fires it until it is dropped.
+is used. Such a trigger blocks every write that fires it until it is dropped.
 
 ## Change log semantics
 
-Every write — `{{.ToolExecuteData}}`, `{{.ToolExecuteSchema}}`, and formula actions — is captured in `_change_log`,
+Every write (`{{.ToolExecuteData}}`, `{{.ToolExecuteSchema}}`, and formula actions) is captured in `_change_log`,
 grouped by `batch_id`: one request (or one formula action run) is one atomic batch and one undo entry.
 Entries carry a kind (`DML` or `DDL`). Undo/redo stacks are per-user; use `{{.ToolListChanges}}`,
 `{{.ToolUndoLastChange}}` / `{{.ToolRedoLastChange}}`, and `{{.ToolRevertChange}}` (any user's entry, by `change_log_id` or
-`batch_id`) rather than editing platform tables — which is denied anyway. Owner-only
+`batch_id`) rather than editing platform tables, which is denied anyway. Owner-only
 `{{.ToolUndoLastChangeAnyone}}` / `{{.ToolRedoLastChangeAnyone}}` operate across users.
 
 BLOB values cannot be stored: the change log records each row's values as JSON, which has no binary type, so any
-write carrying a non-NULL BLOB — into a column of any declared type — is refused with a clear error. Keep binary in
+write carrying a non-NULL BLOB, whatever the column's declared type, is refused with a clear error. Keep binary in
 a TEXT column as base64 or hex. A BLOB produced by an expression in `{{.ToolExecuteQuery}}` (`x'00ff'`,
 `zeroblob()`) is returned as base64.
 
@@ -171,7 +172,7 @@ Reversals are recorded like writes: an undo, redo, or revert produces entries ca
 brought back by undoing a `DROP COLUMN` is rebuilt behind the scenes and recorded as the equivalent
 `ALTER TABLE … ADD COLUMN`, constraints included. Every write needs free space under the bdb's size limit, a reversal
 that re-adds data (a restored column or table) included: once the bdb is full the write is refused with a clear
-error — delete rows or drop tables first.
+error: delete rows or drop tables first.
 
 ## Statement limits
 
@@ -179,7 +180,7 @@ The values below are the limits that apply to you on this instance.
 
 - `{{.ToolExecuteQuery}}`: a single read-only SELECT; multi-statement input is not supported.
 {{- if .MaxQueryResultRows}} At most
-  {{.MaxQueryResultRows}} result rows — a larger result is refused, so add a LIMIT or aggregate; the same cap
+  {{.MaxQueryResultRows}} result rows: a larger result is refused, so add a LIMIT or aggregate; the same cap
   applies to `{{.ToolRunFormula}}` results, where a view paginates with `:cursor`/`:limit` or exports as CSV
   instead.
 {{- else}} Results are not capped on
@@ -191,7 +192,7 @@ The values below are the limits that apply to you on this instance.
   affected rows{{end}}, atomic (one transaction, one batch, one undo entry).
 {{if .MaxConcurrentQueries -}}
 - At most {{.MaxConcurrentQueries}} of your requests (queries, writes, schema changes, formula runs) run at the same
-  time on an instance; one more is refused with a retry hint — wait for the running ones rather than firing them
+  time on an instance; one more is refused with a retry hint, so wait for the running ones rather than firing them
   in parallel.
 {{else -}}
 - Your requests (queries, writes, schema changes, formula runs) have no concurrency cap on this instance.

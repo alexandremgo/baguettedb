@@ -31,9 +31,10 @@ func registerFormulaTools(
 ) {
 	s.AddTool(
 		mcplib.NewTool(mcputil.ToolCreateFormula,
-			mcplib.WithDescription("Creates a formula: a named, parameterized SQL artifact members run from the "+
-				"app and you run via "+mcputil.ToolRunFormula+". The kind is derived from the SQL — a single SELECT "+
-				"is a 'view' (read); one or more INSERT/UPDATE/DELETE statements separated by ';' are an 'action' "+
+			mcplib.WithDescription("Creates a formula: saved SQL with parameters, kept in the bdb under a name, "+
+				"that members run from the app and you run via "+mcputil.ToolRunFormula+". The kind is derived "+
+				"from the SQL — a single SELECT is a 'view' (read); one or more INSERT/UPDATE/DELETE statements "+
+				"separated by ';' are an 'action' "+
 				"(write, atomic). No DDL, and reads and writes cannot mix. Use NAMED bind parameters (e.g. "+
 				":status), each declared in `params`. Before your first "+mcputil.ToolCreateFormula+" or "+
 				mcputil.ToolUpdateFormula+" call in a conversation, call "+mcputil.ToolGetDocs+"(topic: "+

@@ -328,7 +328,7 @@ type FormulaParam struct {
 // ParamSchema is the ordered list of parameters a formula declares.
 type ParamSchema []FormulaParam
 
-// Formula is a named, parameterized SQL artifact stored per-bdb. A formula is either a view (a
+// Formula is saved SQL with parameters, kept in a bdb under a name. A formula is either a view (a
 // single SELECT, rendered) or an action (one or more DML statements, run atomically on confirm).
 // An action may attach to a view via AttachedToFormulaID to render as a row/bulk
 // action that binds the user's selection.
