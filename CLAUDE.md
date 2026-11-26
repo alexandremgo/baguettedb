@@ -25,6 +25,24 @@
   package comments in `_test.go` files, so its `doc.go` carries just the build tag, the comment and the package clause).
   A `cmd/*` main package's comment reads `// Command x …`.
 
+## Writing for people
+
+Applies to text a person reads: web app strings, the sign-in pages, starter names and descriptions, the README and
+other Markdown docs, the manuals, and error messages the web app shows. Code comments follow the Comments section.
+
+- No em dashes. Use a colon, a semicolon, a comma, parentheses or a new sentence. An em dash as an empty-value
+  placeholder in a table cell is fine.
+- Say what something is or does, not how good it is: "Password changed", not "Password changed successfully"; "a
+  starter, with its tables, formulas and a skill", not "a curated starter". The same goes for "seamless",
+  "powerful", "robust" and the like.
+- Prefer the plain word to the jargon one when both are exact: a formula is "saved SQL with parameters, kept under a
+  name", not a "parameterized SQL artifact".
+- A claim about security or privacy names the setup it holds for: the `bdb` binary on your own machine, or an
+  instance someone else runs for you. "Connections are encrypted" holds for an instance behind HTTPS, not for
+  `bdb serve` on its own, which speaks plain HTTP.
+- Agent-facing text (MCP tool descriptions, the gateway instructions, starter skills) is read by models: reword it
+  only on purpose, since a wording change can change how agents behave. New text there follows these rules.
+
 ## Go Best Practices
 
 - Follow standard Go project layout and conventions.
