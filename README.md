@@ -12,30 +12,32 @@ people you choose.**
 ![Claude Desktop moving a task to Done and adding another in a bdb, next to the same board in the BaguetteDB web app](docs/screenshot-bakery-demo.webp)
 
 A **bdb** (short for *baguettedb*) is a small SQLite database about one thing: your groceries, your workouts, a kanban
-board, the memory of an assistant. Your AI agents work in it over MCP or the command line, with real SQL and
-guardrails: each bdb's schema and rules are described to them, and every change they make is logged and can be undone.
+board, the memory of an assistant. Your AI agents work in it over MCP or the command line, in SQL, with guardrails: each
+bdb's schema and rules are described to them, and every change they make is logged and can be undone. Your own apps
+can use the same bdbs through the Data API.
 
 ## Features
 
 - **Your AI agents alongside you**: they connect over MCP (stdio or Streamable HTTP) or run the `bdb` command line, to
   explore, query, change and restructure the bdbs you belong to, with built-in documentation they can read.
-- **Formulas**: named SQL with parameters, saved in the bdb. An agent calls one by name instead of rewriting the
-  query, and gets the same result every time; the web app shows it as a view or an action: a filtered list, a summary,
-  an "add" form, a one-click action.
+- **A Data API for your own apps**: a web page, a script or a mobile app uses a bdb as its database, with a key that
+  runs only the formulas you pick for it. The manual: `bdb docs data-api`.
+- **Formulas**: saved SQL with parameters, kept in the bdb under a name. An agent runs one by name instead of
+  rewriting the query, and gets the same result every time. The web app shows it as a view or an action: a filtered
+  list, a summary, an "add" form, a one-click action.
 - **Skills**: instructions stored in the bdb that teach agents how it is meant to be used.
 - **Every change logged and undoable**: undo and redo, revert one change or a whole batch, a change log per bdb.
 - **One database per topic**, created blank or from one of ten starters, such as kanban, groceries or workouts.
 - **Your data on your machine**: with `bdb`, every bdb is a file in one folder you own (`~/.baguettedb`).
 - **Encrypted at rest**: each bdb has a key of its own (SQLCipher), wrapped by one key that stays with you.
-- **Sharing by invitation**, with owner, editor and viewer roles per bdb.
-- **A web app**, served by the same binary as the MCP server.
-- **A Data API for your own apps**: a web page, a script or a mobile app uses a bdb as its database, with a key that
-  runs only the formulas you pick for it. The manual: `bdb docs data-api`.
+- **Sharing by invitation**: each bdb has its own members, as owner, editor or viewer.
+- **A web app** where the people you share a bdb with see its data and run its formulas, served by the same binary as
+  the MCP server.
 
 ## Run it on your machine
 
-`bdb` runs BaguetteDB on your own machine for your own agents: one binary, with no sign-up, no separate server to run
-and no Docker. Your bdbs live in `~/.baguettedb`.
+`bdb` runs BaguetteDB on your own machine for your own agents: one binary, with no separate server to run and no
+Docker. Your bdbs live in `~/.baguettedb`.
 
 ### Install
 
