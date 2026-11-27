@@ -1,7 +1,6 @@
 # 🥖 BaguetteDB
 
-**The data layer for your AI agents and your apps: one structured database per topic, each shared with exactly the
-people you choose.**
+**One database per topic that your AI agents, your apps and the people you invite all work in.**
 
 [![CI](https://github.com/alexandremgo/baguettedb/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandremgo/baguettedb/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alexandremgo/baguettedb)](https://github.com/alexandremgo/baguettedb/releases)
@@ -21,7 +20,7 @@ can use the same bdbs through the Data API.
 - **Your AI agents alongside you**: they connect over MCP (stdio or Streamable HTTP) or run the `bdb` command line, to
   explore, query, change and restructure the bdbs you belong to, with built-in documentation they can read.
 - **A Data API for your own apps**: a web page, a script or a mobile app uses a bdb as its database, with a key that
-  runs only the formulas you pick for it. The manual: `bdb docs data-api`.
+  runs only the formulas you pick for it.
 - **Formulas**: saved SQL with parameters, kept in the bdb under a name. An agent runs one by name instead of
   rewriting the query, and gets the same result every time. The web app shows it as a view or an action: a filtered
   list, a summary, an "add" form, a one-click action.

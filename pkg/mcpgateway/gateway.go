@@ -32,8 +32,8 @@ type Gateway struct {
 // what a bdb is, which tool to start from, how skills work, and the response style agents are expected to keep.
 // Tool names are spliced in from the mcputil constants, so a renamed tool cannot leave the text pointing at a
 // name that no longer exists.
-const Instructions = "BaguetteDB is the data layer for a user's AI agents and apps: one structured database per topic, " +
-	"each shared with exactly the people the user chooses. " +
+const Instructions = "BaguetteDB gives a user one database per topic that their AI agents, their apps and the people " +
+	"they invite all work in. " +
 	"A bdb (short for baguettedb) is a personal database a user owns and shares: it holds their tables, and they can invite other people into it as members. " +
 	"Users can build their own workflows and apps on it from a chat, and the data persists across conversations. " +
 	"Use " + mcputil.ToolListBdbs + " to find the user's bdbs and decide which one the task belongs to; " +
