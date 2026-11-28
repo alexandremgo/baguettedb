@@ -237,7 +237,7 @@ export function FieldControl({
   const page = needsNarrow ? narrowed.data : basePage.data;
 
   const lookupError = basePage.error
-    ? `Couldn't load options from “${param.lookup?.table}” — has its table or a column ` +
+    ? `Couldn't load options from “${param.lookup?.table}”. Has its table or a column ` +
       `been renamed? Ask your AI assistant to update this formula.`
     : undefined;
 

@@ -27,7 +27,7 @@ interface StarterGalleryProps {
 
 export function StarterGallery({
   title = "Create a bdb",
-  subtitle = "pick a curated starter — tables, formulas, and a skill included.",
+  subtitle = "pick a starter, which comes with its tables, formulas and a skill.",
   blankTo = "/bdbs/new/blank",
   createdTo = (bdb) => `/bdbs/${bdb.id}`,
 }: StarterGalleryProps) {

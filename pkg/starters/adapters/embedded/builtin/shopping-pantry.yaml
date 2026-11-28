@@ -4,7 +4,7 @@
 key: shopping-pantry
 version: 1
 name: Shopping & pantry
-description: Track what to buy and what you have at home — food and household supplies alike — through a shared item catalog that remembers how each thing is bought.
+description: Track what to buy and what you have at home, food and household supplies alike. A shared catalog of items remembers how you buy each one.
 icon: "🛒"
 tags:
   - home

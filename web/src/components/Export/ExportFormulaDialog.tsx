@@ -49,8 +49,8 @@ export function ExportFormulaDialog({ bdbId, formula, params, open, onClose }: E
     <Dialog open={open} onClose={handleClose} title={`Export ${formulaTitle(formula)} as CSV`}>
       <div className={styles.body}>
         <p className={styles.explain}>
-          Downloads the full result of this view with the parameter values currently entered —
-          {maxRows > 0 ? ` up to ${maxRows.toLocaleString()} rows.` : " no row limit applies."}
+          Downloads the full result of this view with the parameter values currently entered,
+          {maxRows > 0 ? ` up to ${maxRows.toLocaleString()} rows.` : " with no row limit."}
         </p>
         {errorMessage && <div className={styles.error}>{errorMessage}</div>}
         {downloadedFilename && <p className={styles.success}>Downloaded {downloadedFilename}.</p>}

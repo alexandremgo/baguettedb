@@ -1,4 +1,4 @@
-/** Formulas API — client for per-bdb named, parameterized SQL artifacts (views + actions). */
+/** Formulas API — client for per-bdb formulas, saved SQL with parameters kept under a name (views + actions). */
 
 import { get, post } from "./client";
 import type { QueryResult } from "./databases";

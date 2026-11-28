@@ -3,8 +3,7 @@
 key: workouts
 version: 1
 name: Workouts
-description: Track gym sessions set by set and runs with pace — one unified log for all your training, with
-  training programs of planned sessions to start your day from.
+description: Track gym sessions set by set and runs with their pace in one training log, with programs of planned sessions to start your day from.
 icon: "🏋️"
 tags:
   - sport

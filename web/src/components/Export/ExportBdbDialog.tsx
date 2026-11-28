@@ -73,7 +73,7 @@ export function ExportBdbDialog({ bdbId, bdbName, open, onClose }: ExportBdbDial
         <div className={styles.body}>
           <p className={styles.explain}>
             Downloads a full copy of this bdb's database as an encrypted SQLite file. It opens in any
-            SQLCipher-aware tool with a one-time passphrase shown after the export — the passphrase is
+            SQLCipher-aware tool with a one-time passphrase shown after the export. The passphrase is
             never stored, so it cannot be recovered later.
           </p>
           {dbStatus && (
@@ -84,7 +84,7 @@ export function ExportBdbDialog({ bdbId, bdbName, open, onClose }: ExportBdbDial
               {nextAvailableAt && (
                 <span className={styles.quotaNext}>
                   {" "}
-                  — next available {nextAvailableAt.toLocaleString()}
+                  (next available {nextAvailableAt.toLocaleString()})
                 </span>
               )}
             </p>
@@ -100,7 +100,7 @@ export function ExportBdbDialog({ bdbId, bdbName, open, onClose }: ExportBdbDial
         <div className={styles.body}>
           <p className={styles.explain}>
             {filename ? `Downloaded ${filename}.` : "Download complete."} This passphrase opens the file
-            and is shown only once — copy it now:
+            and is shown only once. Copy it now:
           </p>
           <div className={styles.passphraseRow}>
             <input

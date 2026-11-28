@@ -13,11 +13,11 @@
     <body>
         <main class="card">
             {{template "auth-brand"}}
-            <h1>Welcome back</h1>
+            <h1>Sign in</h1>
             {{if not .IsFirstParty}}
             <p class="subtitle">
-                {{if .ClientName}}to continue to {{.ClientName}}{{else}}Sign in
-                to your account{{end}}
+                {{if .ClientName}}to continue to {{.ClientName}}{{else}}to your
+                BaguetteDB account{{end}}
             </p>
             {{end}} {{if .Error}}
             <p class="error">{{.Error}}</p>

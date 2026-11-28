@@ -51,7 +51,7 @@ export function SetupGuidePage() {
                 </>
               )}
             </li>
-            <li>Start chatting — your assistant can now read and write your data.</li>
+            <li>Start chatting. Your assistant can now read and write your data.</li>
           </ol>
         ) : (
           <ol className={styles.steps}>
@@ -66,7 +66,7 @@ export function SetupGuidePage() {
             <li>
               Authenticate with your BaguetteDB credentials when prompted.
             </li>
-            <li>Start chatting — your assistant can now read and write your data.</li>
+            <li>Start chatting. Your assistant can now read and write your data.</li>
           </ol>
         )}
       </section>

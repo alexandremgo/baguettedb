@@ -2,7 +2,7 @@
 
 # MCP tools
 
-The MCP server of an instance exposes the tools below. An agent acts with the permissions of one account, on the bdbs that account is a member of: the owner, or the account `--as` names, when `bdb mcp` serves it over stdio; otherwise the account it signed in with or whose token it sends. A tool reserved to bdb owners says so in its description. `get_docs` serves two manuals an agent reads before authoring formulas or writing SQL: the [formula authoring manual](formulas.md) and the [SQL capabilities and engine rules](sql.md). Every session also opens with the [agent instructions](agent-instructions.md).
+Every tool an agent can call on a BaguetteDB MCP server, with its parameters. An agent acts with the permissions of one account, on the bdbs that account is a member of: the owner, or the account `--as` names, when `bdb mcp` serves it over stdio; otherwise the account it signed in with or whose token it sends. A tool reserved to bdb owners says so in its description. `get_docs` serves the manuals an agent reads before authoring formulas, writing SQL or building an app on the Data API: the [formula authoring manual](formulas.md), the [SQL capabilities and engine rules](sql.md) and the [Data API manual](data-api.md). Every session also opens with the [agent instructions](agent-instructions.md).
 
 ## Bdbs
 
@@ -163,7 +163,7 @@ Fetches a single formula (with its SQL and parameter schema) by name or UUID. Us
 
 ### create_formula
 
-Creates a formula: a named, parameterized SQL artifact members run from the app and you run via run_formula. The kind is derived from the SQL — a single SELECT is a 'view' (read); one or more INSERT/UPDATE/DELETE statements separated by ';' are an 'action' (write, atomic). No DDL, and reads and writes cannot mix. Use NAMED bind parameters (e.g. :status), each declared in `params`. Before your first create_formula or update_formula call in a conversation, call get_docs(topic: 'formulas') — the full authoring manual (params and their sources, display modes, slots, nested details).
+Creates a formula: saved SQL with parameters, kept in the bdb under a name, that members run from the app and you run via run_formula. The kind is derived from the SQL — a single SELECT is a 'view' (read); one or more INSERT/UPDATE/DELETE statements separated by ';' are an 'action' (write, atomic). No DDL, and reads and writes cannot mix. Use NAMED bind parameters (e.g. :status), each declared in `params`. Before your first create_formula or update_formula call in a conversation, call get_docs(topic: 'formulas') — the full authoring manual (params and their sources, display modes, slots, nested details).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

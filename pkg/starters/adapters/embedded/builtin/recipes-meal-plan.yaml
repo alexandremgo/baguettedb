@@ -3,7 +3,7 @@
 key: recipes-meal-plan
 version: 1
 name: Recipes & meal plan
-description: Keep your recipes as you cook them and plan the week's meals on a calendar — a recipe or any dish per meal, batches served over several days, and the history of what you cooked.
+description: Keep your recipes as you cook them and plan the week's meals on a calendar. A meal is a recipe or any dish, a batch can serve several days, and what you cooked stays in the history.
 icon: "🍽️"
 tags:
   - home

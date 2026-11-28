@@ -23,7 +23,7 @@ import (
 const formulaColumns = "id, name, description, sql, kind, params, " +
 	"attached_to_formula_id, display_order, created_at, updated_at, statement_verb, display, hidden, label"
 
-// FormulaService manages per-bdb formulas (named, parameterized SQL artifacts).
+// FormulaService manages per-bdb formulas (saved SQL with parameters, kept under a name).
 // Formulas live in the per-bdb SQLite platform table _formulas. It holds a QueryService
 // so a formula run reuses the exact execute path raw SQL takes — a formula grants no capability beyond it.
 type FormulaService struct {

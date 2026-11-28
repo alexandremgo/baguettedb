@@ -4,7 +4,7 @@
 key: media-diary
 version: 1
 name: Media Diary
-description: Log the films, shows, and books you watch and read — rate them in half-stars, jot reviews, keep a to-watch/to-read shelf, and build lists.
+description: A diary of the films, shows and books you watch and read, rated in half-stars, with reviews, a to-watch and to-read shelf, and lists of your own.
 icon: "🎬📚"
 tags:
   - culture

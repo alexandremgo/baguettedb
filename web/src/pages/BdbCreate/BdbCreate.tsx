@@ -47,7 +47,7 @@ export function BdbCreate({ createdTo = (bdb) => `/bdbs/${bdb.id}` }: BdbCreateP
           label="Description"
           name="description"
           placeholder="What is this bdb for?"
-          hint="Helps you — and your AI assistants — pick the right bdb later."
+          hint="Helps you and your AI assistants pick the right bdb later."
         />
         {error && <p className={styles.error}>{error}</p>}
         <div className={styles.actions}>

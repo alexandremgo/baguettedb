@@ -41,6 +41,6 @@ export function runSuccessMessage(result: FormulaRunResult): { text: string; det
   }
   return {
     text: "Done",
-    detail: `${rows} across ${result.statement_count} statements — one undo step`,
+    detail: `${rows} across ${result.statement_count} statements, in one undo step`,
   };
 }

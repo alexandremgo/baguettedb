@@ -32,13 +32,13 @@ type Gateway struct {
 // what a bdb is, which tool to start from, how skills work, and the response style agents are expected to keep.
 // Tool names are spliced in from the mcputil constants, so a renamed tool cannot leave the text pointing at a
 // name that no longer exists.
-const Instructions = "BaguetteDB is a collaborative database platform. " +
-	"A bdb — short for baguettedb — is a personal database a user owns and shares: it holds their tables, and they can invite other people into it as members. " +
-	"Users can design and run custom workflows and applications entirely within a chat, " +
-	"with all data persisted across sessions thanks to BaguetteDB. " +
+const Instructions = "BaguetteDB gives a user one database per topic that their AI agents, their apps and the people " +
+	"they invite all work in. " +
+	"A bdb (short for baguettedb) is a personal database a user owns and shares: it holds their tables, and they can invite other people into it as members. " +
+	"Users can build their own workflows and apps on it from a chat, and the data persists across conversations. " +
 	"Use " + mcputil.ToolListBdbs + " to find the user's bdbs and decide which one the task belongs to; " +
-	"when none fits, " + mcputil.ToolCreateBdb + " creates a new one, blank or from a curated starter " +
-	"(" + mcputil.ToolListStarters + ") — only on the user's explicit ask, with the name confirmed first. " +
+	"when none fits, " + mcputil.ToolCreateBdb + " creates a new one, blank or from a starter " +
+	"(" + mcputil.ToolListStarters + "), only on the user's explicit ask and with the name confirmed first. " +
 	"BaguetteDB can also be written 🥖db or simply 🥖; 'bdb' on its own refers to one of these databases (e.g. 'my Sport bdb').\n\n" +
 	"Each bdb can also have skills — short markdown instructions that teach agents how to work with the data in this bdb. " +
 	"Skills can target one or more tables or be bdb-level (no targets). " +
