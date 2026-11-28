@@ -1,6 +1,6 @@
 # 🥖 BaguetteDB
 
-**One database per topic that your AI agents, your apps and the people you invite all work in.**
+**One structured database per topic that your AI agents, your apps and the people you invite all work in.**
 
 [![CI](https://github.com/alexandremgo/baguettedb/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandremgo/baguettedb/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alexandremgo/baguettedb)](https://github.com/alexandremgo/baguettedb/releases)
